@@ -11,6 +11,9 @@ class NotificationType(models.TextChoices):
     ROULETTE_WINNER = 'roulette_winner', 'Ganador de Ruleta'
     ROULETTE_STARTED = 'roulette_started', 'Sorteo Iniciado'
     ROULETTE_ENDING_SOON = 'roulette_ending_soon', 'Sorteo Próximo a Terminar'
+    WINNER_NOTIFICATION = 'winner_notification', 'Notificación Personal de Victoria'
+    ADMIN_WINNER_ALERT = 'admin_winner_alert', 'Alerta de Ganador (Admin)'
+    WELCOME_MESSAGE = 'welcome_message', 'Mensaje de Bienvenida'
 
 class Notification(models.Model):
     """
@@ -46,6 +49,21 @@ class Notification(models.Model):
         default=False,
         help_text="Indica si la notificación ha sido leída"
     )
+    is_admin_only = models.BooleanField(
+        default=False,
+        help_text="Si es True, solo visible para administradores"
+    )
+    priority = models.CharField(
+        max_length=10,
+        choices=[
+            ('low', 'Baja'),
+            ('normal', 'Normal'),
+            ('high', 'Alta'),
+            ('urgent', 'Urgente'),
+        ],
+        default='normal',
+        help_text="Prioridad de la notificación"
+    )
     
     # Campos relacionados para contexto
     roulette_id = models.PositiveIntegerField(
@@ -68,6 +86,11 @@ class Notification(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField(
+        null=True, 
+        blank=True,
+        help_text="Fecha de expiración de la notificación"
+    )
     
     class Meta:
         db_table = 'notifications'
@@ -76,11 +99,15 @@ class Notification(models.Model):
             models.Index(fields=['user', 'is_read']),
             models.Index(fields=['notification_type', 'created_at']),
             models.Index(fields=['is_public', 'created_at']),
+            models.Index(fields=['is_admin_only', 'created_at']),
             models.Index(fields=['roulette_id']),
+            models.Index(fields=['priority', 'is_read']),
         ]
     
     def __str__(self) -> str:
         recipient = f"Para: {self.user.username}" if self.user else "Público"
+        if self.is_admin_only:
+            recipient = "Admin"
         return f"{self.title} - {recipient}"
     
     def mark_as_read(self) -> None:
@@ -88,6 +115,42 @@ class Notification(models.Model):
         if not self.is_read:
             self.is_read = True
             self.save(update_fields=['is_read', 'updated_at'])
+
+class AdminNotificationPreference(models.Model):
+    """
+    Configuración de notificaciones para administradores
+    """
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='admin_notification_preferences'
+    )
+    notify_on_winner = models.BooleanField(
+        default=True,
+        help_text="Recibir notificación cuando hay un ganador"
+    )
+    notify_on_new_participation = models.BooleanField(
+        default=False,
+        help_text="Recibir notificación en cada nueva participación"
+    )
+    notify_on_roulette_created = models.BooleanField(
+        default=True,
+        help_text="Recibir notificación cuando se crea una nueva ruleta"
+    )
+    email_notifications = models.BooleanField(
+        default=False,
+        help_text="Enviar también por email"
+    )
+    min_participants_alert = models.PositiveIntegerField(
+        default=10,
+        help_text="Alertar solo si la ruleta tiene este mínimo de participantes"
+    )
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'admin_notification_preferences'
 
 class RealTimeMessage(models.Model):
     """
@@ -122,3 +185,25 @@ class RealTimeMessage(models.Model):
     
     def __str__(self) -> str:
         return f"{self.message_type} - Canal: {self.channel_name}"
+
+class NotificationTemplate(models.Model):
+    """
+    Plantillas para notificaciones reutilizables
+    """
+    name = models.CharField(max_length=100, unique=True)
+    notification_type = models.CharField(
+        max_length=30,
+        choices=NotificationType.choices
+    )
+    title_template = models.CharField(max_length=200)
+    message_template = models.TextField()
+    is_active = models.BooleanField(default=True)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'notification_templates'
+    
+    def __str__(self) -> str:
+        return f"Template: {self.name}"

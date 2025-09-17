@@ -4,9 +4,10 @@ from rest_framework import generics, permissions, status
 from rest_framework.views import APIView
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
+import logging
 
 from authentication.permissions import IsAdminRole  # tu permiso de admin
-from .models import Roulette, DrawHistory, RoulettePrize
+from .models import Roulette, DrawHistory, RoulettePrize, RouletteSettings
 from .serializers import (
     RouletteListSerializer,
     RouletteDetailSerializer,
@@ -17,8 +18,10 @@ from .serializers import (
 )
 from .utils import execute_roulette_draw
 
+logger = logging.getLogger(__name__)
 
-# --------- RUOULETTES ----------
+
+# --------- ROULETTES ----------
 class RouletteListView(generics.ListAPIView):
     queryset = Roulette.objects.all().select_related('created_by', 'settings', 'winner__user')
     serializer_class = RouletteListSerializer
@@ -39,9 +42,40 @@ class RouletteCreateView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminRole]
 
     def perform_create(self, serializer):
-        instance = serializer.save(created_by=self.request.user)
-        # crear settings por defecto
-        instance.settings = instance.settings if hasattr(instance, 'settings') else None
+        """Crear ruleta con usuario actual y configuración automática"""
+        try:
+            instance = serializer.save(created_by=self.request.user)
+            
+            # Asegurar que existe configuración (por si el signal falló)
+            if not hasattr(instance, 'settings') or not instance.settings:
+                RouletteSettings.objects.create(
+                    roulette=instance,
+                    max_participants=0,
+                    allow_multiple_entries=False,
+                    auto_draw_when_full=False,
+                    show_countdown=True,
+                    notify_on_participation=True,
+                    notify_on_draw=True
+                )
+                
+            logger.info(f"Ruleta creada exitosamente: {instance.name} (ID: {instance.id}) por {self.request.user.username}")
+            
+        except Exception as e:
+            logger.error(f"Error creando ruleta: {str(e)}")
+            raise
+
+    def create(self, request, *args, **kwargs):
+        """Override para mejor manejo de errores"""
+        try:
+            response = super().create(request, *args, **kwargs)
+            return response
+        except Exception as e:
+            logger.error(f"Error en RouletteCreateView: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error al crear la ruleta: {str(e)}',
+                'details': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
 
 class RouletteDetailView(generics.RetrieveAPIView):
@@ -55,6 +89,115 @@ class RouletteUpdateView(generics.UpdateAPIView):
     serializer_class = RouletteCreateUpdateSerializer
     permission_classes = [permissions.IsAuthenticated, IsAdminRole]
 
+    def perform_update(self, serializer):
+        """Actualizar ruleta con logging"""
+        try:
+            instance = serializer.save()
+            logger.info(f"Ruleta actualizada: {instance.name} (ID: {instance.id}) por {self.request.user.username}")
+        except Exception as e:
+            logger.error(f"Error actualizando ruleta {serializer.instance.id}: {str(e)}")
+            raise
+
+    def update(self, request, *args, **kwargs):
+        """Override para mejor manejo de errores en actualización"""
+        try:
+            # Obtener la instancia antes de la actualización
+            instance = self.get_object()
+            logger.info(f"Iniciando actualización de ruleta: {instance.name} (ID: {instance.id})")
+            
+            # Llamar al método padre
+            response = super().update(request, *args, **kwargs)
+            
+            logger.info(f"Ruleta {instance.name} actualizada exitosamente")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error en RouletteUpdateView: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error al actualizar la ruleta: {str(e)}',
+                'details': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+    def partial_update(self, request, *args, **kwargs):
+        """PATCH method con mejor manejo de errores"""
+        try:
+            instance = self.get_object()
+            logger.info(f"Iniciando actualización parcial de ruleta: {instance.name} (ID: {instance.id})")
+            
+            response = super().partial_update(request, *args, **kwargs)
+            
+            logger.info(f"Ruleta {instance.name} actualizada parcialmente")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error en partial_update: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error al actualizar la ruleta: {str(e)}',
+                'details': str(e)
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+
+class RouletteDestroyView(generics.DestroyAPIView):
+    """
+    Vista para eliminar ruletas.
+    - Normal: solo NO sorteadas y sin participantes.
+    - Con ?force=1 (admin): elimina aunque esté sorteada/completada y limpia relacionados.
+    """
+    queryset = Roulette.objects.all()
+    permission_classes = [permissions.IsAuthenticated, IsAdminRole]
+
+    def destroy(self, request, *args, **kwargs):
+        roulette = self.get_object()
+        force = request.query_params.get('force') in ('1', 'true', 'True')
+
+        logger.info(f"Intento de eliminación de ruleta: {roulette.name} (ID: {roulette.id}) - Force: {force}")
+
+        # Reglas normales si NO es force
+        if not force:
+            if roulette.is_drawn or roulette.status == 'completed':
+                return Response({
+                    'success': False,
+                    'message': f'No se puede eliminar la ruleta "{roulette.name}" porque ya fue completada/sorteada.'
+                }, status=status.HTTP_409_CONFLICT)
+
+            participants_count = roulette.get_participants_count()
+            if participants_count > 0:
+                return Response({
+                    'success': False,
+                    'message': f'No se puede eliminar la ruleta "{roulette.name}" porque tiene {participants_count} participante(s) registrado(s).'
+                }, status=status.HTTP_409_CONFLICT)
+
+        try:
+            with transaction.atomic():
+                roulette_name = roulette.name
+
+                # Limpiar relacionados
+                DrawHistory.objects.filter(roulette=roulette).delete()
+                RoulettePrize.objects.filter(roulette=roulette).delete()
+
+                # Evitar FK winner colgando
+                if roulette.winner_id:
+                    roulette.winner = None
+                    roulette.save(update_fields=['winner'])
+
+                roulette.delete()
+                
+                logger.info(f"Ruleta eliminada exitosamente: {roulette_name}")
+                
+                return Response({
+                    'success': True,
+                    'message': f'Ruleta "{roulette_name}" eliminada correctamente.'
+                }, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            logger.error(f"Error eliminando ruleta {roulette.name}: {str(e)}")
+            return Response({
+                'success': False,
+                'message': f'Error eliminando ruleta: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class DrawExecuteView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAdminRole]
@@ -64,19 +207,34 @@ class DrawExecuteView(APIView):
         serializer.is_valid(raise_exception=True)
         roulette = serializer.validated_data['validated_roulette']
 
-        with transaction.atomic():
-            result = execute_roulette_draw(roulette, request.user, draw_type='manual')
-            if not result['success']:
-                return Response({'success': False, 'message': result['message']}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            with transaction.atomic():
+                result = execute_roulette_draw(roulette, request.user, draw_type='manual')
+                
+                if not result['success']:
+                    logger.warning(f"Fallo en sorteo de ruleta {roulette.name}: {result['message']}")
+                    return Response({
+                        'success': False, 
+                        'message': result['message']
+                    }, status=status.HTTP_400_BAD_REQUEST)
 
+                logger.info(f"Sorteo ejecutado exitosamente en ruleta {roulette.name} por {request.user.username}")
+                
+                return Response({
+                    'success': True,
+                    'message': 'Sorteo ejecutado exitosamente',
+                    'winner': {
+                        'name': result['winner'].user.get_full_name() or result['winner'].user.username,
+                        'email': result['winner'].user.email
+                    }
+                }, status=status.HTTP_200_OK)
+                
+        except Exception as e:
+            logger.error(f"Error ejecutando sorteo en ruleta {roulette.name}: {str(e)}")
             return Response({
-                'success': True,
-                'message': 'Sorteo ejecutado exitosamente',
-                'winner': {
-                    'name': result['winner'].user.get_full_name() or result['winner'].user.username,
-                    'email': result['winner'].user.email
-                }
-            }, status=status.HTTP_200_OK)
+                'success': False,
+                'message': f'Error ejecutando el sorteo: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class DrawHistoryView(generics.ListAPIView):
@@ -123,6 +281,7 @@ class RoulettePrizeListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         roulette = get_object_or_404(Roulette, id=self.kwargs['roulette_id'])
         if not (self.request.user.is_staff or self.request.user.is_superuser or getattr(self.request.user, 'user_type', '') == 'admin'):
+            # Puedes usar también IsAdminRole, pero aquí ya validamos manualmente
             raise PermissionError('Solo administradores pueden crear premios.')
         serializer.save(roulette=roulette)
 

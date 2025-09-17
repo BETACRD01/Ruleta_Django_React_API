@@ -21,6 +21,9 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("", api_info, name="api-root"),
 
+    # AGREGAR ESTA LÍNEA - URLs de CKEditor
+    path("ckeditor/", include("ckeditor_uploader.urls")),
+
     # API (coinciden con tu frontend: API_URL + /auth/... etc)
     path("api/auth/", include("authentication.urls")),
     path("api/roulettes/", include("roulettes.urls")),

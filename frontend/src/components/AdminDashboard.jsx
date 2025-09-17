@@ -1,13 +1,23 @@
 // src/components/AdminDashboard.jsx
 import React, { useState, useEffect } from 'react';
-import { 
-  Trophy, Users, CheckCircle, Clock, Plus, 
+import {
+  Trophy, Users, CheckCircle, Clock,
   Edit, Trash2, Play, Eye, RotateCcw, Award,
-  Settings, TrendingUp, Calendar, AlertTriangle
+  Settings, TrendingUp, Calendar, AlertTriangle,
+  Search, ChevronDown, ChevronUp, RefreshCw, Bell
 } from 'lucide-react';
-import { Card, Button, Badge, Tabs, EmptyState, LoadingSpinner, Modal } from './UI';
-import { roulettesAPI, participantsAPI, notificationAPI } from '../config/api';
 
+import { roulettesAPI, participantsAPI, notificationAPI, notificationManager } from '../config/api';
+// ⬇️ Importa el centro de notificaciones externo (archivo único)
+import NotificationCenter from '../components/admin/NotificationCenter';
+import RouletteManager from '../components/admin/RouletteManager';
+import DrawTools from '../components/admin/DrawTools';
+import ParticipantManager from '../components/admin/ParticipantManager';
+import ReportsManager from '../components/admin/ReportsManager';
+
+// ===============================
+// DASHBOARD PRINCIPAL
+// ===============================
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -20,21 +30,63 @@ const AdminDashboard = () => {
   const [roulettes, setRoulettes] = useState([]);
   const [error, setError] = useState(null);
 
-  // Cargar datos iniciales
+  // ---- Notificaciones (contador en campana) ----
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Cargar datos iniciales de ruletas
   useEffect(() => {
     loadDashboardData();
+  }, []);
+
+  // Arrancar polling de notificaciones y sincronizar contador
+  useEffect(() => {
+    let mounted = true;
+
+    const syncUnread = async () => {
+      try {
+        // opción A: stats dedicadas
+        const s = await notificationAPI.stats();
+        if (mounted) setUnreadCount(s?.unread_notifications || s?.unread_count || 0);
+      } catch (e) {
+        // fallback: pedir user notifications con include_stats
+        try {
+          const res = await notificationAPI.getUserNotifications({ include_stats: true, page_size: 1 });
+          const count = res?.stats?.unread_count ?? 0;
+          if (mounted) setUnreadCount(count);
+        } catch (_) {}
+      }
+    };
+
+    syncUnread();
+
+    // Si ya usas notificationManager, enganchamos listener
+    const handler = ({ stats }) => setUnreadCount(stats?.unread_count || 0);
+    if (notificationManager?.addListener) {
+      notificationManager.addListener('notifications_updated', handler);
+      // Iniciar polling si aún no corre
+      if (notificationManager?.startPolling) notificationManager.startPolling(30000);
+    } else {
+      // Fallback: poll manual cada 30s
+      const id = setInterval(syncUnread, 30000);
+      return () => { mounted = false; clearInterval(id); };
+    }
+
+    return () => {
+      mounted = false;
+      if (notificationManager?.removeListener) {
+        notificationManager.removeListener('notifications_updated', handler);
+      }
+    };
   }, []);
 
   const loadDashboardData = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Cargar ruletas
+
       const roulettesResponse = await roulettesAPI.getRoulettes({ page_size: 50 });
       const roulettesData = roulettesResponse.results || [];
-      
-      // Calcular estadísticas
+
       const activeCount = roulettesData.filter(r => r.status === 'active').length;
       const completedCount = roulettesData.filter(r => r.status === 'completed').length;
       const totalParticipants = roulettesData.reduce((sum, r) => sum + (r.participants_count || 0), 0);
@@ -49,7 +101,7 @@ const AdminDashboard = () => {
       });
     } catch (error) {
       console.error('Error loading dashboard:', error);
-      setError('Error al cargar datos del dashboard');
+      setError('Error al cargar datos del dashboard: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -60,190 +112,226 @@ const AdminDashboard = () => {
     { id: 'roulettes', label: 'Gestión de Ruletas', icon: Settings },
     { id: 'draws', label: 'Herramientas de Sorteo', icon: RotateCcw },
     { id: 'participants', label: 'Participantes', icon: Users },
+    // ⬇️ Pestaña Notificaciones con badge real
+    { id: 'notifications', label: 'Notificaciones', icon: Bell, badge: unreadCount },
     { id: 'reports', label: 'Reportes', icon: Award }
   ];
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex justify-center items-center h-64">
-          <LoadingSpinner size="lg" />
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Panel de Administración</h1>
-        <p className="text-gray-600">Gestiona ruletas, sorteos y usuarios del sistema</p>
-      </div>
-
-      {/* Error Alert */}
-      {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
-          {error}
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-6 lg:py-8">
+        {/* Header */}
+        <div className="mb-6 lg:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Panel de Administración</h1>
+            <p className="text-gray-600 text-sm lg:text-base">Gestiona ruletas, sorteos y usuarios del sistema</p>
+          </div>
         </div>
-      )}
 
-      {/* Estadísticas principales */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-        <StatCard 
-          title="Ruletas Activas"
-          value={stats.activeRoulettes}
-          icon={Trophy}
-          color="text-blue-600 bg-blue-100"
-          trend="+12%"
-        />
-        <StatCard 
-          title="Total Participantes"
-          value={stats.totalParticipants.toLocaleString()}
-          icon={Users}
-          color="text-green-600 bg-green-100"
-          trend="+23%"
-        />
-        <StatCard 
-          title="Sorteos Completados"
-          value={stats.completedDraws}
-          icon={CheckCircle}
-          color="text-purple-600 bg-purple-100"
-          trend="+8%"
-        />
-        <StatCard 
-          title="Sorteos Pendientes"
-          value={stats.pendingDraws}
-          icon={Clock}
-          color="text-yellow-600 bg-yellow-100"
-          trend="0%"
-        />
-      </div>
-
-      {/* Pestañas */}
-      <Tabs 
-        tabs={tabs}
-        activeTab={activeTab}
-        onChange={setActiveTab}
-        className="mb-8"
-      />
-
-      {/* Contenido de pestañas */}
-      <div>
-        {activeTab === 'overview' && <OverviewTab roulettes={roulettes} stats={stats} />}
-        {activeTab === 'roulettes' && <RoulettesTab roulettes={roulettes} onRefresh={loadDashboardData} />}
-        {activeTab === 'draws' && <DrawsTab roulettes={roulettes} onRefresh={loadDashboardData} />}
-        {activeTab === 'participants' && <ParticipantsTab />}
-        {activeTab === 'reports' && <ReportsTab />}
-      </div>
-    </div>
-  );
-};
-
-// Componente para estadísticas
-const StatCard = ({ title, value, icon: Icon, color, trend }) => (
-  <Card className="p-6">
-    <div className="flex items-center">
-      <div className={`flex-shrink-0 p-3 rounded-lg ${color}`}>
-        <Icon className="h-6 w-6" />
-      </div>
-      <div className="ml-4 flex-1">
-        <p className="text-sm font-medium text-gray-600">{title}</p>
-        <div className="flex items-baseline">
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-          {trend && (
-            <span className={`ml-2 text-sm ${trend.startsWith('+') ? 'text-green-600' : 'text-red-600'}`}>
-              {trend}
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  </Card>
-);
-
-// Tab de Resumen
-const OverviewTab = ({ roulettes, stats }) => {
-  const recentRoulettes = roulettes.slice(0, 5);
-  
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-      {/* Ruletas recientes */}
-      <Card className="p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">Ruletas Recientes</h3>
-          <Button variant="ghost" size="sm">Ver todas</Button>
-        </div>
-        <div className="space-y-3">
-          {recentRoulettes.map(roulette => (
-            <div key={roulette.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-              <div>
-                <p className="font-medium text-gray-900">{roulette.title}</p>
-                <p className="text-sm text-gray-500">{roulette.participants_count} participantes</p>
-              </div>
-              <Badge variant={roulette.status === 'active' ? 'success' : 'default'}>
-                {roulette.status === 'active' ? 'Activa' : 'Completada'}
-              </Badge>
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+            <div className="flex">
+              <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0" />
+              <span className="text-sm">{error}</span>
             </div>
-          ))}
-        </div>
-      </Card>
+          </div>
+        )}
 
-      {/* Actividad reciente */}
-      <Card className="p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Actividad Reciente</h3>
-        <div className="space-y-3">
-          <ActivityItem 
-            action="Nueva participación"
-            details="Usuario participó en 'Ruleta Navidad'"
-            time="Hace 5 minutos"
+        {/* Estadísticas principales - Grid totalmente responsivo */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
+          <StatCard 
+            title="Ruletas Activas" 
+            value={stats.activeRoulettes} 
+            icon={Trophy} 
+            color="text-blue-600 bg-blue-100" 
           />
-          <ActivityItem 
-            action="Sorteo ejecutado"
-            details="Completado sorteo de 'Ruleta Gaming'"
-            time="Hace 2 horas"
+          <StatCard 
+            title="Total Participantes" 
+            value={stats.totalParticipants.toLocaleString()} 
+            icon={Users} 
+            color="text-green-600 bg-green-100" 
           />
-          <ActivityItem 
-            action="Ruleta creada"
-            details="Nueva ruleta 'Año Nuevo' agregada"
-            time="Hace 1 día"
+          <StatCard 
+            title="Sorteos Completados" 
+            value={stats.completedDraws} 
+            icon={CheckCircle} 
+            color="text-purple-600 bg-purple-100" 
+          />
+          <StatCard 
+            title="Sorteos Pendientes" 
+            value={stats.pendingDraws} 
+            icon={Clock} 
+            color="text-yellow-600 bg-yellow-100" 
           />
         </div>
-      </Card>
+
+        {/* Pestañas */}
+        <div className="mb-6 lg:mb-8">
+          <div className="border-b border-gray-200">
+            <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`
+                      relative flex items-center whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm
+                      ${isActive ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
+                    `}
+                  >
+                    <Icon className="h-4 w-4 mr-2" />
+                    {tab.label}
+                    {tab.id === 'notifications' && (tab.badge || 0) > 0 && (
+                      <span className="ml-2 inline-flex items-center justify-center text-[10px] font-semibold rounded-full bg-red-600 text-white px-1.5 py-0.5">
+                        {tab.badge > 99 ? '99+' : tab.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+
+        {/* Contenido de pestañas */}
+        <div>
+          {activeTab === 'overview' && <OverviewTab roulettes={roulettes} stats={stats} />}
+          {activeTab === 'roulettes' && ( <RouletteManager onRefetchDashboard={loadDashboardData} />)}
+          {activeTab === 'draws' && <DrawTools onRefresh={loadDashboardData} />}
+          {activeTab === 'participants' && <ParticipantManager onRefreshDashboard={loadDashboardData} />}
+          {/* 🔔 Integración real: usamos el componente externo */}
+          {activeTab === 'notifications' && (
+            <NotificationCenter
+              onUnreadChange={setUnreadCount}
+              defaultPageSize={15}
+              compact={false}
+            />
+          )}
+          {activeTab === 'reports' && <ReportsManager onRefreshDashboard={loadDashboardData} />}
+        </div>
+      </div>
     </div>
   );
 };
 
-const ActivityItem = ({ action, details, time }) => (
-  <div className="flex items-start space-x-3">
-    <div className="w-2 h-2 bg-blue-600 rounded-full mt-2"></div>
-    <div>
-      <p className="font-medium text-gray-900">{action}</p>
-      <p className="text-sm text-gray-500">{details}</p>
-      <p className="text-xs text-gray-400">{time}</p>
+// ===============================
+// Tarjeta de estadística - Mejorada responsividad
+// ===============================
+const StatCard = ({ title, value, icon: Icon, color }) => (
+  <div className="bg-white p-4 lg:p-6 rounded-lg shadow hover:shadow-md transition-shadow">
+    <div className="flex items-center">
+      <div className={`flex-shrink-0 p-2.5 lg:p-3 rounded-lg ${color}`}>
+        <Icon className="h-5 w-5 lg:h-6 lg:w-6" />
+      </div>
+      <div className="ml-3 lg:ml-4 flex-1 min-w-0">
+        <p className="text-xs lg:text-sm font-medium text-gray-600 truncate">{title}</p>
+        <p className="text-xl lg:text-2xl font-bold text-gray-900">{value}</p>
+      </div>
     </div>
   </div>
 );
 
-// Tab de Gestión de Ruletas
+// ===============================
+// Resumen - Layout mejorado
+// ===============================
+const OverviewTab = ({ roulettes, stats }) => {
+  const recentRoulettes = roulettes.slice(0, 5);
+
+  return (
+    <div className="p-4 lg:p-6">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
+        {/* Ruletas recientes */}
+        <div className="bg-gray-50 p-4 lg:p-6 rounded-lg">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-medium text-gray-900">Ruletas Recientes</h3>
+          </div>
+          <div className="space-y-3">
+            {recentRoulettes.length > 0 ? recentRoulettes.map(roulette => (
+              <div key={roulette.id} className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-gray-900 truncate">{roulette.name}</p>
+                  <p className="text-sm text-gray-500">{roulette.participants_count || 0} participantes</p>
+                </div>
+                <span className={`
+                  inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ml-2
+                  ${roulette.status === 'active'
+                    ? 'bg-green-100 text-green-800'
+                    : roulette.status === 'completed'
+                    ? 'bg-gray-100 text-gray-800'
+                    : 'bg-red-100 text-red-800'
+                  }
+                `}>
+                  {roulette.status === 'active' ? 'Activa' :
+                   roulette.status === 'completed' ? 'Completada' : 'Cancelada'}
+                </span>
+              </div>
+            )) : (
+              <p className="text-gray-500 text-center py-4">No hay ruletas disponibles</p>
+            )}
+          </div>
+        </div>
+
+        {/* Resumen de estadísticas */}
+        <div className="bg-gray-50 p-4 lg:p-6 rounded-lg">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Resumen General</h3>
+          <div className="space-y-4">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Total de ruletas</span>
+              <span className="font-medium">{roulettes.length}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Ruletas activas</span>
+              <span className="font-medium text-green-600">{stats.activeRoulettes}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Sorteos completados</span>
+              <span className="font-medium text-blue-600">{stats.completedDraws}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Total participantes</span>
+              <span className="font-medium">{stats.totalParticipants}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ===============================
+// Gestión de Ruletas
+// ===============================
 const RoulettesTab = ({ roulettes, onRefresh }) => {
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedRoulette, setSelectedRoulette] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   const getStatusBadge = (status) => {
     const variants = {
-      active: { variant: 'success', text: 'Activa' },
-      completed: { variant: 'default', text: 'Completada' },
-      cancelled: { variant: 'error', text: 'Cancelada' }
+      active: { className: 'bg-green-100 text-green-800', text: 'Activa' },
+      completed: { className: 'bg-gray-100 text-gray-800', text: 'Completada' },
+      cancelled: { className: 'bg-red-100 text-red-800', text: 'Cancelada' }
     };
     const config = variants[status] || variants.active;
-    return <Badge variant={config.variant}>{config.text}</Badge>;
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${config.className}`}>
+        {config.text}
+      </span>
+    );
   };
 
   const handleDeleteRoulette = async (id) => {
     if (!window.confirm('¿Estás seguro de eliminar esta ruleta?')) return;
-    
+
     try {
       setActionLoading(true);
       await roulettesAPI.deleteRoulette(id);
@@ -259,121 +347,121 @@ const RoulettesTab = ({ roulettes, onRefresh }) => {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-xl font-semibold text-gray-900">Gestión de Ruletas</h2>
-        <Button onClick={() => setShowCreateModal(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nueva Ruleta
-        </Button>
       </div>
 
       {roulettes.length === 0 ? (
-        <EmptyState 
-          icon={Trophy}
-          title="No hay ruletas"
-          description="Crea tu primera ruleta para comenzar"
-          action={
-            <Button onClick={() => setShowCreateModal(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Crear Ruleta
-            </Button>
-          }
-        />
+        <div className="text-center py-12">
+          <Trophy className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No hay ruletas</h3>
+          <p className="mt-1 text-sm text-gray-500">No se encontraron ruletas en el sistema</p>
+        </div>
       ) : (
         <div className="grid gap-6">
           {roulettes.map((roulette) => (
-            <Card key={roulette.id} className="p-6">
+            <div key={roulette.id} className="bg-white p-6 rounded-lg shadow">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-lg font-medium text-gray-900">{roulette.title}</h3>
+                    <h3 className="text-lg font-medium text-gray-900">{roulette.name}</h3>
                     {getStatusBadge(roulette.status)}
                   </div>
-                  <p className="text-gray-600 mb-4">{roulette.description}</p>
+                  <p className="text-gray-600 mb-4">{roulette.description || 'Sin descripción'}</p>
                   <div className="flex items-center gap-6 text-sm text-gray-500">
                     <div className="flex items-center">
                       <Users className="mr-1 h-4 w-4" />
-                      {roulette.participants_count} participantes
+                      {roulette.participants_count || 0} participantes
                     </div>
                     {roulette.scheduled_date && (
                       <div className="flex items-center">
                         <Calendar className="mr-1 h-4 w-4" />
-                        Sorteo: {new Date(roulette.scheduled_date).toLocaleDateString()}
+                        Sorteo: {new Date(roulette.scheduled_date).toLocaleDateString('es-ES')}
                       </div>
                     )}
-                    <div className="flex items-center">
-                      <Clock className="mr-1 h-4 w-4" />
-                      Creado: {new Date(roulette.created_at).toLocaleDateString()}
-                    </div>
+                    {roulette.created_at && (
+                      <div className="flex items-center">
+                        <Clock className="mr-1 h-4 w-4" />
+                        Creado: {new Date(roulette.created_at).toLocaleDateString('es-ES')}
+                      </div>
+                    )}
                   </div>
+                  {roulette.winner_name && (
+                    <div className="mt-2 text-sm text-green-600">
+                      Ganador: {roulette.winner_name}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 ml-4">
-                  <Button variant="ghost" size="sm" title="Ver detalles">
+                  <button
+                    className="p-2 text-gray-400 hover:text-gray-600"
+                    title="Ver detalles"
+                    onClick={() => console.log('Ver detalles:', roulette.id)}
+                  >
                     <Eye className="h-4 w-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm" title="Editar">
+                  </button>
+                  <button
+                    className="p-2 text-gray-400 hover:text-gray-600"
+                    title="Editar"
+                    onClick={() => console.log('Editar:', roulette.id)}
+                  >
                     <Edit className="h-4 w-4" />
-                  </Button>
-                  {roulette.status === 'active' && !roulette.is_drawn && (
-                    <Button variant="ghost" size="sm" title="Ejecutar sorteo">
+                  </button>
+                  {roulette.status === 'active' && !roulette.is_drawn && roulette.participants_count > 0 && (
+                    <button
+                      className="p-2 text-green-600 hover:text-green-800"
+                      title="Ejecutar sorteo"
+                      onClick={() => console.log('Ejecutar sorteo:', roulette.id)}
+                    >
                       <Play className="h-4 w-4" />
-                    </Button>
+                    </button>
                   )}
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <button
+                    className="p-2 text-red-600 hover:text-red-800"
                     title="Eliminar"
                     onClick={() => handleDeleteRoulette(roulette.id)}
                     disabled={actionLoading}
                   >
                     <Trash2 className="h-4 w-4" />
-                  </Button>
+                  </button>
                 </div>
               </div>
-            </Card>
+            </div>
           ))}
         </div>
       )}
-
-      {/* Modal crear ruleta - placeholder */}
-      <Modal 
-        isOpen={showCreateModal} 
-        onClose={() => setShowCreateModal(false)}
-        title="Crear Nueva Ruleta"
-        size="lg"
-      >
-        <div className="text-center py-8">
-          <p className="text-gray-500">Formulario de creación próximamente</p>
-          <Button 
-            className="mt-4"
-            onClick={() => setShowCreateModal(false)}
-          >
-            Cerrar
-          </Button>
-        </div>
-      </Modal>
     </div>
   );
 };
 
-// Tab de Herramientas de Sorteo
+// ===============================
+// Herramientas de sorteo
+// ===============================
 const DrawsTab = ({ roulettes, onRefresh }) => {
   const [executing, setExecuting] = useState(false);
   const [selectedRouletteId, setSelectedRouletteId] = useState('');
 
-  const activeRoulettes = roulettes.filter(r => r.status === 'active' && !r.is_drawn);
+  const activeRoulettes = roulettes.filter(r =>
+    r.status === 'active' &&
+    !r.is_drawn &&
+    (r.participants_count || 0) > 0
+  );
 
   const handleExecuteDraw = async () => {
     if (!selectedRouletteId) return;
-    
+
     if (!window.confirm('¿Estás seguro de ejecutar este sorteo? Esta acción no se puede deshacer.')) {
       return;
     }
 
     try {
       setExecuting(true);
-      await roulettesAPI.executeRouletteDraw(selectedRouletteId);
-      alert('¡Sorteo ejecutado exitosamente!');
-      onRefresh();
-      setSelectedRouletteId('');
+      const result = await roulettesAPI.executeRouletteDraw(parseInt(selectedRouletteId));
+      if (result.success) {
+        alert(`¡Sorteo ejecutado exitosamente! Ganador: ${result.winner?.name || 'N/A'}`);
+        onRefresh();
+        setSelectedRouletteId('');
+      } else {
+        alert('Error: ' + (result.message || 'No se pudo ejecutar el sorteo'));
+      }
     } catch (error) {
       alert('Error al ejecutar sorteo: ' + error.message);
     } finally {
@@ -384,17 +472,19 @@ const DrawsTab = ({ roulettes, onRefresh }) => {
   return (
     <div>
       <h2 className="text-xl font-semibold text-gray-900 mb-6">Herramientas de Sorteo</h2>
-      
+
       {activeRoulettes.length === 0 ? (
-        <EmptyState 
-          icon={RotateCcw}
-          title="No hay sorteos pendientes"
-          description="No hay ruletas activas disponibles para sorteo"
-        />
+        <div className="text-center py-12">
+          <RotateCcw className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No hay sorteos pendientes</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            No hay ruletas activas con participantes disponibles para sorteo
+          </p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Sorteo Manual */}
-          <Card className="p-6">
+          <div className="bg-white p-6 rounded-lg shadow">
             <div className="flex items-center mb-4">
               <div className="bg-blue-100 p-3 rounded-lg">
                 <RotateCcw className="h-6 w-6 text-blue-600" />
@@ -404,7 +494,7 @@ const DrawsTab = ({ roulettes, onRefresh }) => {
                 <p className="text-sm text-gray-500">Ejecuta el sorteo inmediatamente</p>
               </div>
             </div>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -418,73 +508,86 @@ const DrawsTab = ({ roulettes, onRefresh }) => {
                   <option value="">Seleccionar ruleta...</option>
                   {activeRoulettes.map(roulette => (
                     <option key={roulette.id} value={roulette.id}>
-                      {roulette.title} ({roulette.participants_count} participantes)
+                      {roulette.name} ({roulette.participants_count} participantes)
                     </option>
                   ))}
                 </select>
               </div>
-              
-              <Button 
+
+              <button
                 onClick={handleExecuteDraw}
                 disabled={!selectedRouletteId || executing}
-                loading={executing}
-                className="w-full"
+                className={`
+                  w-full px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white 
+                  ${(!selectedRouletteId || executing) 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
+                  }
+                `}
               >
-                {executing ? 'Ejecutando Sorteo...' : 'Ejecutar Sorteo'}
-              </Button>
-            </div>
-          </Card>
-
-          {/* Historial de Sorteos */}
-          <Card className="p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Historial Reciente</h3>
-            <div className="space-y-3">
-              {roulettes
-                .filter(r => r.is_drawn)
-                .slice(0, 5)
-                .map(roulette => (
-                  <div key={roulette.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <div>
-                      <p className="font-medium text-gray-900">{roulette.title}</p>
-                      <p className="text-sm text-gray-500">
-                        {roulette.participants_count} participantes
-                      </p>
-                    </div>
-                    <Badge variant="success">Completado</Badge>
+                {executing ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Ejecutando Sorteo...
                   </div>
-                ))}
+                ) : (
+                  'Ejecutar Sorteo'
+                )}
+              </button>
             </div>
-          </Card>
+          </div>
+
+          {/* (Placeholder) Historial o utilidades extras */}
+          <div className="bg-white p-6 rounded-lg shadow">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Historial Reciente</h3>
+            <p className="text-sm text-gray-500">Aquí puedes mostrar últimos sorteos, etc.</p>
+          </div>
         </div>
       )}
     </div>
   );
 };
 
-// Tab de Participantes
+// ===============================
+// Participantes (placeholder) - Mejorado
+// ===============================
 const ParticipantsTab = () => {
   return (
-    <div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-6">Gestión de Participantes</h2>
-      <EmptyState 
-        icon={Users}
-        title="Participantes"
-        description="Herramientas de gestión de participantes próximamente"
-      />
+    <div className="p-4 lg:p-6">
+      <div className="text-center py-12">
+        <Users className="mx-auto h-12 w-12 text-gray-400" />
+        <h3 className="mt-2 text-sm font-medium text-gray-900">Participantes</h3>
+        <p className="mt-1 text-sm text-gray-500">Módulo de participantes</p>
+      </div>
     </div>
   );
 };
 
-// Tab de Reportes
+// ===============================
+// (Mantenemos tu NotificationsTab original SIN usarlo,
+// por si quieres compararlo/luego eliminarlo.)
+// ===============================
+const NotificationsTab = ({ onUnreadChange }) => {
+  return (
+    <div className="text-sm text-gray-500">
+      {/* Mantener vacío o dejar un mensaje de referencia */}
+      <p>Este módulo fue reemplazado por <code>NotificationCenter</code>.</p>
+    </div>
+  );
+};
+
+// ===============================
+// Reportes (placeholder) - Mejorado
+// ===============================
 const ReportsTab = () => {
   return (
-    <div>
+    <div className="p-4 lg:p-6">
       <h2 className="text-xl font-semibold text-gray-900 mb-6">Reportes y Estadísticas</h2>
-      <EmptyState 
-        icon={Award}
-        title="Reportes"
-        description="Panel de reportes y estadísticas próximamente"
-      />
+      <div className="text-center py-12">
+        <Award className="mx-auto h-12 w-12 text-gray-400" />
+        <h3 className="mt-2 text-sm font-medium text-gray-900">Reportes</h3>
+        <p className="mt-1 text-sm text-gray-500">Panel de reportes y estadísticas próximamente</p>
+      </div>
     </div>
   );
 };

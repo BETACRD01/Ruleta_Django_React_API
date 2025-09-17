@@ -1,42 +1,69 @@
-// src/App.jsx - ACTUALIZADO con notificaciones
+// src/App.jsx - ACTUALIZADO con Router + rutas protegidas
 import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
-import Home from './pages/Home'; // ✅ CAMBIAR: usar Home en lugar de LoginForm
-import Layout from './components/Layout';
+
+import Home from './pages/Home';           // pantalla pública
+import Layout from './components/Layout';  // layout común (navbar, etc.)
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 
-// Componente principal que maneja la lógica de navegación
-const AppContent = () => {
-  const { user, loading, isAdmin } = useAuth();
+// IMPORT con espacios en la ruta del archivo:
+import RouletteParticipate from './components/user/Ruletas Disponibles/RouletteParticipate';
 
-  // Mostrar loading mientras se inicializa
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-lg text-gray-600">Cargando sistema...</p>
-        </div>
+// --- Guards simples ---
+const RequireAuth = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+        <p className="mt-4 text-lg text-gray-600">Cargando sistema...</p>
       </div>
-    );
-  }
+    </div>
+  );
+  return user ? children : <Navigate to="/" replace />;
+};
 
-  // Si no hay usuario autenticado, mostrar Home (que tiene el diseño bonito)
-  if (!user) {
-    return <Home />; // ✅ CAMBIAR: Home en lugar de LoginForm
-  }
+const AppContent = () => {
+  const { user, isAdmin } = useAuth();
 
-  // Usuario autenticado: mostrar dashboard correspondiente según rol
   return (
-    <Layout>
-      {isAdmin ? <AdminDashboard /> : <UserDashboard />}
-    </Layout>
+    <Routes>
+      {/* Pública: Home si no hay sesión; si hay sesión, manda al dashboard */}
+      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Home />} />
+
+      {/* Dashboard por rol dentro del Layout */}
+      <Route
+        path="/dashboard"
+        element={
+          <RequireAuth>
+            <Layout>
+              {isAdmin ? <AdminDashboard /> : <UserDashboard />}
+            </Layout>
+          </RequireAuth>
+        }
+      />
+
+      {/* Pantalla de participación (requiere login) */}
+      <Route
+        path="/ruletas/:id/participar"
+        element={
+          <RequireAuth>
+            <Layout>
+              <RouletteParticipate />
+            </Layout>
+          </RequireAuth>
+        }
+      />
+
+      {/* Fallback */}
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 };
 
-// Componente App principal con providers
 const App = () => {
   return (
     <div className="App">

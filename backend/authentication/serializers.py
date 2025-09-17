@@ -35,7 +35,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop('password_confirm')
         password = validated_data.pop('password')
-        user = User.objects.create_user(password=password, **validated_data)
+        user = User.create_user(password=password, **validated_data) if hasattr(User, 'create_user') else User.objects.create_user(password=password, **validated_data)
         UserProfile.objects.create(user=user)
         return user
 
@@ -58,7 +58,7 @@ class UserLoginSerializer(serializers.Serializer):
         except User.DoesNotExist:
             raise serializers.ValidationError('Credenciales inválidas.')
 
-        # Autenticar. Asumimos USERNAME_FIELD='email'; se pasa request por compatibilidad de backends.
+        # Autenticar. Asumimos USERNAME_FIELD='email'
         user = authenticate(self.context.get('request'), username=email, password=password)
         if not user:
             raise serializers.ValidationError('Credenciales inválidas.')
@@ -107,17 +107,14 @@ class UserProfileDetailSerializer(serializers.ModelSerializer):
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
-    """RF1.4.1: Solicitud de restablecimiento"""
+    """
+    RF1.4.1: Solicitud de restablecimiento
+    → Solo normaliza el email. No filtra existencia ni límite (para no delatar información).
+    """
     email = serializers.EmailField()
 
     def validate_email(self, value):
-        try:
-            user = User.objects.get(email=value)
-        except User.DoesNotExist:
-            raise serializers.ValidationError("No existe un usuario con este correo electrónico.")
-        if not PasswordResetRequest.can_request_reset(user):
-            raise serializers.ValidationError("Has alcanzado el límite máximo de 10 solicitudes por día. Inténtalo mañana.")
-        return value
+        return value.strip().lower()
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):

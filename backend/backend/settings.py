@@ -13,10 +13,20 @@ SECRET_KEY = os.getenv(
 )
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 
-# En desarrollo, acepta cualquier host (incluye 127.x, localhost y tu IP de red)
+# En desarrollo, acepta cualquier host (incluye túneles)
 # En producción, lista explícitamente tus dominios.
 if DEBUG:
-    ALLOWED_HOSTS = ["*"]
+    ALLOWED_HOSTS = [
+        "*",
+        "localhost",
+        "127.0.0.1",
+        "0.0.0.0",
+        "l398g94m-8000.brs.devtunnels.ms",  # Tu túnel Django específico
+        "l398g94m-3000.brs.devtunnels.ms",  # Tu túnel React específico
+        "*.brs.devtunnels.ms",  # Permite cualquier subdominio del túnel
+        "*.ngrok.io",           # Por si usas ngrok también
+        "*.ngrok-free.app",     # Nuevos dominios de ngrok
+    ]
 else:
     ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost").split(",")
 
@@ -30,12 +40,15 @@ DJANGO_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.sites",  # para generar enlaces con dominio correcto
 ]
 
 THIRD_PARTY_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "corsheaders",
+    "ckeditor",          # ← CKEditor base
+    "ckeditor_uploader", # ← CKEditor con subida de archivos
     # "channels",  # ← habilita si vas a usar WebSockets
 ]
 
@@ -47,6 +60,9 @@ LOCAL_APPS = [
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+
+# Sites framework (Admin → Sites → configura tu dominio)
+SITE_ID = int(os.getenv("SITE_ID", "1"))
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Middleware (CORS lo primero)
@@ -138,6 +154,96 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "authentication.User"
 
 # ──────────────────────────────────────────────────────────────────────────────
+# CKEditor Configuration
+# ──────────────────────────────────────────────────────────────────────────────
+# Directorio donde CKEditor guardará archivos subidos
+CKEDITOR_UPLOAD_PATH = "ckeditor_uploads/"
+
+# Backend para procesar imágenes (requiere Pillow)
+CKEDITOR_IMAGE_BACKEND = "pillow"
+
+# Restricciones de archivos
+CKEDITOR_ALLOW_NONIMAGE_FILES = False  # Solo imágenes por defecto
+
+# Configuraciones del editor
+CKEDITOR_CONFIGS = {
+    'default': {
+        'skin': 'moono-lisa',
+        'toolbar_Basic': [
+            ['Source', '-', 'Bold', 'Italic']
+        ],
+        'toolbar_YourCustomToolbarConfig': [
+            {'name': 'document', 'items': ['Source', '-', 'Save', 'NewPage', 'Preview', 'Print', '-', 'Templates']},
+            {'name': 'clipboard', 'items': ['Cut', 'Copy', 'Paste', 'PasteText', 'PasteFromWord', '-', 'Undo', 'Redo']},
+            {'name': 'editing', 'items': ['Find', 'Replace', '-', 'SelectAll']},
+            '/',
+            {'name': 'basicstyles',
+             'items': ['Bold', 'Italic', 'Underline', 'Strike', 'Subscript', 'Superscript', '-', 'RemoveFormat']},
+            {'name': 'paragraph',
+             'items': ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'Blockquote', 'CreateDiv', '-',
+                       'JustifyLeft', 'JustifyCenter', 'JustifyRight', 'JustifyBlock', '-', 'BidiLtr', 'BidiRtl',
+                       'Language']},
+            {'name': 'links', 'items': ['Link', 'Unlink', 'Anchor']},
+            {'name': 'insert',
+             'items': ['Image', 'Flash', 'Table', 'HorizontalRule', 'Smiley', 'SpecialChar', 'PageBreak', 'Iframe']},
+            '/',
+            {'name': 'styles', 'items': ['Styles', 'Format', 'Font', 'FontSize']},
+            {'name': 'colors', 'items': ['TextColor', 'BGColor']},
+            {'name': 'tools', 'items': ['Maximize', 'ShowBlocks']},
+            {'name': 'about', 'items': ['About']},
+            '/',  # put this to force next toolbar on new line
+            {'name': 'yourcustomtools', 'items': [
+                # put the name of your editor.ui.addButton here
+                'Preview',
+                'Maximize',
+            ]},
+        ],
+        'toolbar': 'YourCustomToolbarConfig',  # put selected toolbar config here
+        'toolbarGroups': [{ 'name': 'document', 'groups': [ 'mode', 'document', 'doctools' ] }],
+        'height': 291,
+        'width': '100%',
+        'filebrowserWindowHeight': 725,
+        'filebrowserWindowWidth': 940,
+        'toolbarCanCollapse': True,
+        'mathJaxLib': '//cdn.mathjax.org/mathjax/2.2-latest/MathJax.js?config=TeX-AMS_HTML',
+        'tabSpaces': 4,
+        'extraPlugins': ','.join([
+            'uploadimage', # the upload image feature
+            # your extra plugins here
+            'div',
+            'autolink',
+            'autoembed',
+            'embedsemantic',
+            'autogrow',
+            'devtools',
+            'widget',
+            'lineutils',
+            'clipboard',
+            'dialog',
+            'dialogui',
+            'elementspath'
+        ]),
+    },
+    # Configuración simplificada para ruletas
+    'roulette_editor': {
+        'toolbar': 'Custom',
+        'toolbar_Custom': [
+            ['Bold', 'Italic', 'Underline', 'Strike'],
+            ['NumberedList', 'BulletedList'],
+            ['Link', 'Unlink'],
+            ['Image', 'Table'],
+            ['TextColor', 'BGColor'],
+            ['Source', 'RemoveFormat']
+        ],
+        'height': 300,
+        'width': '100%',
+        'removePlugins': 'stylesheetparser',
+        'allowedContent': True,
+        'extraPlugins': 'uploadimage',
+    }
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # DRF
 # ──────────────────────────────────────────────────────────────────────────────
 REST_FRAMEWORK = {
@@ -165,31 +271,80 @@ REST_FRAMEWORK = {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# CORS (dev: localhost + LAN)
+# CORS (configuración completa para túneles y desarrollo)
 # ──────────────────────────────────────────────────────────────────────────────
 CORS_ALLOW_CREDENTIALS = True
+
+# URLs específicas permitidas
 CORS_ALLOWED_ORIGINS = [
+    # Desarrollo local
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:8080",
     "http://127.0.0.1:8080",
+    "http://localhost:5173",  # Vite dev server
+    "http://127.0.0.1:5173",
+    
+    # Túneles BrowserStack (HTTPS)
+    "https://l398g94m-3000.brs.devtunnels.ms",  # React frontend
+    "https://l398g94m-8000.brs.devtunnels.ms",  # Django backend (si necesario)
+    
+    # Si cambias de túnel, agrega las nuevas URLs aquí
 ]
-# Permite tu red local (192.168.x.x:3000, 10.x.x.x:3000, 172.16–31.x.x:3000, etc.)
+
+# Permite conexiones desde red local y túneles usando regex
 CORS_ALLOWED_ORIGIN_REGEXES = [
+    # Red local IPv4
     r"^http://192\.168\.\d{1,3}\.\d{1,3}:\d+$",
     r"^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$",
     r"^http://172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}:\d+$",
+    
+    # Túneles BrowserStack
+    r"^https://.*\.brs\.devtunnels\.ms$",
+    
+    # Túneles ngrok (por si los usas)
+    r"^https://.*\.ngrok\.io$",
+    r"^https://.*\.ngrok-free\.app$",
 ]
 
+# Headers permitidos
 CORS_ALLOW_HEADERS = [
-    "accept", "accept-encoding", "authorization", "content-type", "dnt",
-    "origin", "user-agent", "x-csrftoken", "x-requested-with",
+    "accept",
+    "accept-encoding", 
+    "authorization",
+    "content-type",
+    "dnt",
+    "origin",
+    "user-agent",
+    "x-csrftoken",
+    "x-requested-with",
+    "cache-control",
+    "pragma",
 ]
-CORS_ALLOW_METHODS = ["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"]
 
-# Si usas cookies/SessionAuth y host con HTTPS, define:
-# CSRF_TRUSTED_ORIGINS = ["https://tu-dominio.com"]
+# Métodos HTTP permitidos
+CORS_ALLOW_METHODS = [
+    "DELETE",
+    "GET", 
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PUT"
+]
 
+# Para túneles HTTPS, configura CSRF trusted origins
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://l398g94m-3000.brs.devtunnels.ms",
+    "https://l398g94m-8000.brs.devtunnels.ms",
+    # Agrega más si cambias de túnel
+]
+
+# En desarrollo, permite todos los orígenes (SOLO para desarrollo)
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = False  # Cambia a True si tienes problemas
+    
 # ──────────────────────────────────────────────────────────────────────────────
 # Seguridad (dev)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -197,14 +352,48 @@ SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = "DENY"
 
+# Para túneles HTTPS en desarrollo, desactiva algunas validaciones
+if DEBUG:
+    SECURE_SSL_REDIRECT = False
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # ──────────────────────────────────────────────────────────────────────────────
-# Email (DEV) – para que no falle el flujo de reset/registro
+# Frontend base (para construir enlaces que se envían por correo)
 # ──────────────────────────────────────────────────────────────────────────────
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@ruletas.local")
+# Prioriza variable de entorno, luego túnel, luego localhost
+FRONTEND_BASE_URL = os.getenv(
+    "FRONTEND_BASE_URL", 
+    "https://l398g94m-3000.brs.devtunnels.ms"  # Tu túnel React
+)
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Email (SMTP real por red)
+# ──────────────────────────────────────────────────────────────────────────────
+# Por defecto: SMTP. Si estás en dev y no configuraste SMTP, puedes forzar consola con:
+# EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
 EMAIL_BACKEND = os.getenv(
     "EMAIL_BACKEND",
-    "django.core.mail.backends.console.EmailBackend"  # imprime emails en consola en dev
+    "django.core.mail.backends.smtp.EmailBackend"
 )
+
+# Host/puerto y credenciales:
+EMAIL_HOST = os.getenv("EMAIL_HOST", "127.0.0.1")        # p.ej. smtp.gmail.com, smtp.mailtrap.io, o IP de Mailpit
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "1025"))        # 587 TLS, 465 SSL, 1025 Mailpit en LAN
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+
+# TLS/SSL (no actives ambos a la vez)
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "0") == "1"   # para 587
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "0") == "1"   # para 465
+
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@ruletas.local")
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+
+# Timeout razonable para conexiones SMTP
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "30"))
+
+# Tiempo de validez del token de reset (en segundos): 24 horas
+PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24)))
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Uploads
