@@ -2,21 +2,20 @@
 import React, { useState, useEffect } from 'react';
 import {
   Trophy, Users, CheckCircle, Clock,
-  Edit, Trash2, Play, Eye, RotateCcw, Award,
+  Edit, Trash2, Eye,
   Settings, TrendingUp, Calendar, AlertTriangle,
-  Search, ChevronDown, ChevronUp, RefreshCw, Bell
+  Bell
 } from 'lucide-react';
 
-import { roulettesAPI, participantsAPI, notificationAPI, notificationManager } from '../config/api';
-// ⬇️ Importa el centro de notificaciones externo (archivo único)
+import { roulettesAPI, notificationAPI, notificationManager } from '../config/api';
+// ⬇️ Centro de notificaciones
 import NotificationCenter from '../components/admin/NotificationCenter';
 import RouletteManager from '../components/admin/RouletteManager';
-import DrawTools from '../components/admin/DrawTools';
 import ParticipantManager from '../components/admin/ParticipantManager';
 import ReportsManager from '../components/admin/ReportsManager';
 
 // ===============================
-// DASHBOARD PRINCIPAL
+// DASHBOARD PRINCIPAL (sin herramienta de sorteo)
 // ===============================
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
@@ -38,17 +37,15 @@ const AdminDashboard = () => {
     loadDashboardData();
   }, []);
 
-  // Arrancar polling de notificaciones y sincronizar contador
+  // Polling/Sync de notificaciones
   useEffect(() => {
     let mounted = true;
 
     const syncUnread = async () => {
       try {
-        // opción A: stats dedicadas
         const s = await notificationAPI.stats();
         if (mounted) setUnreadCount(s?.unread_notifications || s?.unread_count || 0);
       } catch (e) {
-        // fallback: pedir user notifications con include_stats
         try {
           const res = await notificationAPI.getUserNotifications({ include_stats: true, page_size: 1 });
           const count = res?.stats?.unread_count ?? 0;
@@ -59,14 +56,11 @@ const AdminDashboard = () => {
 
     syncUnread();
 
-    // Si ya usas notificationManager, enganchamos listener
     const handler = ({ stats }) => setUnreadCount(stats?.unread_count || 0);
     if (notificationManager?.addListener) {
       notificationManager.addListener('notifications_updated', handler);
-      // Iniciar polling si aún no corre
       if (notificationManager?.startPolling) notificationManager.startPolling(30000);
     } else {
-      // Fallback: poll manual cada 30s
       const id = setInterval(syncUnread, 30000);
       return () => { mounted = false; clearInterval(id); };
     }
@@ -107,14 +101,13 @@ const AdminDashboard = () => {
     }
   };
 
+  // ✅ pestañas SIN la herramienta de sorteo
   const tabs = [
     { id: 'overview', label: 'Resumen', icon: TrendingUp },
     { id: 'roulettes', label: 'Gestión de Ruletas', icon: Settings },
-    { id: 'draws', label: 'Herramientas de Sorteo', icon: RotateCcw },
     { id: 'participants', label: 'Participantes', icon: Users },
-    // ⬇️ Pestaña Notificaciones con badge real
     { id: 'notifications', label: 'Notificaciones', icon: Bell, badge: unreadCount },
-    { id: 'reports', label: 'Reportes', icon: Award }
+    { id: 'reports', label: 'Reportes', icon: CheckCircle }
   ];
 
   if (loading) {
@@ -132,7 +125,9 @@ const AdminDashboard = () => {
         <div className="mb-6 lg:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Panel de Administración</h1>
-            <p className="text-gray-600 text-sm lg:text-base">Gestiona ruletas, sorteos y usuarios del sistema</p>
+            <p className="text-gray-600 text-sm lg:text-base">
+              Gestiona ruletas, usuarios y notificaciones del sistema
+            </p>
           </div>
         </div>
 
@@ -146,7 +141,7 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* Estadísticas principales - Grid totalmente responsivo */}
+        {/* Estadísticas principales */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
           <StatCard 
             title="Ruletas Activas" 
@@ -207,10 +202,8 @@ const AdminDashboard = () => {
         {/* Contenido de pestañas */}
         <div>
           {activeTab === 'overview' && <OverviewTab roulettes={roulettes} stats={stats} />}
-          {activeTab === 'roulettes' && ( <RouletteManager onRefetchDashboard={loadDashboardData} />)}
-          {activeTab === 'draws' && <DrawTools onRefresh={loadDashboardData} />}
+          {activeTab === 'roulettes' && (<RouletteManager onRefetchDashboard={loadDashboardData} />)}
           {activeTab === 'participants' && <ParticipantManager onRefreshDashboard={loadDashboardData} />}
-          {/* 🔔 Integración real: usamos el componente externo */}
           {activeTab === 'notifications' && (
             <NotificationCenter
               onUnreadChange={setUnreadCount}
@@ -226,7 +219,7 @@ const AdminDashboard = () => {
 };
 
 // ===============================
-// Tarjeta de estadística - Mejorada responsividad
+// Tarjeta de estadística
 // ===============================
 const StatCard = ({ title, value, icon: Icon, color }) => (
   <div className="bg-white p-4 lg:p-6 rounded-lg shadow hover:shadow-md transition-shadow">
@@ -243,7 +236,7 @@ const StatCard = ({ title, value, icon: Icon, color }) => (
 );
 
 // ===============================
-// Resumen - Layout mejorado
+// Resumen
 // ===============================
 const OverviewTab = ({ roulettes, stats }) => {
   const recentRoulettes = roulettes.slice(0, 5);
@@ -310,7 +303,7 @@ const OverviewTab = ({ roulettes, stats }) => {
 };
 
 // ===============================
-// Gestión de Ruletas
+// Gestión de Ruletas (sin botón de sorteo)
 // ===============================
 const RoulettesTab = ({ roulettes, onRefresh }) => {
   const [actionLoading, setActionLoading] = useState(false);
@@ -405,15 +398,7 @@ const RoulettesTab = ({ roulettes, onRefresh }) => {
                   >
                     <Edit className="h-4 w-4" />
                   </button>
-                  {roulette.status === 'active' && !roulette.is_drawn && roulette.participants_count > 0 && (
-                    <button
-                      className="p-2 text-green-600 hover:text-green-800"
-                      title="Ejecutar sorteo"
-                      onClick={() => console.log('Ejecutar sorteo:', roulette.id)}
-                    >
-                      <Play className="h-4 w-4" />
-                    </button>
-                  )}
+                  {/* 🔥 Eliminado el botón de ejecutar sorteo */}
                   <button
                     className="p-2 text-red-600 hover:text-red-800"
                     title="Eliminar"
@@ -433,123 +418,7 @@ const RoulettesTab = ({ roulettes, onRefresh }) => {
 };
 
 // ===============================
-// Herramientas de sorteo
-// ===============================
-const DrawsTab = ({ roulettes, onRefresh }) => {
-  const [executing, setExecuting] = useState(false);
-  const [selectedRouletteId, setSelectedRouletteId] = useState('');
-
-  const activeRoulettes = roulettes.filter(r =>
-    r.status === 'active' &&
-    !r.is_drawn &&
-    (r.participants_count || 0) > 0
-  );
-
-  const handleExecuteDraw = async () => {
-    if (!selectedRouletteId) return;
-
-    if (!window.confirm('¿Estás seguro de ejecutar este sorteo? Esta acción no se puede deshacer.')) {
-      return;
-    }
-
-    try {
-      setExecuting(true);
-      const result = await roulettesAPI.executeRouletteDraw(parseInt(selectedRouletteId));
-      if (result.success) {
-        alert(`¡Sorteo ejecutado exitosamente! Ganador: ${result.winner?.name || 'N/A'}`);
-        onRefresh();
-        setSelectedRouletteId('');
-      } else {
-        alert('Error: ' + (result.message || 'No se pudo ejecutar el sorteo'));
-      }
-    } catch (error) {
-      alert('Error al ejecutar sorteo: ' + error.message);
-    } finally {
-      setExecuting(false);
-    }
-  };
-
-  return (
-    <div>
-      <h2 className="text-xl font-semibold text-gray-900 mb-6">Herramientas de Sorteo</h2>
-
-      {activeRoulettes.length === 0 ? (
-        <div className="text-center py-12">
-          <RotateCcw className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No hay sorteos pendientes</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            No hay ruletas activas con participantes disponibles para sorteo
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Sorteo Manual */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <div className="flex items-center mb-4">
-              <div className="bg-blue-100 p-3 rounded-lg">
-                <RotateCcw className="h-6 w-6 text-blue-600" />
-              </div>
-              <div className="ml-3">
-                <h3 className="text-lg font-medium text-gray-900">Sorteo Manual</h3>
-                <p className="text-sm text-gray-500">Ejecuta el sorteo inmediatamente</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Seleccionar Ruleta
-                </label>
-                <select
-                  value={selectedRouletteId}
-                  onChange={(e) => setSelectedRouletteId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">Seleccionar ruleta...</option>
-                  {activeRoulettes.map(roulette => (
-                    <option key={roulette.id} value={roulette.id}>
-                      {roulette.name} ({roulette.participants_count} participantes)
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                onClick={handleExecuteDraw}
-                disabled={!selectedRouletteId || executing}
-                className={`
-                  w-full px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white 
-                  ${(!selectedRouletteId || executing) 
-                    ? 'bg-gray-400 cursor-not-allowed' 
-                    : 'bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-                  }
-                `}
-              >
-                {executing ? (
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Ejecutando Sorteo...
-                  </div>
-                ) : (
-                  'Ejecutar Sorteo'
-                )}
-              </button>
-            </div>
-          </div>
-
-          {/* (Placeholder) Historial o utilidades extras */}
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Historial Reciente</h3>
-            <p className="text-sm text-gray-500">Aquí puedes mostrar últimos sorteos, etc.</p>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ===============================
-// Participantes (placeholder) - Mejorado
+// Participantes (placeholder)
 // ===============================
 const ParticipantsTab = () => {
   return (
@@ -564,27 +433,25 @@ const ParticipantsTab = () => {
 };
 
 // ===============================
-// (Mantenemos tu NotificationsTab original SIN usarlo,
-// por si quieres compararlo/luego eliminarlo.)
+// NotificationsTab (referencia)
 // ===============================
 const NotificationsTab = ({ onUnreadChange }) => {
   return (
     <div className="text-sm text-gray-500">
-      {/* Mantener vacío o dejar un mensaje de referencia */}
       <p>Este módulo fue reemplazado por <code>NotificationCenter</code>.</p>
     </div>
   );
 };
 
 // ===============================
-// Reportes (placeholder) - Mejorado
+// Reportes (placeholder)
 // ===============================
 const ReportsTab = () => {
   return (
     <div className="p-4 lg:p-6">
       <h2 className="text-xl font-semibold text-gray-900 mb-6">Reportes y Estadísticas</h2>
       <div className="text-center py-12">
-        <Award className="mx-auto h-12 w-12 text-gray-400" />
+        <CheckCircle className="mx-auto h-12 w-12 text-gray-400" />
         <h3 className="mt-2 text-sm font-medium text-gray-900">Reportes</h3>
         <p className="mt-1 text-sm text-gray-500">Panel de reportes y estadísticas próximamente</p>
       </div>

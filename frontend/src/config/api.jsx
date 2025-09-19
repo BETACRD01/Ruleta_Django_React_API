@@ -3,22 +3,67 @@ export const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000/a
 export const WS_URL  = process.env.REACT_APP_WS_URL  || "ws://localhost:8000/ws";
 
 /* ================================
-   Token helpers (compatibles)
+   SESIONES POR PESTAÑA (sessionStorage)
+   - Evita mezclar admin/user en la misma pestaña
+   - Migración automática desde localStorage (legacy)
 ================================ */
+const STORAGE = typeof window !== "undefined" ? window.sessionStorage : null;
+const LEGACY_LOCAL = typeof window !== "undefined" ? window.localStorage : null;
+
+// Mantengo compatibilidad con tus claves anteriores
+const PRIMARY_KEY = "authToken";
 const LEGACY_KEYS = ["token", "auth_token", "authToken"];
 
+// Copia tokens de localStorage -> sessionStorage y elimina los legacy
+const migrateLocalToSession = () => {
+  if (!STORAGE || !LEGACY_LOCAL) return;
+  try {
+    let migrated = false;
+    // Si ya hay token en sessionStorage, no hace falta migrar
+    for (const k of LEGACY_KEYS) {
+      if (STORAGE.getItem(k)) return;
+    }
+    // Buscar en localStorage y migrar
+    for (const k of LEGACY_KEYS) {
+      const v = LEGACY_LOCAL.getItem(k);
+      if (v) {
+        STORAGE.setItem(PRIMARY_KEY, v);
+        // Limpia todas las variantes legacy en localStorage
+        for (const kk of LEGACY_KEYS) LEGACY_LOCAL.removeItem(kk);
+        migrated = true;
+        break;
+      }
+    }
+    if (migrated) {
+      // Asegura que todas las claves espejo en sessionStorage tengan el mismo valor
+      const t = STORAGE.getItem(PRIMARY_KEY);
+      for (const k of LEGACY_KEYS) STORAGE.setItem(k, t);
+    }
+  } catch (e) {
+    console.warn("Token migration skipped:", e);
+  }
+};
+migrateLocalToSession();
+
+// Lectura/escritura SOLO en sessionStorage (por pestaña)
 const readAnyToken = () => {
+  if (!STORAGE) return null;
   for (const k of LEGACY_KEYS) {
-    const v = localStorage.getItem(k);
+    const v = STORAGE.getItem(k);
     if (v) return v;
   }
   return null;
 };
 
 const writeAllTokens = (token) => {
+  if (!STORAGE) return;
   for (const k of LEGACY_KEYS) {
-    if (token) localStorage.setItem(k, token);
-    else localStorage.removeItem(k);
+    if (token) STORAGE.setItem(k, token);
+    else STORAGE.removeItem(k);
+  }
+  // Limpieza extra de localStorage por si algo quedó
+  if (LEGACY_LOCAL) {
+    for (const k of LEGACY_KEYS) LEGACY_LOCAL.removeItem(k);
   }
 };
 
@@ -261,6 +306,7 @@ export class RoulettesAPI extends BaseAPI {
     if (params.status)    q.append("status", params.status);
     if (params.page)      q.append("page", params.page);
     if (params.page_size) q.append("page_size", params.page_size);
+    if (params.ordering)  q.append("ordering", params.ordering);
     const ep = `${ENDPOINTS.ROULETTES.LIST}${q.toString() ? `?${q}` : ""}`;
     return this.request(ep);
   }
@@ -350,6 +396,8 @@ export class ParticipantsAPI extends BaseAPI {
     const q = new URLSearchParams();
     if (params.page)      q.append("page", params.page);
     if (params.page_size) q.append("page_size", params.page_size);
+    if (params.include_results) q.append("include_results", params.include_results);
+    if (params.include_stats)   q.append("include_stats", params.include_stats);
     const ep = `${ENDPOINTS.PARTICIPANTS.MY_PARTICIPATIONS}${q.toString() ? `?${q}` : ""}`;
     return this.request(ep);
   }
@@ -502,7 +550,7 @@ export const formatPaginatedResponse = (resp) => ({
   results: resp?.results ?? [],
 });
 
-// Validadores corregidos y expandidos
+// Validadores
 export const validators = {
   required: (v) => v !== undefined && v !== null && String(v).trim() !== "",
   email: (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
@@ -511,32 +559,32 @@ export const validators = {
   isNumber: (v) => !isNaN(Number(v)) && isFinite(Number(v)),
   isPositive: (v) => Number(v) > 0,
   isInteger: (v) => Number.isInteger(Number(v)),
-  
-  // Validadores de archivos que necesitas
+
+  // Archivos
   fileExtension: (allowedExts = []) => (file) => {
     if (!file || !file.name) return false;
     if (!Array.isArray(allowedExts) || allowedExts.length === 0) return true;
     const ext = file.name.split('.').pop()?.toLowerCase();
     return allowedExts.map(e => e.toLowerCase().replace('.', '')).includes(ext);
   },
-  
+
   maxFileSize: (maxSizeMB) => (file) => {
     if (!file || !file.size) return true;
     return file.size <= maxSizeMB * 1024 * 1024;
   },
-  
+
   isImageFile: (file) => {
     if (!file || !file.type) return false;
     return file.type.startsWith('image/');
   },
-  
+
   minFileSize: (minSizeMB) => (file) => {
     if (!file || !file.size) return false;
     return file.size >= minSizeMB * 1024 * 1024;
   }
 };
 
-// Formateadores corregidos y expandidos
+// Formateadores
 export const formatters = {
   date: (iso, options = {}) => {
     if (!iso) return "";
@@ -554,8 +602,7 @@ export const formatters = {
       return iso;
     }
   },
-  
-  // Formateador de tamaño de archivo que necesitas
+
   fileSize: (bytes) => {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -563,18 +610,18 @@ export const formatters = {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   },
-  
+
   currency: (amount, currency = 'USD') => {
     return new Intl.NumberFormat('es-ES', {
       style: 'currency',
       currency: currency
     }).format(amount);
   },
-  
+
   percentage: (value, decimals = 1) => {
     return `${Number(value).toFixed(decimals)}%`;
   },
-  
+
   number: (value, decimals = 0) => {
     return Number(value).toLocaleString('es-ES', {
       minimumFractionDigits: decimals,
@@ -587,7 +634,7 @@ export const websocketUtils = { WS_URL };
 export const uploadWithProgress = null;
 export const generateId = (p = "id") => `${p}_${Math.random().toString(36).slice(2, 9)}`;
 
-// deepMerge corregido (arreglado el typo)
+// deepMerge
 export const deepMerge = (target = {}, source = {}) => {
   const result = { ...target };
   for (const key in source) {
@@ -613,50 +660,50 @@ export const deviceUtils = {
   }
 };
 
-// Utilidades adicionales para archivos y formularios
+// Archivos
 export const fileUtils = {
   createPreviewUrl: (file) => {
     if (!file) return null;
     return URL.createObjectURL(file);
   },
-  
+
   revokePreviewUrl: (url) => {
     if (url && url.startsWith('blob:')) {
       URL.revokeObjectURL(url);
     }
   },
-  
+
   getFileExtension: (filename) => {
     if (!filename) return '';
     return filename.split('.').pop()?.toLowerCase() || '';
   },
-  
+
   isValidImageType: (file) => {
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
     return file && validTypes.includes(file.type);
   },
-  
+
   compressImage: async (file, maxWidth = 800, quality = 0.8) => {
     return new Promise((resolve) => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new Image();
-      
+
       img.onload = () => {
         const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
         canvas.width = img.width * ratio;
         canvas.height = img.height * ratio;
-        
+
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(resolve, file.type, quality);
       };
-      
+
       img.src = URL.createObjectURL(file);
     });
   }
 };
 
-// Utilidades para formularios
+// Formularios
 export const formUtils = {
   serializeFormData: (formData) => {
     const obj = {};
@@ -670,14 +717,14 @@ export const formUtils = {
     }
     return obj;
   },
-  
+
   validateForm: (data, rules) => {
     const errors = {};
-    
+
     Object.entries(rules).forEach(([field, fieldRules]) => {
       const value = data[field];
       const fieldErrors = [];
-      
+
       fieldRules.forEach(rule => {
         if (typeof rule === 'function') {
           if (!rule(value)) {
@@ -687,18 +734,18 @@ export const formUtils = {
           fieldErrors.push(rule.message || `El campo ${field} no es válido`);
         }
       });
-      
+
       if (fieldErrors.length > 0) {
         errors[field] = fieldErrors;
       }
     });
-    
+
     return {
       isValid: Object.keys(errors).length === 0,
       errors
     };
   },
-  
+
   cleanFormData: (data) => {
     const cleaned = {};
     Object.entries(data).forEach(([key, value]) => {
@@ -713,10 +760,10 @@ export const formUtils = {
 /* ================================
    Instancias listas
 ================================ */
-export const authAPI            = new AuthAPI();
-export const roulettesAPI       = new RoulettesAPI();
-export const participantsAPI    = new ParticipantsAPI();
-export const notificationAPI    = new NotificationAPI();
+export const authAPI             = new AuthAPI();
+export const roulettesAPI        = new RoulettesAPI();
+export const participantsAPI     = new ParticipantsAPI();
+export const notificationAPI     = new NotificationAPI();
 export const notificationManager = new NotificationManager(notificationAPI);
 
 /* ================================
@@ -763,13 +810,13 @@ const APIClient = {
     if (config.enableNotificationPolling !== false && isAuthenticated()) {
       notificationManager.startPolling(config.notificationPollInterval || 30000);
     }
-    return { 
-      success: true, 
-      message: "API Client initialized successfully", 
-      config: { 
-        apiUrl: config.apiUrl || API_URL, 
-        hasToken: !!readAnyToken() 
-      } 
+    return {
+      success: true,
+      message: "API Client initialized successfully",
+      config: {
+        apiUrl: config.apiUrl || API_URL,
+        hasToken: !!readAnyToken()
+      }
     };
   }
 };

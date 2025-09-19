@@ -1,0 +1,1074 @@
+/* RouletteManager.css - Estilos optimizados */
+
+/* ===========================
+   Variables CSS globales
+   =========================== */
+:root {
+  --roulette-primary: #3b82f6;
+  --roulette-primary-dark: #2563eb;
+  --roulette-secondary: #6366f1;
+  --roulette-secondary-dark: #4f46e5;
+  --roulette-success: #10b981;
+  --roulette-success-dark: #059669;
+  --roulette-warning: #f59e0b;
+  --roulette-warning-dark: #d97706;
+  --roulette-error: #ef4444;
+  --roulette-error-dark: #dc2626;
+  --roulette-gray-50: #f9fafb;
+  --roulette-gray-100: #f3f4f6;
+  --roulette-gray-200: #e5e7eb;
+  --roulette-gray-300: #d1d5db;
+  --roulette-gray-500: #6b7280;
+  --roulette-gray-600: #4b5563;
+  --roulette-gray-700: #374151;
+  --roulette-gray-800: #1f2937;
+  --roulette-gray-900: #111827;
+  
+  /* Sombras */
+  --roulette-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --roulette-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --roulette-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --roulette-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --roulette-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  
+  /* Transiciones */
+  --roulette-transition-fast: 150ms ease-in-out;
+  --roulette-transition: 200ms ease-in-out;
+  --roulette-transition-slow: 300ms ease-in-out;
+}
+
+/* ===========================
+   Contenedor principal
+   =========================== */
+.roulette-manager {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f8fafc 0%, #e0f2fe 50%, #e8f4f8 100%);
+}
+
+.roulette-manager__container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+@media (min-width: 640px) {
+  .roulette-manager__container {
+    padding: 0 1.5rem;
+  }
+}
+
+/* ===========================
+   Header y toolbar
+   =========================== */
+.roulette-manager__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  padding-top: 1rem;
+}
+
+.roulette-manager__title-section {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.roulette-manager__icon {
+  padding: 0.5rem;
+  background: linear-gradient(135deg, var(--roulette-primary) 0%, var(--roulette-secondary) 100%);
+  border-radius: 0.5rem;
+  box-shadow: var(--roulette-shadow);
+}
+
+.roulette-manager__title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--roulette-gray-900);
+  margin: 0;
+}
+
+.roulette-manager__subtitle {
+  font-size: 0.875rem;
+  color: var(--roulette-gray-600);
+  margin: 0;
+}
+
+.roulette-manager__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ===========================
+   Botones
+   =========================== */
+.roulette-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 0.375rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--roulette-transition);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.roulette-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Variantes de botones */
+.roulette-btn--primary {
+  color: white;
+  background: linear-gradient(135deg, var(--roulette-primary) 0%, var(--roulette-secondary) 100%);
+  box-shadow: var(--roulette-shadow);
+}
+
+.roulette-btn--primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--roulette-primary-dark) 0%, var(--roulette-secondary-dark) 100%);
+  box-shadow: var(--roulette-shadow-md);
+  transform: translateY(-1px);
+}
+
+.roulette-btn--secondary {
+  color: var(--roulette-gray-700);
+  background: white;
+  border-color: var(--roulette-gray-300);
+}
+
+.roulette-btn--secondary:hover:not(:disabled) {
+  background: var(--roulette-gray-50);
+  border-color: var(--roulette-gray-400);
+}
+
+.roulette-btn--success {
+  color: white;
+  background: linear-gradient(135deg, var(--roulette-success) 0%, #059669 100%);
+}
+
+.roulette-btn--success:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--roulette-success-dark) 0%, #047857 100%);
+  transform: translateY(-1px);
+}
+
+.roulette-btn--warning {
+  color: white;
+  background: linear-gradient(135deg, var(--roulette-warning) 0%, #d97706 100%);
+}
+
+.roulette-btn--warning:hover:not(:disabled) {
+  background: linear-gradient(135deg, var(--roulette-warning-dark) 0%, #b45309 100%);
+  transform: translateY(-1px);
+}
+
+.roulette-btn--danger {
+  color: var(--roulette-error);
+  background: white;
+  border-color: #fecaca;
+}
+
+.roulette-btn--danger:hover:not(:disabled) {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+.roulette-btn--small {
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+.roulette-btn--icon-only {
+  padding: 0.5rem;
+}
+
+.roulette-btn__icon {
+  width: 1rem;
+  height: 1rem;
+  margin-right: 0.375rem;
+}
+
+.roulette-btn__icon--only {
+  margin: 0;
+}
+
+.roulette-btn__icon--spin {
+  animation: roulette-spin 1s linear infinite;
+}
+
+/* ===========================
+   Formularios y filtros
+   =========================== */
+.roulette-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .roulette-filters {
+    flex-direction: row;
+    align-items: stretch;
+  }
+}
+
+.roulette-search {
+  position: relative;
+  flex: 1;
+}
+
+.roulette-search__icon {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1rem;
+  height: 1rem;
+  color: var(--roulette-gray-400);
+}
+
+.roulette-search__input {
+  width: 100%;
+  padding: 0.5rem 0.75rem 0.5rem 2.25rem;
+  background: white;
+  border: 1px solid var(--roulette-gray-300);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  transition: all var(--roulette-transition);
+}
+
+.roulette-search__input:focus {
+  outline: none;
+  border-color: var(--roulette-primary);
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1);
+}
+
+.roulette-search__clear {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0.25rem;
+  color: var(--roulette-gray-400);
+  cursor: pointer;
+  transition: color var(--roulette-transition);
+}
+
+.roulette-search__clear:hover {
+  color: var(--roulette-gray-600);
+}
+
+.roulette-select {
+  padding: 0.5rem 0.75rem;
+  background: white;
+  border: 1px solid var(--roulette-gray-300);
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all var(--roulette-transition);
+}
+
+.roulette-select:focus {
+  outline: none;
+  border-color: var(--roulette-primary);
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.1);
+}
+
+/* ===========================
+   Grid de tarjetas
+   =========================== */
+.roulette-grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .roulette-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .roulette-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* ===========================
+   Tarjetas de ruleta
+   =========================== */
+.roulette-card {
+  background: white;
+  border: 1px solid var(--roulette-gray-200);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: var(--roulette-shadow-sm);
+  transition: all var(--roulette-transition);
+}
+
+.roulette-card:hover {
+  box-shadow: var(--roulette-shadow-md);
+  transform: translateY(-2px);
+}
+
+.roulette-card__image {
+  height: 10rem;
+  background: var(--roulette-gray-100);
+  position: relative;
+  overflow: hidden;
+}
+
+.roulette-card__image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--roulette-transition-slow);
+}
+
+.roulette-card:hover .roulette-card__image img {
+  transform: scale(1.05);
+}
+
+.roulette-card__image-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--roulette-gray-400);
+}
+
+.roulette-card__status {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid;
+  backdrop-filter: blur(4px);
+}
+
+.roulette-card__badge {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid;
+  backdrop-filter: blur(4px);
+}
+
+.roulette-card__content {
+  padding: 1.25rem;
+}
+
+.roulette-card__title {
+  font-weight: 600;
+  color: var(--roulette-gray-900);
+  margin: 0 0 0.5rem 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.roulette-card__description {
+  font-size: 0.875rem;
+  color: var(--roulette-gray-700);
+  line-height: 1.5;
+  margin-bottom: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.roulette-card__description--clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.roulette-card__see-more {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--roulette-primary);
+  cursor: pointer;
+  transition: color var(--roulette-transition);
+}
+
+.roulette-card__see-more:hover {
+  color: var(--roulette-primary-dark);
+}
+
+.roulette-card__meta {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.75rem;
+  color: var(--roulette-gray-500);
+  margin-bottom: 1rem;
+}
+
+.roulette-card__meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.roulette-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.roulette-card__actions-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.roulette-card__actions-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* ===========================
+   Cronómetros
+   =========================== */
+.roulette-countdown {
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid;
+  margin-bottom: 1rem;
+}
+
+.roulette-countdown__header {
+  display: flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.roulette-countdown__icon {
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.25rem;
+}
+
+.roulette-countdown__time {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.roulette-countdown__unit {
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.roulette-countdown__expired {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--roulette-error);
+}
+
+/* Variantes de cronómetro */
+.roulette-countdown--end {
+  background: #dbeafe;
+  border-color: #bfdbfe;
+  color: #1e40af;
+}
+
+.roulette-countdown--end .roulette-countdown__unit {
+  background: #bfdbfe;
+  color: #1e40af;
+}
+
+.roulette-countdown--draw {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+  color: #7c3aed;
+}
+
+.roulette-countdown--draw .roulette-countdown__unit {
+  background: #d8b4fe;
+  color: #7c3aed;
+}
+
+.roulette-countdown--expired {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: var(--roulette-error-dark);
+}
+
+/* ===========================
+   Estados de carga y vacío
+   =========================== */
+.roulette-loading {
+  padding: 3rem 0;
+  text-align: center;
+  color: var(--roulette-gray-500);
+}
+
+.roulette-loading__spinner {
+  margin: 0 auto 0.75rem;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid transparent;
+  border-bottom: 2px solid var(--roulette-primary);
+  border-radius: 50%;
+  animation: roulette-spin 1s linear infinite;
+}
+
+.roulette-empty {
+  padding: 4rem 0;
+  text-align: center;
+}
+
+.roulette-empty__container {
+  max-width: 24rem;
+  margin: 0 auto;
+}
+
+.roulette-empty__icon {
+  width: 3rem;
+  height: 3rem;
+  color: var(--roulette-gray-300);
+  margin: 0 auto 1rem;
+}
+
+.roulette-empty__title {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--roulette-gray-900);
+  margin: 0 0 0.5rem 0;
+}
+
+.roulette-empty__description {
+  font-size: 0.875rem;
+  color: var(--roulette-gray-500);
+  margin: 0 0 1.5rem 0;
+}
+
+/* ===========================
+   Alertas de error
+   =========================== */
+.roulette-error {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.roulette-error__content {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.roulette-error__icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--roulette-error);
+  margin-top: 0.125rem;
+  flex-shrink: 0;
+}
+
+.roulette-error__title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #991b1b;
+  margin: 0 0 0.25rem 0;
+}
+
+.roulette-error__message {
+  font-size: 0.875rem;
+  color: #b91c1c;
+  margin: 0;
+}
+
+.roulette-error__close {
+  color: #f87171;
+  cursor: pointer;
+  transition: color var(--roulette-transition);
+}
+
+.roulette-error__close:hover {
+  color: var(--roulette-error);
+}
+
+/* ===========================
+   Paginación
+   =========================== */
+.roulette-pagination {
+  margin-top: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.roulette-pagination__info {
+  font-size: 0.875rem;
+  color: var(--roulette-gray-600);
+}
+
+.roulette-pagination__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.roulette-pagination__page {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* ===========================
+   Modal de sorteo
+   =========================== */
+.roulette-spin-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.roulette-spin-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+}
+
+.roulette-spin-modal__content {
+  position: relative;
+  width: 100%;
+  max-width: 64rem;
+  background: white;
+  border-radius: 0.75rem;
+  box-shadow: var(--roulette-shadow-xl);
+  overflow: hidden;
+}
+
+.roulette-spin-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--roulette-gray-200);
+}
+
+.roulette-spin-modal__header-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.roulette-spin-modal__header-icon {
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(135deg, var(--roulette-secondary) 0%, #7c3aed 100%);
+  color: white;
+}
+
+.roulette-spin-modal__title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.roulette-spin-modal__subtitle {
+  font-size: 0.75rem;
+  color: var(--roulette-gray-500);
+  margin: 0;
+}
+
+.roulette-spin-modal__body {
+  padding: 1.25rem;
+  display: grid;
+  gap: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .roulette-spin-modal__body {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.roulette-spin-modal__wheel-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.roulette-spin-modal__wheel-container {
+  position: relative;
+}
+
+.roulette-spin-modal__wheel-pointer {
+  position: absolute;
+  left: 50%;
+  top: -0.75rem;
+  transform: translateX(-50%);
+  z-index: 10;
+  width: 0;
+  height: 0;
+  border-left: 2rem solid transparent;
+  border-right: 2rem solid transparent;
+  border-bottom: 1.125rem solid var(--roulette-error);
+  filter: drop-shadow(0 4px 6px rgb(0 0 0 / 0.1));
+}
+
+.roulette-spin-modal__controls {
+  margin-top: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.roulette-spin-modal__error {
+  font-size: 0.75rem;
+  color: var(--roulette-error);
+  max-width: 18rem;
+}
+
+.roulette-spin-modal__error-title {
+  font-weight: 500;
+}
+
+.roulette-spin-modal__loading {
+  font-size: 0.75rem;
+  color: var(--roulette-gray-500);
+  margin-top: 0.5rem;
+}
+
+.roulette-spin-modal__warning {
+  font-size: 0.75rem;
+  color: #d97706;
+  margin-top: 0.5rem;
+}
+
+.roulette-spin-modal__result {
+  display: flex;
+  flex-direction: column;
+}
+
+.roulette-spin-modal__result-panel {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--roulette-gray-200);
+  background: var(--roulette-gray-50);
+}
+
+.roulette-spin-modal__result-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.roulette-spin-modal__result-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.roulette-spin-modal__result-content {
+  font-size: 0.875rem;
+  color: var(--roulette-gray-600);
+}
+
+.roulette-spin-modal__winner {
+  color: #059669;
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.roulette-spin-modal__prize {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.roulette-spin-modal__prize-image {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 0.25rem;
+  object-fit: cover;
+  border: 1px solid var(--roulette-gray-200);
+}
+
+.roulette-spin-modal__prize-info {
+  flex: 1;
+}
+
+.roulette-spin-modal__prize-name {
+  font-size: 0.875rem;
+  color: var(--roulette-gray-800);
+}
+
+.roulette-spin-modal__prize-name span {
+  font-weight: 500;
+}
+
+.roulette-spin-modal__prize-message {
+  font-size: 0.75rem;
+  color: var(--roulette-gray-600);
+  margin-top: 0.125rem;
+}
+
+.roulette-spin-modal__prizes-list {
+  margin-top: 1rem;
+}
+
+.roulette-spin-modal__prizes-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--roulette-gray-700);
+  margin-bottom: 0.5rem;
+}
+
+.roulette-spin-modal__prizes-container {
+  max-height: 10rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.roulette-spin-modal__prize-item {
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  border: 1px solid var(--roulette-gray-200);
+  border-radius: 0.25rem;
+  padding: 0.5rem;
+}
+
+.roulette-spin-modal__prize-item-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roulette-spin-modal__prize-item-probability {
+  color: var(--roulette-gray-500);
+  margin-left: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* ===========================
+   Confetti animation
+   =========================== */
+.roulette-confetti {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.roulette-confetti__piece {
+  position: absolute;
+  width: 0.5rem;
+  height: 0.5rem;
+  top: -2.5rem;
+}
+
+/* ===========================
+   Animaciones
+   =========================== */
+@keyframes roulette-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes roulette-confetti-fall {
+  to {
+    transform: translateY(110vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* ===========================
+   Responsividad y utilidades
+   =========================== */
+.roulette-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Estados especiales de participantes */
+.roulette-participants--epic {
+  background: #faf5ff;
+  color: #7c3aed;
+  border-color: #d8b4fe;
+}
+
+.roulette-participants--intense {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #bfdbfe;
+}
+
+.roulette-participants--quick {
+  background: var(--roulette-gray-50);
+  color: var(--roulette-gray-700);
+  border-color: var(--roulette-gray-200);
+}
+
+/* Estados de ruleta */
+.roulette-status--active {
+  background: #d1fae5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+
+.roulette-status--active .roulette-card__status::before {
+  background: #10b981;
+}
+
+.roulette-status--scheduled {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #bfdbfe;
+}
+
+.roulette-status--scheduled .roulette-card__status::before {
+  background: var(--roulette-primary);
+}
+
+.roulette-status--completed {
+  background: #faf5ff;
+  color: #7c3aed;
+  border-color: #d8b4fe;
+}
+
+.roulette-status--completed .roulette-card__status::before {
+  background: #a855f7;
+}
+
+.roulette-status--cancelled {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.roulette-status--cancelled .roulette-card__status::before {
+  background: var(--roulette-error);
+}
+
+.roulette-status--draft {
+  background: var(--roulette-gray-50);
+  color: var(--roulette-gray-700);
+  border-color: var(--roulette-gray-200);
+}
+
+.roulette-status--draft .roulette-card__status::before {
+  background: var(--roulette-gray-400);
+}
+
+.roulette-card__status::before {
+  content: '';
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  margin-right: 0.375rem;
+}
+
+/* ===========================
+   Scrollbars personalizadas
+   =========================== */
+.roulette-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--roulette-gray-300) transparent;
+}
+
+.roulette-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.roulette-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.roulette-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--roulette-gray-300);
+  border-radius: 3px;
+}
+
+.roulette-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: var(--roulette-gray-400);
+}
+
+/* ===========================
+   Utilidades adicionales
+   =========================== */
+.roulette-text-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.roulette-text-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.roulette-gradient-text {
+  background: linear-gradient(135deg, var(--roulette-primary) 0%, var(--roulette-secondary) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.roulette-glass-effect {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}

@@ -31,11 +31,12 @@ const Layout = ({ children }) => {
   // Cargar notificaciones y suscripción al manager (API real)
   useEffect(() => {
     if (!user) return;
+
     loadNotifications();
 
-    // Tu NotificationManager expone addEventListener(callback)
-    // y luego notifica con (event, data). Ajustamos aquí:
-    const unsubscribe = notificationManager.addEventListener((event, data) => {
+    // Tu NotificationManager expone addListener(callback)
+    // y luego notifica con (event, data).
+    const unsubscribe = notificationManager.addListener((event, data) => {
       if (event === 'notifications_updated') {
         if (data.notifications) setNotifications(data.notifications);
         if (data.stats) setUnreadCount(data.stats.unread_count || 0);
@@ -46,9 +47,13 @@ const Layout = ({ children }) => {
       }
     });
 
-    notificationManager.startPolling(30000); // 30s
+    // ❌ No arrancamos polling aquí para evitar doble-polling.
+    // El polling se inicia en App (AppBootstrap).
 
-    return () => { unsubscribe(); };
+    return () => {
+      // Limpia el listener al desmontar o al cambiar de usuario
+      unsubscribe && unsubscribe();
+    };
   }, [user]);
 
   const loadNotifications = async () => {
@@ -74,13 +79,12 @@ const Layout = ({ children }) => {
 
   const markAsRead = async (notificationIds) => {
     try {
-      await notificationAPI.markAsRead(Array.isArray(notificationIds) ? notificationIds : [notificationIds]);
-      setNotifications(prev => prev.map(n =>
-        (Array.isArray(notificationIds) ? notificationIds : [notificationIds]).includes(n.id)
-          ? { ...n, is_read: true }
-          : n
-      ));
-      setUnreadCount(prev => Math.max(0, prev - (Array.isArray(notificationIds) ? notificationIds.length : 1)));
+      const ids = Array.isArray(notificationIds) ? notificationIds : [notificationIds];
+      await notificationAPI.markAsRead(ids);
+      setNotifications(prev =>
+        prev.map(n => (ids.includes(n.id) ? { ...n, is_read: true } : n))
+      );
+      setUnreadCount(prev => Math.max(0, prev - ids.length));
       setTimeout(loadNotifications, 500);
     } catch (error) {
       console.error('Error marking notification as read:', error);
@@ -413,7 +417,7 @@ const Layout = ({ children }) => {
                 </button>
                 <button
                   onClick={handleLogout}
-                  className="block px-3 py-2 text-base font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md w-full text-left"
+                  className="block px-3 py-2 text-base font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md w-full text.left"
                 >
                   Cerrar Sesión
                 </button>

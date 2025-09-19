@@ -7,7 +7,7 @@ import { useNotification } from './NotificationContext';
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(null);
   const [error, setError] = useState(null);
@@ -20,7 +20,9 @@ export const AuthProvider = ({ children }) => {
         if (isAuthenticated()) {
           const userInfo = await authAPI.getUserInfo();
           setUser(userInfo);
-          setToken(localStorage.getItem('token') || localStorage.getItem('auth_token') || localStorage.getItem('authToken'));
+          // ✅ Fuente única del token (sessionStorage via helpers API)
+          const { getGlobalAuthToken } = await import('../config/api');
+          setToken(getGlobalAuthToken());
         }
       } catch (err) {
         console.error('Error al inicializar autenticación:', err);
@@ -167,16 +169,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Roles/Permisos (booleans + helpers)
+  // Roles/Permisos
   const isAdmin = () =>
     user?.role === 'admin' || user?.is_admin === true || user?.is_staff === true || user?.is_superuser === true;
 
   const isUser = () => user?.role === 'user' || (!isAdmin() && !!user);
-
   const hasPermission = (permission) => (isAdmin() ? true : user?.permissions?.includes(permission) || false);
-
   const hasRole = (role) => user?.role === role;
-
   const clearError = () => setError(null);
 
   const refreshUser = async () => {
@@ -225,7 +224,7 @@ export const AuthProvider = ({ children }) => {
     changePassword,
     requestPasswordReset,
 
-    // Verificaciones (exportamos booleans y helpers)
+    // Verificaciones
     isAuthenticated: !!user,
     isAdmin: isAdmin(),
     isUser: isUser(),
@@ -251,7 +250,7 @@ export const useAuth = () => {
   return context;
 };
 
-// Rutas protegidas
+// Rutas protegidas auxiliares (si las usas en otros sitios)
 export const ProtectedRoute = ({ children, requireAdmin = false, requireRole = null, requirePermission = null }) => {
   const { user, loading, isAdmin, hasRole, hasPermission } = useAuth();
 

@@ -1,0 +1,24 @@
+{% extends "admin/index.html" %}
+
+{% block title %}Panel de Admin - Ruletas{% endblock %}
+
+{% block branding %}
+<h1 id="site-name">
+    <a href="{% url 'admin:index' %}">Administrador de Ruletas</a>
+</h1>
+{% endblock %}
+
+{% block content %}
+<div style="background: #f8f9fa; padding: 20px; margin: 20px 0; border-radius: 8px;">
+    <h2>🎡 Bienvenido al Panel de Administración</h2>
+    <p>Desde aquí puedes gestionar:</p>
+    <ul>
+        <li>👥 Usuarios y autenticación</li>
+        <li>🎯 Ruletas y configuraciones</li>
+        <li>📝 Participantes</li>
+        <li>📢 Notificaciones</li>
+    </ul>
+</div>
+
+{{ block.super }}
+{% endblock %}

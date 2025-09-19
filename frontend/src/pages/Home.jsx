@@ -1,15 +1,15 @@
+// src/pages/Home.jsx
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Sparkles, Shield, Bell, Award, UserPlus, Key
 } from "lucide-react";
 import { useAuthNotifications } from "../contexts/NotificationContext";
-
-// ✅ Usa tu API real (sin duplicar BaseAPI)
-import { AuthAPI } from "../config/api"; // ← ya exporta AuthAPI, maneja tokens y errores
-
-const authAPI = new AuthAPI();
+import { useAuth } from "../contexts/AuthContext";
 
 const LoginForm = ({ onSubmit }) => {
+  const navigate = useNavigate();
+
   const [currentView, setCurrentView] = React.useState("login");
   const [formData, setFormData] = React.useState({
     email: "",
@@ -25,13 +25,14 @@ const LoginForm = ({ onSubmit }) => {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
 
-  // Notificaciones UI (toast/snackbar) desde tu contexto
   const {
     handleLoginSuccess,
     handleRegisterSuccess,
     handlePasswordResetSuccess,
     handleAuthError,
   } = useAuthNotifications();
+
+  const { login, register, requestPasswordReset } = useAuth();
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -45,7 +46,6 @@ const LoginForm = ({ onSubmit }) => {
       setError("Por favor completa todos los campos");
       return;
     }
-
     try {
       setLoading(true);
       setError("");
@@ -53,16 +53,14 @@ const LoginForm = ({ onSubmit }) => {
       if (onSubmit) {
         await onSubmit(formData);
       } else {
-        const result = await authAPI.login({
+        const result = await login({
           email: formData.email,
           password: formData.password,
         });
-        if (result?.success && result?.token) {
-          localStorage.setItem("authToken", result.token);
-          if (result.user) localStorage.setItem("user", JSON.stringify(result.user));
+        if (result?.success) {
           handleLoginSuccess(result);
-          // Evita parpadeos: da tiempo al toast y luego recarga
-          setTimeout(() => window.location.reload(), 1200);
+          // Redirige de forma suave sin reload
+          navigate("/dashboard", { replace: true });
         }
       }
     } catch (err) {
@@ -94,7 +92,7 @@ const LoginForm = ({ onSubmit }) => {
       setLoading(true);
       setError("");
 
-      const result = await authAPI.register({
+      const result = await register({
         username: formData.username,
         email: formData.email,
         password: formData.password,
@@ -114,7 +112,8 @@ const LoginForm = ({ onSubmit }) => {
           lastName: "",
           rememberMe: false,
         }));
-        setTimeout(() => setCurrentView("login"), 1200);
+        // Vuelve al login para iniciar sesión
+        setTimeout(() => setCurrentView("login"), 1000);
       }
     } catch (err) {
       const msg = err?.message || "Error al registrarse";
@@ -134,9 +133,9 @@ const LoginForm = ({ onSubmit }) => {
     try {
       setLoading(true);
       setError("");
-      await authAPI.requestPasswordReset(formData.email);
+      await requestPasswordReset(formData.email);
       handlePasswordResetSuccess(formData.email);
-      setTimeout(() => setCurrentView("login"), 1200);
+      setTimeout(() => setCurrentView("login"), 1000);
     } catch (err) {
       const msg = err?.message || "Error al solicitar recuperación de contraseña";
       setError(msg);
@@ -265,7 +264,7 @@ const LoginForm = ({ onSubmit }) => {
             className="w-full text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]"
             style={{ backgroundColor: loading || !formData.email || !formData.password ? "#9ca3af" : "#0b56a7" }}
           >
-            {loading ? "Iniciando sesión..." : "Entrar ✨"}
+            {loading ? "Iniciando sesión..." : "Iniciar Sesión ✨"}
           </button>
 
           <p className="text-center text-gray-600 text-sm">
@@ -346,7 +345,7 @@ const LoginForm = ({ onSubmit }) => {
                 value={formData.password}
                 onChange={handleInputChange}
                 placeholder="••••••••••"
-                className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
+                className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duración-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
                 disabled={loading}
                 required
               />
@@ -370,7 +369,7 @@ const LoginForm = ({ onSubmit }) => {
                 value={formData.confirmPassword}
                 onChange={handleInputChange}
                 placeholder="••••••••••"
-                className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
+                className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duración-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
                 disabled={loading}
                 required
               />
@@ -467,7 +466,7 @@ const LoginForm = ({ onSubmit }) => {
 export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Fondo decorativo seguro (no genera scroll horizontal) */}
+      {/* Fondo decorativo seguro */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div
           className="absolute top-[10vh] left-[8vw] w-[22vmin] h-[22vmin] rounded-full blur-2xl opacity-20"

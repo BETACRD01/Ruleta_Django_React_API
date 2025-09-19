@@ -1,4 +1,4 @@
-// AdminCommentsSystem.jsx
+// AdminCommentsSystem.jsx - Versión corregida con detección de enlaces mejorada
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   MessageCircle, Send, Edit3, Trash2, MoreHorizontal, 
@@ -36,7 +36,155 @@ const ConfirmDialog = ({ isOpen, onConfirm, onCancel, title, message, confirmTex
   );
 };
 
-// Editor de texto rico con detección automática
+// FUNCIÓN MEJORADA PARA DETECCIÓN DE ENLACES Y PATRONES
+const detectAndProcessText = (text) => {
+  if (!text || typeof text !== 'string') return "";
+  
+  // Escapar HTML primero para prevenir XSS
+  let processedText = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+  
+  // 1. URLs completas (http/https) - MEJORADO
+  const httpRegex = /\b(https?:\/\/[a-zA-Z0-9\-._~:\/?#[\]@!$&'()*+,;=%]+)/gi;
+  processedText = processedText.replace(httpRegex, (match) => {
+    // Limpiar caracteres finales problemáticos
+    let cleanUrl = match.replace(/[.,;!?)]+$/, '');
+    return `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline hover:text-blue-800 hover:no-underline font-medium bg-blue-50 px-1 rounded transition-colors">${match}</a>`;
+  });
+  
+  // 2. URLs que empiezan con www - MEJORADO
+  const wwwRegex = /\b(www\.[a-zA-Z0-9\-._~:\/?#[\]@!$&'()*+,;=%]+)/gi;
+  processedText = processedText.replace(wwwRegex, (match) => {
+    // Evitar URLs ya procesadas (que tengan <a> antes)
+    if (processedText.indexOf(`>${match}</a>`) !== -1) return match;
+    
+    let cleanUrl = match.replace(/[.,;!?)]+$/, '');
+    return `<a href="https://${cleanUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline hover:text-blue-800 hover:no-underline font-medium bg-blue-50 px-1 rounded transition-colors">${match}</a>`;
+  });
+  
+  // 3. Emails - MEJORADO
+  const emailRegex = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g;
+  processedText = processedText.replace(emailRegex, (email) => {
+    // Evitar emails ya procesadas (que tengan <a> antes)
+    if (processedText.indexOf(`>${email}</a>`) !== -1) return email;
+    
+    return `<a href="mailto:${email}" class="text-green-600 underline hover:text-green-800 hover:no-underline font-medium bg-green-50 px-1 rounded transition-colors">${email}</a>`;
+  });
+  
+  // 4. Menciones @usuario - MEJORADO
+  const mentionRegex = /\B@([a-zA-Z0-9_-]{1,30})\b/g;
+  processedText = processedText.replace(mentionRegex, (match, username) => {
+    return `<span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm font-semibold border border-purple-200 inline-flex items-center">
+              <span class="w-1.5 h-1.5 bg-purple-500 rounded-full mr-1"></span>
+              ${match}
+            </span>`;
+  });
+  
+  // 5. Hashtags #etiqueta - MEJORADO
+  const hashtagRegex = /\B#([a-zA-Z0-9_-]{1,30})\b/g;
+  processedText = processedText.replace(hashtagRegex, (match, tag) => {
+    return `<span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm font-semibold border border-green-200 inline-flex items-center">
+              <span class="w-1.5 h-1.5 bg-green-500 rounded-full mr-1"></span>
+              ${match}
+            </span>`;
+  });
+  
+  // 6. Estados - MEJORADO con más variaciones
+  const statusRegex = /\b(TODO|DONE|PENDING|IN[_\s]?PROGRESS|COMPLETED|CANCELLED|PENDIENTE|COMPLETADO|CANCELADO|REVISION|APROBADO|RECHAZADO|URGENTE|IMPORTANTE)\b/gi;
+  processedText = processedText.replace(statusRegex, (match) => {
+    const status = match.toUpperCase().replace(/\s+/g, '_');
+    let colorClass = 'bg-blue-100 text-blue-800 border-blue-200';
+    
+    if (['DONE', 'COMPLETED', 'COMPLETADO', 'APROBADO'].includes(status)) {
+      colorClass = 'bg-green-100 text-green-800 border-green-200';
+    } else if (['PENDING', 'PENDIENTE', 'TODO', 'REVISION'].includes(status)) {
+      colorClass = 'bg-yellow-100 text-yellow-800 border-yellow-200';
+    } else if (['CANCELLED', 'CANCELADO', 'RECHAZADO'].includes(status)) {
+      colorClass = 'bg-red-100 text-red-800 border-red-200';
+    } else if (['URGENTE', 'IMPORTANTE'].includes(status)) {
+      colorClass = 'bg-red-100 text-red-800 border-red-300 font-bold animate-pulse';
+    } else if (status.includes('PROGRESS')) {
+      colorClass = 'bg-orange-100 text-orange-800 border-orange-200';
+    }
+    
+    return `<span class="${colorClass} px-2 py-1 rounded border text-xs font-bold uppercase inline-flex items-center">
+              <span class="w-2 h-2 rounded-full mr-1.5 ${colorClass.replace('bg-', 'bg-').replace('100', '500').replace('text-', '')}"></span>
+              ${match}
+            </span>`;
+  });
+  
+  // 7. Prioridades - MEJORADO
+  const priorityRegex = /\b(ALTA|MEDIA|BAJA|HIGH|MEDIUM|LOW|URGENT|CRÍTICO|NORMAL)\b/gi;
+  processedText = processedText.replace(priorityRegex, (match) => {
+    const priority = match.toUpperCase();
+    let colorClass = 'bg-gray-100 text-gray-800';
+    let icon = '●';
+    
+    if (['ALTA', 'HIGH', 'URGENT', 'CRÍTICO'].includes(priority)) {
+      colorClass = 'bg-red-100 text-red-800 border-red-200';
+      icon = '🔥';
+    } else if (['MEDIA', 'MEDIUM', 'NORMAL'].includes(priority)) {
+      colorClass = 'bg-yellow-100 text-yellow-800 border-yellow-200';
+      icon = '⚡';
+    } else if (['BAJA', 'LOW'].includes(priority)) {
+      colorClass = 'bg-green-100 text-green-800 border-green-200';
+      icon = '📌';
+    }
+    
+    return `<span class="${colorClass} px-2 py-1 rounded border text-xs font-bold uppercase inline-flex items-center">
+              <span class="mr-1">${icon}</span>
+              ${match}
+            </span>`;
+  });
+  
+  // 8. Fechas ISO - MEJORADO
+  const dateRegex = /\b(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})?)?)\b/g;
+  processedText = processedText.replace(dateRegex, (dateStr) => {
+    try {
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) return dateStr;
+      
+      const formatted = date.toLocaleString('es-ES', {
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit',
+        hour: dateStr.includes('T') ? '2-digit' : undefined,
+        minute: dateStr.includes('T') ? '2-digit' : undefined
+      });
+      
+      const now = new Date();
+      const isPast = date < now;
+      const colorClass = isPast ? 'bg-gray-100 text-gray-700' : 'bg-purple-100 text-purple-700';
+      
+      return `<span class="${colorClass} px-2 py-1 rounded border border-purple-200 text-xs font-mono font-semibold inline-flex items-center" title="Fecha detectada: ${dateStr}">
+                <span class="mr-1">📅</span>
+                ${formatted}
+              </span>`;
+    } catch {
+      return dateStr;
+    }
+  });
+  
+  // 9. Números importantes (IDs, montos, etc.) - MEJORADO
+  const importantNumberRegex = /\b(ID|REF|MONTO|CANTIDAD|TOTAL|PRECIO|#)[:=\s]*(\$?\d{1,3}(?:[,.\s]\d{3})*(?:\.\d{2})?)\b/gi;
+  processedText = processedText.replace(importantNumberRegex, (match, prefix, number) => {
+    return `<span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded border border-indigo-200 text-xs font-mono font-bold inline-flex items-center">
+              <span class="mr-1">💰</span>
+              ${prefix}: ${number}
+            </span>`;
+  });
+  
+  // 10. Convertir saltos de línea a <br/>
+  processedText = processedText.replace(/\n/g, '<br/>');
+  
+  return processedText;
+};
+
+// Editor de texto rico con detección automática MEJORADO
 const RichTextEditor = ({
   value,
   onChange,
@@ -51,101 +199,6 @@ const RichTextEditor = ({
   const [validationError, setValidationError] = useState(false);
   const textareaRef = useRef(null);
 
-  // Funciones para detectar patrones
-  const escapeHtml = (text) => 
-    text.replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-
-  const detectPatterns = (text) => {
-    if (!text) return "";
-    
-    let processedText = escapeHtml(text);
-    
-    // URLs (http/https/www)
-    const urlRegex = /\b((https?:\/\/|www\.)[^\s<>"'{}|\\^`[\]]+)/gi;
-    processedText = processedText.replace(urlRegex, (match) => {
-      const href = match.startsWith('http') ? match : `https://${match}`;
-      return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline hover:no-underline">${match}</a>`;
-    });
-    
-    // Emails
-    const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
-    processedText = processedText.replace(emailRegex, (email) => 
-      `<a href="mailto:${email}" class="text-blue-600 underline hover:no-underline">${email}</a>`
-    );
-    
-    // Menciones @usuario
-    const mentionRegex = /@(\w+)/g;
-    processedText = processedText.replace(mentionRegex, (match, username) => 
-      `<span class="bg-blue-100 text-blue-800 px-1 rounded font-medium">${match}</span>`
-    );
-    
-    // Hashtags #etiqueta
-    const hashtagRegex = /#(\w+)/g;
-    processedText = processedText.replace(hashtagRegex, (match, tag) => 
-      `<span class="bg-green-100 text-green-800 px-1 rounded font-medium">${match}</span>`
-    );
-    
-    // Fechas ISO (2025-01-15 o 2025-01-15T10:30:00)
-    const dateRegex = /\b\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})?)?\b/g;
-    processedText = processedText.replace(dateRegex, (dateStr) => {
-      try {
-        const date = new Date(dateStr);
-        const formatted = date.toLocaleString('es-ES', {
-          year: 'numeric', month: '2-digit', day: '2-digit',
-          hour: '2-digit', minute: '2-digit'
-        });
-        return `<span class="bg-purple-100 text-purple-800 px-1 rounded font-medium" title="Fecha detectada">${formatted}</span>`;
-      } catch {
-        return dateStr;
-      }
-    });
-    
-    // Prioridades (URGENTE, ALTA, MEDIA, BAJA)
-    const priorityRegex = /\b(URGENTE|ALTA|MEDIA|BAJA|HIGH|MEDIUM|LOW|URGENT)\b/gi;
-    processedText = processedText.replace(priorityRegex, (match) => {
-      const priority = match.toUpperCase();
-      const colorClass = priority === 'URGENTE' || priority === 'URGENT' || priority === 'HIGH' 
-        ? 'bg-red-100 text-red-800' 
-        : priority === 'ALTA' || priority === 'HIGH'
-        ? 'bg-orange-100 text-orange-800'
-        : priority === 'MEDIA' || priority === 'MEDIUM'
-        ? 'bg-yellow-100 text-yellow-800'
-        : 'bg-green-100 text-green-800';
-      
-      return `<span class="${colorClass} px-2 py-1 rounded font-bold text-xs uppercase">${match}</span>`;
-    });
-    
-    // Estados (TODO, DONE, PENDING, etc.)
-    const statusRegex = /\b(TODO|DONE|PENDING|IN_PROGRESS|COMPLETED|CANCELLED|PENDIENTE|COMPLETADO|CANCELADO)\b/gi;
-    processedText = processedText.replace(statusRegex, (match) => {
-      const status = match.toUpperCase();
-      const colorClass = status.includes('DONE') || status.includes('COMPLETED') || status.includes('COMPLETADO')
-        ? 'bg-green-100 text-green-800'
-        : status.includes('PENDING') || status.includes('PENDIENTE') || status.includes('TODO')
-        ? 'bg-yellow-100 text-yellow-800'
-        : status.includes('CANCELLED') || status.includes('CANCELADO')
-        ? 'bg-red-100 text-red-800'
-        : 'bg-blue-100 text-blue-800';
-      
-      return `<span class="${colorClass} px-2 py-1 rounded font-medium text-xs uppercase">${match}</span>`;
-    });
-    
-    // Números importantes (IDs, montos, etc.)
-    const importantNumberRegex = /\b(?:ID|#|REF|MONTO|CANTIDAD|TOTAL)[:=\s]*(\d+(?:[.,]\d+)?)\b/gi;
-    processedText = processedText.replace(importantNumberRegex, (match) => 
-      `<span class="bg-indigo-100 text-indigo-800 px-1 rounded font-mono font-medium">${match}</span>`
-    );
-    
-    // Convertir saltos de línea
-    processedText = processedText.replace(/\n/g, '<br/>');
-    
-    return processedText;
-  };
-
   const handleChange = useCallback((e) => {
     const newValue = e.target.value;
     const isValid = !maxLength || newValue.length <= maxLength;
@@ -158,8 +211,14 @@ const RichTextEditor = ({
     }
   }, [onChange, maxLength, onValidationChange]);
 
+  // ACTUALIZACIÓN EN TIEMPO REAL del preview
   useEffect(() => {
-    setPreview(detectPatterns(value || ""));
+    if (value) {
+      const processed = detectAndProcessText(value);
+      setPreview(processed);
+    } else {
+      setPreview("");
+    }
   }, [value]);
 
   // Insertar texto en la posición del cursor
@@ -181,43 +240,52 @@ const RichTextEditor = ({
   };
 
   return (
-    <div className={`bg-white rounded-lg border-2 transition-colors duration-200 ${
-      isFocused ? "border-blue-500 ring-2 ring-blue-200" : 
-      validationError ? "border-red-300" : "border-gray-300"
+    <div className={`bg-white rounded-lg border-2 transition-all duration-300 ${
+      isFocused ? "border-blue-500 ring-4 ring-blue-100 shadow-lg" : 
+      validationError ? "border-red-300 ring-2 ring-red-100" : "border-gray-300 hover:border-gray-400"
     }`}>
-      {/* Toolbar */}
-      <div className="border-b border-gray-200 bg-gray-50 px-3 py-2">
+      {/* Toolbar mejorado */}
+      <div className="border-b border-gray-200 bg-gradient-to-r from-gray-50 to-blue-50 px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="flex items-center text-xs text-gray-600">
-              <FileText className="h-3 w-3 mr-1" />
-              Detección automática habilitada
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center text-sm text-gray-700 font-medium">
+              <FileText className="h-4 w-4 mr-2 text-blue-600" />
+              Editor inteligente con detección automática
             </div>
             
-            <div className="flex items-center space-x-1 ml-3">
+            {/* Botones de inserción rápida */}
+            <div className="flex items-center space-x-1">
               <button
                 type="button"
                 onClick={() => insertText('@')}
-                className="p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-blue-600"
+                className="p-2 rounded-md hover:bg-blue-100 text-gray-600 hover:text-purple-700 transition-colors"
                 title="Insertar mención (@usuario)"
               >
-                <AtSign className="h-3 w-3" />
+                <AtSign className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => insertText('#')}
-                className="p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-green-600"
+                className="p-2 rounded-md hover:bg-green-100 text-gray-600 hover:text-green-700 transition-colors"
                 title="Insertar hashtag (#etiqueta)"
               >
-                <Hash className="h-3 w-3" />
+                <Hash className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={() => insertText('TODO: ')}
-                className="p-1 rounded hover:bg-gray-200 text-gray-500 hover:text-yellow-600"
+                className="p-2 rounded-md hover:bg-yellow-100 text-gray-600 hover:text-yellow-700 transition-colors"
                 title="Insertar tarea (TODO:)"
               >
-                <Flag className="h-3 w-3" />
+                <Flag className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => insertText('URGENTE: ')}
+                className="p-2 rounded-md hover:bg-red-100 text-gray-600 hover:text-red-700 transition-colors"
+                title="Marcar como urgente"
+              >
+                ⚡
               </button>
             </div>
           </div>
@@ -225,42 +293,46 @@ const RichTextEditor = ({
           <button
             type="button"
             onClick={() => setShowPreview(!showPreview)}
-            className="flex items-center text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded transition-colors"
+            className={`flex items-center text-sm px-3 py-1.5 rounded-md transition-all ${
+              showPreview 
+                ? "bg-blue-600 text-white shadow-md" 
+                : "bg-white text-blue-600 border border-blue-200 hover:bg-blue-50"
+            }`}
           >
-            <Eye className="h-3 w-3 mr-1" />
+            <Eye className="h-4 w-4 mr-1.5" />
             {showPreview ? "Editor" : "Vista previa"}
           </button>
         </div>
       </div>
 
-      {/* Content Area */}
+      {/* Área de contenido */}
       {showPreview ? (
-        <div className="p-4">
-          <div className="flex items-center text-xs text-gray-600 mb-3">
-            <Eye className="h-3 w-3 mr-1" />
-            Vista previa con detección automática
+        <div className="p-6">
+          <div className="flex items-center text-sm text-blue-700 mb-4 bg-blue-50 px-3 py-2 rounded-lg">
+            <Eye className="h-4 w-4 mr-2" />
+            Vista previa con detección automática aplicada
           </div>
           <div
-            className="min-h-[120px] p-4 bg-gray-50 rounded-md text-sm border prose prose-sm max-w-none"
-            style={{ lineHeight: "1.6" }}
-            dangerouslySetInnerHTML={{ __html: preview }}
+            className="min-h-[150px] p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 text-sm leading-relaxed"
+            style={{ lineHeight: "1.8" }}
+            dangerouslySetInnerHTML={{ __html: preview || '<span class="text-gray-400 italic">Escribe algo para ver la vista previa...</span>' }}
           />
         </div>
       ) : (
-        <div className="p-4">
+        <div className="p-6">
           <textarea
             ref={textareaRef}
             value={value || ""}
             onChange={handleChange}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            className={`w-full border-0 focus:ring-0 focus:outline-none resize-none min-h-[120px] ${
-              validationError ? "bg-red-50" : "bg-white"
+            className={`w-full border-0 focus:ring-0 focus:outline-none resize-none min-h-[150px] transition-all duration-200 ${
+              validationError ? "bg-red-50 text-red-800" : "bg-transparent text-gray-800"
             }`}
-            placeholder={placeholder || "Escribe tu comentario aquí...\n\nDetección automática:\n• URLs: https://ejemplo.com\n• Emails: usuario@dominio.com\n• Menciones: @usuario\n• Hashtags: #etiqueta\n• Estados: TODO DONE PENDING\n• Prioridades: URGENTE ALTA MEDIA BAJA"}
+            placeholder={placeholder || "Escribe tu comentario aquí...\n\nDetección automática:\n• URLs: https://ejemplo.com, www.sitio.com\n• Emails: usuario@dominio.com\n• Menciones: @usuario\n• Hashtags: #etiqueta\n• Estados: TODO DONE PENDING URGENTE\n• Fechas: 2025-01-15T10:30:00\n• Prioridades: ALTA MEDIA BAJA"}
             disabled={disabled}
             style={{
-              fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif',
+              fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
               fontSize: "14px",
               lineHeight: "1.6",
             }}
@@ -268,20 +340,31 @@ const RichTextEditor = ({
         </div>
       )}
 
-      {/* Footer */}
-      <div className="border-t border-gray-100 px-4 py-2 bg-gray-50 rounded-b-lg">
+      {/* Footer mejorado */}
+      <div className="border-t border-gray-100 px-6 py-3 bg-gray-50 rounded-b-lg">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4 text-xs text-gray-500">
-            <span>💡 URLs, emails, @menciones y #hashtags se detectan automáticamente</span>
+          <div className="flex items-center space-x-6 text-xs text-gray-600">
+            <span className="flex items-center">
+              <span className="w-2 h-2 bg-blue-500 rounded-full mr-1.5"></span>
+              URLs y emails clicables
+            </span>
+            <span className="flex items-center">
+              <span className="w-2 h-2 bg-purple-500 rounded-full mr-1.5"></span>
+              @menciones destacadas
+            </span>
+            <span className="flex items-center">
+              <span className="w-2 h-2 bg-green-500 rounded-full mr-1.5"></span>
+              #hashtags resaltados
+            </span>
           </div>
           
           {maxLength && (
-            <div className={`text-xs ${
+            <div className={`text-xs font-medium ${
               (value?.length || 0) > maxLength * 0.9 
                 ? (value?.length || 0) > maxLength 
-                  ? "text-red-600 font-medium" 
-                  : "text-orange-600 font-medium"
-                : "text-gray-400"
+                  ? "text-red-600" 
+                  : "text-orange-600"
+                : "text-gray-500"
             }`}>
               {value?.length || 0}/{maxLength}
             </div>
@@ -290,9 +373,9 @@ const RichTextEditor = ({
       </div>
 
       {validationError && (
-        <div className="border-t border-gray-200 bg-red-50 px-4 py-2 flex items-center">
-          <AlertCircle className="h-3 w-3 mr-1 text-red-500" />
-          <span className="text-xs text-red-600">Límite de caracteres excedido</span>
+        <div className="border-t border-red-200 bg-red-50 px-6 py-3 flex items-center">
+          <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
+          <span className="text-sm text-red-700 font-medium">Límite de caracteres excedido</span>
         </div>
       )}
     </div>
@@ -527,7 +610,14 @@ const AdminCommentsSystem = ({
       };
 
       const createdComment = await api.createComment(rouletteId, commentData);
-      const updatedComments = [createdComment, ...comments];
+      
+      // Procesar el contenido del comentario creado
+      const processedComment = {
+        ...createdComment,
+        processed_content: detectAndProcessText(createdComment.content)
+      };
+      
+      const updatedComments = [processedComment, ...comments];
       setComments(updatedComments);
       
       // Limpiar formulario
@@ -562,8 +652,14 @@ const AdminCommentsSystem = ({
         content: editingContent.trim()
       });
       
+      // Procesar el contenido actualizado
+      const processedComment = {
+        ...updatedComment,
+        processed_content: detectAndProcessText(updatedComment.content)
+      };
+      
       setComments(prev => prev.map(c => 
-        c.id === editingId ? { ...c, ...updatedComment } : c
+        c.id === editingId ? { ...c, ...processedComment } : c
       ));
       
       setEditingId(null);
@@ -675,7 +771,7 @@ const AdminCommentsSystem = ({
                 Comentarios Administrativos
               </h3>
               <p className="text-sm text-gray-500">
-                {filteredComments.length} comentarios • Detección automática habilitada
+                {filteredComments.length} comentarios • Detección automática mejorada
               </p>
             </div>
           </div>
@@ -842,7 +938,7 @@ const AdminCommentsSystem = ({
               <RichTextEditor
                 value={newComment}
                 onChange={setNewComment}
-                placeholder="Escribe tu comentario administrativo...\n\nFunciones automáticas:\n• URLs: https://ejemplo.com\n• Emails: admin@empresa.com\n• Menciones: @usuario\n• Hashtags: #etiqueta #revision\n• Estados: TODO DONE PENDING\n• Prioridades: URGENTE ALTA MEDIA BAJA\n• Fechas: 2025-01-15T10:30:00"
+                placeholder="Escribe tu comentario administrativo...\n\nFunciones automáticas:\n• URLs: https://ejemplo.com, www.sitio.com\n• Emails: admin@empresa.com\n• Menciones: @usuario\n• Hashtags: #etiqueta #revision\n• Estados: TODO DONE PENDING URGENTE\n• Prioridades: ALTA MEDIA BAJA\n• Fechas: 2025-01-15T10:30:00"
                 disabled={submitting}
                 maxLength={2000}
                 onValidationChange={setValidationError}
@@ -1031,9 +1127,9 @@ const AdminCommentsSystem = ({
                       ) : (
                         <>
                           <div 
-                            className="prose prose-sm max-w-none text-sm text-gray-700"
+                            className="prose prose-sm max-w-none text-sm text-gray-700 leading-relaxed"
                             dangerouslySetInnerHTML={{ 
-                              __html: comment.processed_content || comment.content?.replace(/\n/g, '<br/>') || '' 
+                              __html: comment.processed_content || detectAndProcessText(comment.content || '') 
                             }}
                           />
                           

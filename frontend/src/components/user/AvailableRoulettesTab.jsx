@@ -16,7 +16,7 @@ import {
 } from '../../config/api';
 
 /* =========================
-   Helpers mejorados
+   Helpers
    ========================= */
 const resolveImageUrl = (r) => {
   const candidate = r?.image_url || r?.image || r?.cover_image || r?.banner || r?.thumbnail || r?.photo || r?.picture;
@@ -45,6 +45,13 @@ const getParticipantsCount = (r) =>
 
 const toArray = (res) => (Array.isArray(res?.results) ? res.results : Array.isArray(res) ? res : []);
 
+const fmtDate = (d, opts) => {
+  // usa tu formatters si existe; si no, fallback nativo
+  if (formatters?.date) return formatters.date(d, opts);
+  try { return new Date(d).toLocaleDateString('es-EC', opts || { year: 'numeric', month: 'short', day: 'numeric' }); }
+  catch { return ''; }
+};
+
 /* =========================
    Cronómetro integrado
    ========================= */
@@ -66,7 +73,6 @@ const CountdownTimer = ({ endDate, label = "Tiempo restante", onComplete, classN
         const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
         const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((difference % (1000 * 60)) / 1000);
-
         setTimeLeft({ days, hours, minutes, seconds });
       } else {
         setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0 });
@@ -82,10 +88,7 @@ const CountdownTimer = ({ endDate, label = "Tiempo restante", onComplete, classN
   }, [endDate, isActive, onComplete]);
 
   const getUrgencyStyles = () => {
-    if (isExpired) {
-      return "bg-red-100 text-red-800 border-red-200";
-    }
-    
+    if (isExpired) return "bg-red-100 text-red-800 border-red-200";
     const totalMinutes = timeLeft.days * 24 * 60 + timeLeft.hours * 60 + timeLeft.minutes;
     if (totalMinutes < 60) return "bg-red-100 text-red-800 border-red-200";
     if (totalMinutes < 1440) return "bg-orange-100 text-orange-800 border-orange-200";
@@ -120,7 +123,7 @@ const CountdownTimer = ({ endDate, label = "Tiempo restante", onComplete, classN
 };
 
 /* =========================
-   Linkify mejorado
+   Linkify
    ========================= */
 const LINK_COLOR_CLASS = "text-blue-600 underline hover:text-blue-800 hover:no-underline transition-colors";
 const escapeHtml = (s = "") =>
@@ -139,7 +142,7 @@ const autoLinkHTML = (plainText = "") => {
 };
 
 /* =========================
-   Imagen simplificada sin iconos
+   Imágenes y Lightbox
    ========================= */
 const SafeImage = ({ src, alt = '', className = '' }) => {
   const [displaySrc, setDisplaySrc] = useState(src || '');
@@ -153,11 +156,7 @@ const SafeImage = ({ src, alt = '', className = '' }) => {
   }, [src]);
 
   const handleLoad = () => setLoading(false);
-  
-  const handleError = () => {
-    setLoading(false);
-    setError(true);
-  };
+  const handleError = () => { setLoading(false); setError(true); };
 
   if (!displaySrc || error) {
     return (
@@ -190,9 +189,6 @@ const SafeImage = ({ src, alt = '', className = '' }) => {
   );
 };
 
-/* =========================
-   AspectRatio 16:9 
-   ========================= */
 const AspectBox = ({ children, className = '' }) => (
   <div className={`relative w-full overflow-hidden rounded-t-xl ${className}`}>
     <div style={{ paddingTop: '56.25%' }} />
@@ -200,9 +196,6 @@ const AspectBox = ({ children, className = '' }) => (
   </div>
 );
 
-/* =========================
-   Lightbox simplificado
-   ========================= */
 const ImageLightbox = ({ open, src, alt = '', onClose }) => {
   const [zoomed, setZoomed] = useState(false);
 
@@ -263,16 +256,13 @@ const ImageLightbox = ({ open, src, alt = '', onClose }) => {
 };
 
 /* =========================
-   Componente de descripción expandible
+   Descripción expandible
    ========================= */
 const ExpandableDescription = ({ description, maxLength = 150, className = "" }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  
   if (!description) return null;
-  
   const shouldTruncate = description.length > maxLength;
   const displayText = isExpanded || !shouldTruncate ? description : description.substring(0, maxLength) + '...';
-  
   return (
     <div className={`relative ${className}`}>
       <div
@@ -280,7 +270,6 @@ const ExpandableDescription = ({ description, maxLength = 150, className = "" })
         style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
         dangerouslySetInnerHTML={{ __html: autoLinkHTML(displayText) }}
       />
-      
       {shouldTruncate && (
         <button
           type="button"
@@ -305,7 +294,7 @@ const ExpandableDescription = ({ description, maxLength = 150, className = "" })
 };
 
 /* =========================
-   Badge de estado simplificado
+   Badge de estado
    ========================= */
 const StatusBadge = ({ status, isDrawn, participantsCount, className = "" }) => {
   const getStatusInfo = () => {
@@ -317,9 +306,7 @@ const StatusBadge = ({ status, isDrawn, participantsCount, className = "" }) => 
     if (status === 'scheduled') return { color: 'bg-purple-100 text-purple-800 border-purple-200', text: 'Programada' };
     return { color: 'bg-gray-100 text-gray-800 border-gray-200', text: 'Inactiva' };
   };
-
   const { color, text } = getStatusInfo();
-
   return (
     <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium border rounded-full ${color} ${className}`}>
       {text}
@@ -347,12 +334,10 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
     try {
       setLoading(true);
       setPageError('');
-      
       const [rRes, pRes] = await Promise.all([
         roulettesAPI.getRoulettes({ status: 'active', page_size: 100 }),
         participantsAPI.getMyParticipations({ page_size: 200 }),
       ]);
-      
       const list = toArray(rRes).map((r) => ({
         ...r,
         image_url: resolveImageUrl(r),
@@ -361,11 +346,11 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
         participation_end: getParticipationEnd(r),
         created_date: normalizeDate(r),
       }));
-      
       setRoulettes(list);
       setMyParticipations(toArray(pRes));
     } catch (err) {
-      setPageError(handleAPIError(err, 'No se pudieron cargar las ruletas.'));
+      const msg = handleAPIError ? handleAPIError(err, 'No se pudieron cargar las ruletas.') : 'No se pudieron cargar las ruletas.';
+      setPageError(msg);
       console.error('Error loading roulettes:', err);
     } finally {
       setLoading(false);
@@ -400,23 +385,17 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
     return filtered.sort((a, b) => {
       const da = a.created_date, db = b.created_date;
       const sa = a.scheduled_date, sb = b.scheduled_date;
-      
       switch (sortBy) {
-        case 'newest': 
-          return new Date(db || 0) - new Date(da || 0);
-        case 'oldest': 
-          return new Date(da || 0) - new Date(db || 0);
-        case 'most-participants': 
-          return getParticipantsCount(b) - getParticipantsCount(a);
-        case 'least-participants': 
-          return getParticipantsCount(a) - getParticipantsCount(b);
+        case 'newest': return new Date(db || 0) - new Date(da || 0);
+        case 'oldest': return new Date(da || 0) - new Date(db || 0);
+        case 'most-participants': return getParticipantsCount(b) - getParticipantsCount(a);
+        case 'least-participants': return getParticipantsCount(a) - getParticipantsCount(b);
         case 'ending-soon':
           if (!sa && !sb) return 0;
           if (!sa) return 1;
           if (!sb) return -1;
           return new Date(sa) - new Date(sb);
-        default: 
-          return 0;
+        default: return 0;
       }
     });
   }, [roulettes, searchTerm, sortBy]);
@@ -426,15 +405,11 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
     loadData();
   }, [loadData]);
 
-  // Función para determinar si debe mostrar cronómetro
   const shouldShowTimer = (roulette) => {
     const now = new Date().getTime();
     const participationEnd = roulette.participation_end ? new Date(roulette.participation_end).getTime() : null;
     const scheduledDate = roulette.scheduled_date ? new Date(roulette.scheduled_date).getTime() : null;
-    
-    // Mostrar si hay fechas futuras o recién pasadas (menos de 1 hora)
     const recentThreshold = 60 * 60 * 1000; // 1 hora
-    
     return (
       (participationEnd && participationEnd > (now - recentThreshold)) ||
       (scheduledDate && scheduledDate > (now - recentThreshold))
@@ -508,18 +483,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
 
         {/* Estadísticas */}
         <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-gray-600">
-          <span className="flex items-center gap-1">
-            <Trophy className="w-4 h-4 text-blue-500" />
-            {filteredRoulettes.length} ruletas encontradas
-          </span>
-          <span className="flex items-center gap-1">
-            <Users className="w-4 h-4 text-green-500" />
-            {myParticipations.length} participaciones activas
-          </span>
-          <span className="flex items-center gap-1">
-            <Timer className="w-4 h-4 text-orange-500" />
-            {filteredRoulettes.filter(r => shouldShowTimer(r)).length} con cronómetro activo
-          </span>
         </div>
       </div>
 
@@ -602,7 +565,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                               isDrawn={r.is_drawn} 
                               participantsCount={getParticipantsCount(r)} 
                             />
-                            {/* Cronómetros integrados */}
+                            {/* Cronómetros */}
                             {showTimer && (
                               <div className="flex gap-2">
                                 {r.participation_end && new Date(r.participation_end) > new Date() && (
@@ -626,10 +589,11 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                           </div>
                         </div>
 
+                        {/* LINK CORREGIDO */}
                         <Link
-                          to={`/ruletas/${r.id}/participar`}
+                          to={`/roulettes/${r.id}/participate`}
                           onClick={(e) => {
-                            if (!isAuthenticated()) {
+                            if (!isAuthenticated?.()) {
                               e.preventDefault();
                               setPageError('Debes iniciar sesión para participar.');
                               return;
@@ -654,7 +618,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                         </Link>
                       </div>
 
-                      {/* Descripción expandible */}
+                      {/* Descripción */}
                       {r.description && (
                         <ExpandableDescription 
                           description={r.description} 
@@ -672,7 +636,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                         {r.created_date && (
                           <span className="inline-flex items-center gap-1.5">
                             <Calendar className="h-4 w-4" />
-                            {formatters.date(r.created_date, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            {fmtDate(r.created_date, { year: 'numeric', month: 'short', day: 'numeric' })}
                           </span>
                         )}
                       </div>
@@ -682,13 +646,13 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
               );
             }
 
-            // Vista Grid (por defecto)
+            // Vista Grid
             return (
               <div
                 key={r.id}
                 className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col h-full group"
               >
-                {/* Portada con AspectRatio 16:9 */}
+                {/* Portada 16:9 */}
                 <button
                   type="button"
                   className="w-full cursor-zoom-in relative overflow-hidden"
@@ -702,7 +666,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                       className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     
-                    {/* Overlay con cronómetros en posición absoluta */}
+                    {/* Cronómetros en overlay */}
                     {showTimer && (
                       <div className="absolute top-3 right-3 flex flex-col gap-1">
                         {r.participation_end && new Date(r.participation_end) > new Date() && (
@@ -746,7 +710,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                     </div>
                   </div>
 
-                  {/* Descripción expandible */}
+                  {/* Descripción */}
                   {r.description && (
                     <ExpandableDescription 
                       description={r.description} 
@@ -755,30 +719,29 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                     />
                   )}
 
-
-
                   {/* Metadata */}
                   <div className="flex items-center justify-between text-sm text-gray-600">
                     <div className="flex items-center gap-3">
                       <span className="inline-flex items-center gap-1.5">
-                        <Users className="h-4 w-4 text-blue-500" />
+                        <Users className="h-4 h-4 text-blue-500" />
                         <span className="font-medium">{getParticipantsCount(r)}</span>
                       </span>
                       {r.created_date && (
                         <span className="inline-flex items-center gap-1.5">
                           <Calendar className="h-4 w-4 text-gray-400" />
-                          <span>{formatters.date(r.created_date, { month: 'short', day: 'numeric' })}</span>
+                          <span>{fmtDate(r.created_date, { month: 'short', day: 'numeric' })}</span>
                         </span>
                       )}
                     </div>
                   </div>
 
-                  {/* CTA pegado al fondo */}
+                  {/* CTA */}
                   <div className="mt-auto pt-2">
+                    {/* LINK CORREGIDO */}
                     <Link
-                      to={`/ruletas/${r.id}/participar`}
+                      to={`/roulettes/${r.id}/participate`}
                       onClick={(e) => {
-                        if (!isAuthenticated()) {
+                        if (!isAuthenticated?.()) {
                           e.preventDefault();
                           setPageError('Debes iniciar sesión para participar.');
                           return;
