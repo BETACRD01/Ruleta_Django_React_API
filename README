@@ -1,0 +1,53 @@
+flowchart LR
+  subgraph Frontend [Frontend React]
+    UI[UI / Hooks / Context]
+  end
+
+  subgraph Auth[Auth API]
+    A1[/POST /auth/login/ /]
+    A2[/GET /auth/user-info/ /]
+    A3[/GET|PUT /auth/profile/ /]
+  end
+
+  subgraph Roulettes[Roulettes API]
+    R1[/GET /roulettes/ /]
+    R2[/GET /roulettes/{id}/ /]
+    R3[/POST /roulettes/create/ /]
+    R4[/PUT|PATCH /roulettes/{id}/update/ /]
+    R5[/DELETE /roulettes/{id}/delete/ /]
+    RP1[/GET|POST /roulettes/{rid}/prizes/ /]
+    RP2[/GET /roulettes/{rid}/prizes/{pid}/ /]
+    RP3[/PUT|PATCH /roulettes/{rid}/prizes/{pid}/update/ /]
+    RP4[/DELETE /roulettes/{rid}/prizes/{pid}/delete/ /]
+  end
+
+  subgraph Participants[Participants API]
+    P1[/POST /participants/participations/participate/ /]
+    P2[/GET /participants/participations/my-participations/ /]
+    P3[/GET /participants/participations/roulette/{id}/ /]
+    P4[/GET /participants/participations/check-participation/{id}/ /]
+  end
+
+  subgraph Notifications[Notifications API]
+    N1[/GET /notifications/user/ /]
+    N2[/GET /notifications/public/ /]
+    N3[/GET /notifications/admin/ /]
+    N4[/POST /notifications/mark-read/ /]
+    N5[/POST /notifications/mark-all-read/ /]
+    N6[/DELETE /notifications/delete-read/ /]
+    N7[/GET /notifications/stats/ /]
+    N8[/GET /notifications/dashboard/ /]
+    N9[/GET /notifications/roulette/{id}/ /]
+    NR[/GET /notifications/realtime/ /]
+    NC[/DELETE /notifications/cleanup/ /]
+    NW[/POST /notifications/webhook/ /]
+    NWIN[/POST /notifications/winner-announcement/ /]
+    NADM[/GET|PATCH /notifications/admin-preferences/ /]
+    NT[/GET|POST /notifications/templates/ /]
+    NTD[/GET|PATCH|DELETE /notifications/templates/{id}/ /]
+  end
+
+  UI --> A1 & A2 & A3
+  UI --> R1 & R2 & R3 & R4 & R5 & RP1 & RP2 & RP3 & RP4
+  UI --> P1 & P2 & P3 & P4
+  UI --> N1 & N2 & N3 & N4 & N5 & N6 & N7 & N8 & N9 & NR & NC & NW & NWIN & NADM & NT & NTD
