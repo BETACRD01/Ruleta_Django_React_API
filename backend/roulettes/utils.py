@@ -1,451 +1,429 @@
+from __future__ import annotations
+
+import hashlib
+import random
 import secrets
-from django.db import transaction
-from django.utils import timezone
+from typing import Any, Dict, Optional, Tuple
+
 from django.core.exceptions import ValidationError
-from .models import Roulette, DrawHistory, RouletteStatus
+from django.db import transaction
+from django.db.models import Count, Sum
+from django.utils import timezone
+
+from .models import (
+    DrawHistory,
+    Roulette,
+    RouletteStatus,
+    RoulettePrize,
+    RouletteSettings,
+)
 from participants.models import Participation
 
+# Servicio de notificaciones (defensivo)
+try:
+    from notifications.services import NotificationService  # type: ignore
+except Exception:
+    NotificationService = None  # type: ignore
+
+
+# ============================================================
+# Validaciones de participación
+# ============================================================
 
 def validate_roulette_participation(roulette: Roulette, user) -> None:
-    """
-    Valida si un usuario puede participar en una ruleta.
-    Lanza ValidationError si no puede participar.
-    """
     if roulette.is_drawn or roulette.status == RouletteStatus.COMPLETED:
-        raise ValidationError('La ruleta ya fue sorteada.')
-    
+        raise ValidationError("La ruleta ya fue sorteada.")
     if roulette.status != RouletteStatus.ACTIVE:
-        raise ValidationError('La ruleta no está activa.')
-    
-    # Verificar configuración
-    if not hasattr(roulette, 'settings') or not roulette.settings:
-        raise ValidationError('Configuración de ruleta faltante.')
-    
-    settings = roulette.settings
-    
-    # Verificar límite de participantes
-    if settings.max_participants > 0:
-        current_count = roulette.get_participants_count()
+        raise ValidationError("La ruleta no está activa.")
+
+    settings = getattr(roulette, "settings", None)
+    if settings is None:
+        raise ValidationError("Configuración de ruleta faltante.")
+
+    if settings.max_participants and settings.max_participants > 0:
+        try:
+            current_count = roulette.get_participants_count()
+        except AttributeError:
+            current_count = Participation.objects.filter(
+                roulette_id=roulette.id
+            ).only("id").count()
         if current_count >= settings.max_participants:
-            raise ValidationError('Se alcanzó el límite de participantes.')
-    
-    # Verificar múltiples entradas
+            raise ValidationError("Se alcanzó el límite de participantes.")
+
     if not settings.allow_multiple_entries:
-        if Participation.objects.filter(roulette=roulette, user=user).exists():
-            raise ValidationError('Ya participaste en esta ruleta.')
-    
-    # Verificar fechas de participación (ahora están en el modelo Roulette directamente)
+        if Participation.objects.filter(
+            roulette_id=roulette.id, user_id=user.id
+        ).only("id").exists():
+            raise ValidationError("Ya participaste en esta ruleta.")
+
     now = timezone.now()
     if roulette.participation_start and now < roulette.participation_start:
-        raise ValidationError(f'La participación inicia el {roulette.participation_start.strftime("%d/%m/%Y %H:%M")}.')
-    
+        raise ValidationError(
+            f'La participación inicia el {roulette.participation_start.strftime("%d/%m/%Y %H:%M")}.'
+        )
     if roulette.participation_end and now > roulette.participation_end:
-        raise ValidationError('El período de participación ha terminado.')
+        raise ValidationError("El período de participación ha terminado.")
 
+
+# ============================================================
+# Ejecución del sorteo (sin cierre anticipado)
+# ============================================================
 
 @transaction.atomic
-def execute_roulette_draw(roulette: Roulette, admin_user, draw_type='manual'):
+def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manual") -> Dict[str, Any]:
     """
-    Ejecuta el sorteo de una ruleta.
-    
-    Args:
-        roulette: La ruleta a sortear
-        admin_user: Usuario que ejecuta el sorteo
-        draw_type: Tipo de sorteo ('manual', 'scheduled', 'auto', 'admin')
-    
-    Returns:
-        dict: Resultado del sorteo con 'success', 'message' y datos adicionales
+    Ejecuta un sorteo:
+    - Selecciona un participante que todavía NO ha ganado.
+    - Asigna un premio disponible (stock>0, activo) y descuenta stock.
+    - Notifica (si está habilitado).
+    - NO cierra anticipado: el cierre se decide en reconcile_completion() según
+      meta fija o stock restante.
     """
-    try:
-        # Validaciones previas
-        if roulette.is_drawn or roulette.status == RouletteStatus.COMPLETED:
-            return {
-                'success': False, 
-                'message': 'La ruleta ya fue sorteada.',
-                'error_code': 'ALREADY_DRAWN'
-            }
+    roulette = (
+        Roulette.objects.select_for_update()
+        .only("id", "status", "is_drawn", "name", "drawn_at", "drawn_by_id", "winner_id")
+        .get(pk=roulette.pk)
+    )
 
-        # Permitir sorteo en ruletas ACTIVE y SCHEDULED
-        if roulette.status not in [RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED]:
-            return {
-                'success': False, 
-                'message': 'La ruleta no está disponible para sorteo.',
-                'error_code': 'NOT_AVAILABLE'
-            }
+    if roulette.is_drawn or roulette.status == RouletteStatus.COMPLETED:
+        return {"success": False, "message": "La ruleta ya fue sorteada.", "error_code": "ALREADY_DRAWN"}
 
-        # Obtener participantes
-        participants_qs = roulette.participations.select_related('user').order_by('participant_number')
-        participants_list = list(participants_qs)
-        count = len(participants_list)
-        
-        if count == 0:
-            return {
-                'success': False, 
-                'message': 'No hay participantes para sortear.',
-                'error_code': 'NO_PARTICIPANTS'
-            }
+    if roulette.status not in (RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED):
+        return {"success": False, "message": "La ruleta no está disponible para sorteo.", "error_code": "NOT_AVAILABLE"}
 
-        # Generar semilla para reproducibilidad
-        seed = secrets.token_hex(16)
-        
-        # Selección pseudoaleatoria mejorada
-        import random
-        import hashlib
-        
-        # Crear semilla basada en datos de la ruleta y timestamp
-        seed_data = f"{roulette.id}-{timezone.now().isoformat()}-{seed}"
-        hash_seed = hashlib.sha256(seed_data.encode()).hexdigest()
-        random.seed(hash_seed[:8])  # Usar solo los primeros 8 caracteres
-        
-        # Seleccionar ganador
-        winner = random.choice(participants_list)
+    participants_qs = (
+        Participation.objects.select_for_update()
+        .select_related("user")
+        .filter(roulette_id=roulette.id, is_winner=False)
+        .order_by("participant_number")
+    )
+    participants_list = list(participants_qs)
+    count = len(participants_list)
 
-        # Marcar ganador en la participación
-        winner.is_winner = True
-        if hasattr(winner, 'won_at'):
-            winner.won_at = timezone.now()
-            winner.save(update_fields=['is_winner', 'won_at'])
-        else:
-            winner.save(update_fields=['is_winner'])
+    if count == 0:
+        roulette.reconcile_completion(by_user=admin_user)
+        return {"success": False, "message": "No quedan participantes elegibles para ganar.", "error_code": "NO_ELIGIBLES"}
 
-        # Actualizar ruleta
+    now_iso = timezone.now().isoformat()
+    nonce = secrets.token_hex(8)
+    seed_data = f"{roulette.id}|{count}|{now_iso}|{nonce}"
+    hash_seed = hashlib.sha256(seed_data.encode("utf-8")).hexdigest()
+
+    rnd = random.Random(int(hash_seed[:16], 16))
+    winner = rnd.choice(participants_list)
+
+    winner.is_winner = True
+    if hasattr(winner, "won_at"):
+        winner.won_at = timezone.now()
+        winner.save(update_fields=["is_winner", "won_at"])
+    else:
+        winner.save(update_fields=["is_winner"])
+
+    if not roulette.winner_id:
         roulette.winner = winner
-        roulette.drawn_at = timezone.now()
-        roulette.drawn_by = admin_user
-        roulette.status = RouletteStatus.COMPLETED
-        roulette.is_drawn = True
-        roulette.save(update_fields=[
-            'winner', 'drawn_at', 'drawn_by', 'status', 'is_drawn'
-        ])
 
-        # Crear registro en historial
-        draw_history = DrawHistory.objects.create(
-            roulette=roulette,
-            winner_selected=winner,
-            drawn_by=admin_user,
-            draw_type=draw_type,
-            drawn_at=roulette.drawn_at,
-            participants_count=count,
-            random_seed=hash_seed
-        )
+    prize: Optional[RoulettePrize] = (
+        RoulettePrize.objects.select_for_update()
+        .filter(roulette=roulette, is_active=True, stock__gt=0)
+        .order_by("display_order", "id")
+        .first()
+    )
 
-        return {
-            'success': True,
-            'message': 'Sorteo ejecutado exitosamente',
-            'winner': winner,
-            'winner_data': {
-                'id': winner.id,
-                'name': winner.user.get_full_name() or winner.user.username,
-                'email': winner.user.email,
-                'participant_number': winner.participant_number
-            },
-            'draw_history_id': draw_history.id,
-            'participants_count': count,
-            'seed': hash_seed
-        }
+    if prize:
+        new_stock = int(prize.stock) - 1
+        prize.stock = new_stock if new_stock >= 0 else 0
+        if prize.stock <= 0 and prize.is_active:
+            prize.is_active = False
+        prize.save(update_fields=["stock", "is_active"])
 
-    except Exception as e:
-        return {
-            'success': False,
-            'message': f'Error ejecutando el sorteo: {str(e)}',
-            'error_code': 'EXECUTION_ERROR',
-            'error_details': str(e)
-        }
+    roulette.drawn_by = admin_user
+    roulette.drawn_at = roulette.drawn_at or timezone.now()
+
+    # Si estaba programada, activarla mientras se pueda seguir sorteando
+    settings = getattr(roulette, "settings", None)
+    winners_now = roulette.participations.filter(is_winner=True).count()
+    if roulette.winner_id and not roulette.participations.filter(pk=roulette.winner_id, is_winner=True).exists():
+        winners_now += 1
+
+    if roulette.status == RouletteStatus.SCHEDULED:
+        should_activate = False
+        if settings and settings.winners_target and settings.winners_target > 0:
+            should_activate = winners_now < settings.winners_target
+        else:
+            should_activate = roulette.available_awards_count() > 0
+        if should_activate:
+            roulette.status = RouletteStatus.ACTIVE
+
+    roulette.save(update_fields=["winner", "drawn_at", "drawn_by", "status", "is_drawn"])
+
+    draw_history = DrawHistory.objects.create(
+        roulette=roulette,
+        winner_selected=winner,
+        drawn_by=admin_user,
+        draw_type=draw_type,
+        drawn_at=roulette.drawn_at,
+        participants_count=roulette.participations.count(),
+        random_seed=hash_seed,
+    )
+
+    # Notificaciones
+    try:
+        notify_flag = True
+        if settings:
+            notify_flag = bool(settings.notify_on_draw)
+        if notify_flag and NotificationService:
+            prize_details = ""
+            if prize:
+                desc = (prize.description or "").strip()
+                prize_details = f"Premio: {prize.name}" + (f". {desc}" if desc else "")
+            NotificationService.create_winner_announcement(
+                winner_user=winner.user,
+                roulette_name=roulette.name,
+                roulette_id=roulette.id,
+                total_participants=draw_history.participants_count,
+                prize_details=prize_details,
+            )
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("Fallo al enviar notificaciones de ganador", exc_info=True)
+
+    roulette.reconcile_completion(by_user=admin_user)
+
+    return {
+        "success": True,
+        "message": "Sorteo ejecutado exitosamente",
+        "winner": winner,
+        "winner_data": {
+            "id": winner.id,
+            "name": winner.user.get_full_name() or winner.user.username,
+            "email": winner.user.email,
+            "participant_number": winner.participant_number,
+        },
+        "prize": prize,
+        "draw_history": draw_history,
+        "draw_history_id": draw_history.id,
+        "participants_count": roulette.participations.count(),
+        "seed": hash_seed,
+        "roulette": {"id": roulette.id, "name": roulette.name, "is_drawn": roulette.is_drawn, "status": roulette.status},
+    }
 
 
-def can_user_draw_roulette(user, roulette: Roulette):
-    """
-    Verifica si un usuario puede ejecutar el sorteo de una ruleta.
-    
-    Returns:
-        tuple: (puede_sortear: bool, razon: str)
-    """
-    # Verificar permisos de usuario
-    if not (user.is_staff or user.is_superuser or getattr(user, "user_type", "") == "admin"):
+# ============================================================
+# Permisos / Stats / Limpieza / Countdown / Auto-draw / Validación premios
+# (sin cambios funcionales relevantes a la corrección)
+# ============================================================
+
+def can_user_draw_roulette(user, roulette: Roulette) -> Tuple[bool, str]:
+    if not (getattr(user, "is_staff", False) or getattr(user, "is_superuser", False) or getattr(user, "user_type", "") == "admin"):
         return False, "No tienes permisos para ejecutar sorteos"
-    
-    # Verificar estado de la ruleta
-    if not roulette.can_be_drawn_manually:
+
+    can_be_drawn_manually = getattr(roulette, "can_be_drawn_manually", None)
+    if callable(can_be_drawn_manually):
+        allowed = roulette.can_be_drawn_manually()
+    else:
+        allowed = bool(can_be_drawn_manually)
+
+    if not allowed:
         if roulette.is_drawn:
             return False, "La ruleta ya fue sorteada"
-        elif roulette.status not in [RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED]:
+        if roulette.status not in (RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED):
             return False, "La ruleta no está disponible para sorteo"
-        else:
-            return False, "No hay participantes para sortear"
-    
+        return False, "No hay participantes para sortear"
+
     return True, "OK"
 
 
-def get_roulette_statistics(roulette: Roulette):
-    """
-    Obtiene estadísticas detalladas de una ruleta.
-    
-    Returns:
-        dict: Estadísticas de la ruleta
-    """
-    participants = roulette.participations.select_related('user')
-    participants_count = participants.count()
-    
-    # Estadísticas básicas
-    stats = {
-        'roulette_info': {
-            'id': roulette.id,
-            'name': roulette.name,
-            'slug': roulette.slug,
-            'status': roulette.status,
-            'is_drawn': roulette.is_drawn,
-            'created_at': roulette.created_at,
-            'participation_start': roulette.participation_start,
-            'participation_end': roulette.participation_end,
-            'scheduled_date': roulette.scheduled_date,
-            'drawn_at': roulette.drawn_at,
+def get_roulette_statistics(roulette: Roulette) -> Dict[str, Any]:
+    participants_qs = Participation.objects.filter(roulette_id=roulette.id)
+    participants_count = participants_qs.only("id").count()
+
+    prizes_qs = roulette.prizes
+    agg = prizes_qs.filter(is_active=True).aggregate(
+        total_stock=Sum("stock"),
+        active_prizes=Count("id"),
+    )
+    total_stock = agg.get("total_stock") or 0
+    active_prizes = agg.get("active_prizes") or 0
+
+    stats: Dict[str, Any] = {
+        "roulette_info": {
+            "id": roulette.id,
+            "name": roulette.name,
+            "slug": roulette.slug,
+            "status": roulette.status,
+            "is_drawn": roulette.is_drawn,
+            "created_at": roulette.created_at,
+            "participation_start": roulette.participation_start,
+            "participation_end": roulette.participation_end,
+            "scheduled_date": roulette.scheduled_date,
+            "drawn_at": roulette.drawn_at,
         },
-        'participants': {
-            'total_count': participants_count,
-            'max_allowed': getattr(roulette.settings, 'max_participants', 0) if hasattr(roulette, 'settings') else 0,
-            'allow_multiple': getattr(roulette.settings, 'allow_multiple_entries', False) if hasattr(roulette, 'settings') else False,
+        "participants": {
+            "total_count": participants_count,
+            "max_allowed": getattr(getattr(roulette, "settings", None), "max_participants", 0),
+            "allow_multiple": getattr(getattr(roulette, "settings", None), "allow_multiple_entries", False),
         },
-        'winner_info': None,
-        'prizes_info': {
-            'total_prizes': roulette.prizes.count(),
-            'active_prizes': roulette.prizes.filter(is_active=True).count(),
-            'total_stock': sum([prize.stock for prize in roulette.prizes.filter(is_active=True)]),
-        }
+        "winner_info": None,
+        "prizes_info": {
+            "total_prizes": prizes_qs.only("id").count(),
+            "active_prizes": active_prizes,
+            "total_stock": int(total_stock),
+        },
     }
-    
-    # Información del ganador si existe
-    if roulette.winner:
-        stats['winner_info'] = {
-            'id': roulette.winner.id,
-            'name': roulette.winner.user.get_full_name() or roulette.winner.user.username,
-            'email': roulette.winner.user.email,
-            'participant_number': roulette.winner.participant_number,
-            'won_at': getattr(roulette.winner, 'won_at', roulette.drawn_at),
+
+    if roulette.winner_id:
+        w = roulette.winner
+        stats["winner_info"] = {
+            "id": w.id,
+            "name": w.user.get_full_name() or w.user.username,
+            "email": w.user.email,
+            "participant_number": w.participant_number,
+            "won_at": getattr(w, "won_at", roulette.drawn_at),
         }
-    
-    # Estadísticas de participación por fecha (últimos 30 días)
-    if participants_count > 0:
+
+    if participants_count:
         from datetime import timedelta
-        
-        thirty_days_ago = timezone.now() - timedelta(days=30)
-        recent_participants = participants.filter(created_at__gte=thirty_days_ago)
-        
-        stats['participation_trends'] = {
-            'recent_participants': recent_participants.count(),
-            'participation_rate': round((recent_participants.count() / participants_count) * 100, 2) if participants_count > 0 else 0
+
+        since = timezone.now() - timedelta(days=30)
+        recent_count = participants_qs.filter(created_at__gte=since).only("id").count()
+        stats["participation_trends"] = {
+            "recent_participants": recent_count,
+            "participation_rate": round((recent_count / participants_count) * 100, 2) if participants_count else 0.0,
         }
-    
+
     return stats
 
 
-def cleanup_old_draw_history(days_old=90):
-    """
-    Limpia registros antiguos del historial de sorteos.
-    
-    Args:
-        days_old: Días de antigüedad para considerar "viejo"
-    
-    Returns:
-        int: Número de registros eliminados
-    """
+def cleanup_old_draw_history(days_old: int = 90) -> int:
     from datetime import timedelta
-    
-    cutoff_date = timezone.now() - timedelta(days=days_old)
-    old_records = DrawHistory.objects.filter(drawn_at__lt=cutoff_date)
-    count = old_records.count()
-    old_records.delete()
-    
-    return count
+
+    cutoff = timezone.now() - timedelta(days=days_old)
+    qs = DrawHistory.objects.filter(drawn_at__lt=cutoff)
+    deleted, _ = qs.delete()
+    return int(deleted)
 
 
-def calculate_time_remaining(target_datetime):
-    """
-    Calcula el tiempo restante hasta una fecha específica.
-    
-    Args:
-        target_datetime: Fecha objetivo
-    
-    Returns:
-        dict: Diccionario con días, horas, minutos y segundos restantes
-    """
+def calculate_time_remaining(target_datetime) -> Optional[Dict[str, Any]]:
     if not target_datetime:
         return None
-    
+
     now = timezone.now()
     if now >= target_datetime:
-        return {
-            'expired': True,
-            'total_seconds': 0,
-            'days': 0,
-            'hours': 0,
-            'minutes': 0,
-            'seconds': 0
-        }
-    
+        return {"expired": True, "total_seconds": 0, "days": 0, "hours": 0, "minutes": 0, "seconds": 0}
+
     diff = target_datetime - now
     total_seconds = int(diff.total_seconds())
-    days = diff.days
-    hours = diff.seconds // 3600
-    minutes = (diff.seconds % 3600) // 60
-    seconds = diff.seconds % 60
-    
+
+    days, rem = divmod(total_seconds, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes, seconds = divmod(rem, 60)
+
+    formatted = f"{days}d {hours:02d}h {minutes:02d}m {seconds:02d}s" if days > 0 else f"{hours:02d}h {minutes:02d}m {seconds:02d}s"
+
     return {
-        'expired': False,
-        'total_seconds': total_seconds,
-        'days': days,
-        'hours': hours,
-        'minutes': minutes,
-        'seconds': seconds,
-        'formatted': f"{days}d {hours:02d}h {minutes:02d}m {seconds:02d}s" if days > 0 else f"{hours:02d}h {minutes:02d}m {seconds:02d}s"
+        "expired": False,
+        "total_seconds": total_seconds,
+        "days": days,
+        "hours": hours,
+        "minutes": minutes,
+        "seconds": seconds,
+        "formatted": formatted,
     }
 
 
-def get_roulette_countdown_info(roulette: Roulette):
-    """
-    Obtiene información de cronómetro para una ruleta.
-    
-    Args:
-        roulette: Instancia de Roulette
-    
-    Returns:
-        dict: Información de cronómetros para diferentes eventos
-    """
+def get_roulette_countdown_info(roulette: Roulette) -> Dict[str, Any]:
     now = timezone.now()
-    countdown_info = {}
-    
-    # Cronómetro para inicio de participación
+    info: Dict[str, Any] = {}
+
     if roulette.participation_start and now < roulette.participation_start:
-        countdown_info['participation_start'] = {
-            'label': 'Inicio de participación',
-            'target_date': roulette.participation_start,
-            'countdown': calculate_time_remaining(roulette.participation_start)
+        info["participation_start"] = {
+            "label": "Inicio de participación",
+            "target_date": roulette.participation_start,
+            "countdown": calculate_time_remaining(roulette.participation_start),
         }
-    
-    # Cronómetro para fin de participación
-    if roulette.participation_end and now < roulette.participation_end and roulette.participation_is_open:
-        countdown_info['participation_end'] = {
-            'label': 'Fin de participación',
-            'target_date': roulette.participation_end,
-            'countdown': calculate_time_remaining(roulette.participation_end)
+
+    if roulette.participation_end and now < roulette.participation_end and getattr(roulette, "participation_is_open", False):
+        info["participation_end"] = {
+            "label": "Fin de participación",
+            "target_date": roulette.participation_end,
+            "countdown": calculate_time_remaining(roulette.participation_end),
         }
-    
-    # Cronómetro para sorteo programado
+
     if roulette.scheduled_date and now < roulette.scheduled_date and not roulette.is_drawn:
-        countdown_info['scheduled_draw'] = {
-            'label': 'Sorteo programado',
-            'target_date': roulette.scheduled_date,
-            'countdown': calculate_time_remaining(roulette.scheduled_date)
+        info["scheduled_draw"] = {
+            "label": "Sorteo programado",
+            "target_date": roulette.scheduled_date,
+            "countdown": calculate_time_remaining(roulette.scheduled_date),
         }
-    
-    return countdown_info
+
+    return info
 
 
-def auto_draw_scheduled_roulettes():
-    """
-    Función para ejecutar sorteos automáticos de ruletas programadas.
-    Esta función se puede ejecutar periódicamente con Celery o cron.
-    
-    Returns:
-        dict: Resumen de la ejecución
-    """
+def auto_draw_scheduled_roulettes() -> Dict[str, Any]:
     from django.contrib.auth import get_user_model
-    
+
     User = get_user_model()
     now = timezone.now()
-    
-    # Buscar ruletas listas para sorteo automático
-    scheduled_roulettes = Roulette.objects.filter(
-        scheduled_date__lte=now,
-        is_drawn=False,
-        status__in=[RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED],
-        participations__isnull=False
-    ).distinct()
-    
-    results = {
-        'processed': 0,
-        'successful': 0,
-        'failed': 0,
-        'details': []
-    }
-    
-    # Usuario del sistema para sorteos automáticos
-    try:
-        system_user = User.objects.filter(is_superuser=True).first()
-    except:
-        system_user = None
-    
-    for roulette in scheduled_roulettes:
-        results['processed'] += 1
-        
+
+    scheduled_qs = (
+        Roulette.objects.filter(
+            scheduled_date__lte=now,
+            is_drawn=False,
+            status__in=(RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED),
+        )
+        .annotate(pcount=Count("participations"))
+        .filter(pcount__gt=0)
+        .only("id", "name", "status", "is_drawn", "scheduled_date")
+    )
+
+    results: Dict[str, Any] = {"processed": 0, "successful": 0, "failed": 0, "details": []}
+
+    system_user = User.objects.filter(is_superuser=True).only("id").first()
+
+    for r in scheduled_qs:
+        results["processed"] += 1
         try:
-            result = execute_roulette_draw(
-                roulette=roulette,
-                admin_user=system_user,
-                draw_type='scheduled'
-            )
-            
-            if result['success']:
-                results['successful'] += 1
-                results['details'].append({
-                    'roulette_id': roulette.id,
-                    'name': roulette.name,
-                    'status': 'success',
-                    'winner': result['winner_data']['name']
-                })
+            res = execute_roulette_draw(roulette=r, admin_user=system_user, draw_type="scheduled")
+            if res.get("success"):
+                results["successful"] += 1
+                results["details"].append(
+                    {"roulette_id": r.id, "name": r.name, "status": "success", "winner": res["winner_data"]["name"]}
+                )
             else:
-                results['failed'] += 1
-                results['details'].append({
-                    'roulette_id': roulette.id,
-                    'name': roulette.name,
-                    'status': 'failed',
-                    'error': result['message']
-                })
-                
-        except Exception as e:
-            results['failed'] += 1
-            results['details'].append({
-                'roulette_id': roulette.id,
-                'name': roulette.name,
-                'status': 'error',
-                'error': str(e)
-            })
-    
+                results["failed"] += 1
+                results["details"].append(
+                    {"roulette_id": r.id, "name": r.name, "status": "failed", "error": res.get("message")}
+                )
+        except Exception as exc:
+            results["failed"] += 1
+            results["details"].append({"roulette_id": r.id, "name": r.name, "status": "error", "error": str(exc)})
+
     return results
 
 
-def validate_roulette_prizes(roulette: Roulette):
-    """
-    Valida que los premios de una ruleta estén configurados correctamente.
-    
-    Args:
-        roulette: Instancia de Roulette
-    
-    Returns:
-        dict: Resultado de la validación
-    """
-    prizes = roulette.prizes.filter(is_active=True)
+def validate_roulette_prizes(roulette: Roulette) -> Dict[str, Any]:
+    prizes_qs = roulette.prizes.filter(is_active=True)
+    counts = prizes_qs.aggregate(
+        total_prizes=Count("id"),
+        total_stock=Sum("stock"),
+    )
+    total_prizes = counts.get("total_prizes") or 0
+    total_stock = int(counts.get("total_stock") or 0)
+
     issues = []
     warnings = []
-    
-    if not prizes.exists():
+
+    if total_prizes == 0:
         issues.append("La ruleta no tiene premios activos")
-    
-    total_probability = sum([prize.probability for prize in prizes if prize.probability > 0])
-    if total_probability > 100:
-        issues.append(f"La suma de probabilidades ({total_probability}%) excede el 100%")
-    elif total_probability > 0 and total_probability < 100:
-        warnings.append(f"La suma de probabilidades ({total_probability}%) es menor al 100%")
-    
-    # Verificar stock
-    zero_stock_prizes = prizes.filter(stock=0)
-    if zero_stock_prizes.exists():
-        warnings.append(f"{zero_stock_prizes.count()} premio(s) sin stock disponible")
-    
+
+    zero_stock_count = prizes_qs.filter(stock=0).only("id").count()
+    if zero_stock_count > 0:
+        warnings.append(f"{zero_stock_count} premio(s) sin stock disponible")
+
     return {
-        'valid': len(issues) == 0,
-        'issues': issues,
-        'warnings': warnings,
-        'total_prizes': prizes.count(),
-        'total_probability': total_probability,
-        'total_stock': sum([prize.stock for prize in prizes])
+        "valid": len(issues) == 0,
+        "issues": issues,
+        "warnings": warnings,
+        "total_prizes": total_prizes,
+        "total_stock": total_stock,
     }

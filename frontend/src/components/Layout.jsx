@@ -2,23 +2,27 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  Trophy, Bell, User, LogOut, Settings,
-  Menu, X, RotateCcw,
-  ChevronDown, Check, CheckCheck, Trash2
+  Bell, User, LogOut, Settings,
+  Menu, X, RotateCcw, ChevronDown, Check, CheckCheck, Trash2, ShieldCheck
 } from 'lucide-react';
 import { notificationAPI, notificationManager } from '../config/api';
 
-// Panels reales
+// Panels
 import ProfilePanel from './profile/ProfilePanel';
 import AccountSettingsPanel from './settings/AccountSettingsPanel';
 
+// ✅ Logo (no uses rutas C:\... en web)
+import logo from '../assets/HAYU24_original.png';
+
 const Layout = ({ children }) => {
   const { user, logout, isAdmin, loading } = useAuth();
+
+  // Menús
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  // Estado de paneles
+  // Paneles
   const [profileOpen, setProfileOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -28,7 +32,7 @@ const Layout = ({ children }) => {
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [notificationError, setNotificationError] = useState(null);
 
-  // 🔹 Cargar notificaciones (memorizada para usar en useEffect)
+  // Cargar notificaciones
   const loadNotifications = useCallback(async () => {
     if (!user) return;
     try {
@@ -50,13 +54,11 @@ const Layout = ({ children }) => {
     }
   }, [user]);
 
-  // Cargar notificaciones y suscripción al manager (API real)
+  // Suscripción y polling
   useEffect(() => {
     if (!user) return;
     loadNotifications();
 
-    // Tu NotificationManager expone addEventListener(callback)
-    // y luego notifica con (event, data).
     const unsubscribe = notificationManager.addEventListener((event, data) => {
       if (event === 'notifications_updated') {
         if (data.notifications) setNotifications(data.notifications);
@@ -68,25 +70,20 @@ const Layout = ({ children }) => {
       }
     });
 
-    notificationManager.startPolling(30000); // 30s
-
+    notificationManager.startPolling(30000);
     return () => {
       unsubscribe();
-      // Si tu manager tiene stopPolling, sería ideal llamarlo aquí:
       // notificationManager.stopPolling?.();
     };
-  }, [user, loadNotifications]); // ✅ incluimos loadNotifications
+  }, [user, loadNotifications]);
 
   const markAsRead = async (notificationIds) => {
+    const ids = Array.isArray(notificationIds) ? notificationIds : [notificationIds];
     try {
-      await notificationAPI.markAsRead(Array.isArray(notificationIds) ? notificationIds : [notificationIds]);
-      setNotifications(prev => prev.map(n =>
-        (Array.isArray(notificationIds) ? notificationIds : [notificationIds]).includes(n.id)
-          ? { ...n, is_read: true }
-          : n
-      ));
-      setUnreadCount(prev => Math.max(0, prev - (Array.isArray(notificationIds) ? notificationIds.length : 1)));
-      setTimeout(loadNotifications, 500);
+      await notificationAPI.markAsRead(ids);
+      setNotifications(prev => prev.map(n => ids.includes(n.id) ? { ...n, is_read: true } : n));
+      setUnreadCount(prev => Math.max(0, prev - ids.length));
+      setTimeout(loadNotifications, 400);
     } catch (error) {
       console.error('Error marking notification as read:', error);
     }
@@ -97,7 +94,7 @@ const Layout = ({ children }) => {
       await notificationAPI.markAllAsRead();
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
-      setTimeout(loadNotifications, 500);
+      setTimeout(loadNotifications, 400);
     } catch (error) {
       console.error('Error marking all as read:', error);
     }
@@ -107,10 +104,8 @@ const Layout = ({ children }) => {
     try {
       await notificationAPI.deleteNotification(notificationId);
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
-      const notification = notifications.find(n => n.id === notificationId);
-      if (notification && !notification.is_read) {
-        setUnreadCount(prev => Math.max(0, prev - 1));
-      }
+      const n = notifications.find(n => n.id === notificationId);
+      if (n && !n.is_read) setUnreadCount(prev => Math.max(0, prev - 1));
     } catch (error) {
       console.error('Error deleting notification:', error);
     }
@@ -118,13 +113,13 @@ const Layout = ({ children }) => {
 
   const getNotificationIcon = (type) => {
     const icons = {
-      'participation_confirmed': '✅',
-      'roulette_winner': '🎉',
-      'roulette_started': '🎯',
-      'roulette_ending_soon': '⏰',
-      'winner_notification': '🏆',
-      'admin_winner_alert': '👑',
-      'welcome_message': '👋',
+      participation_confirmed: '✅',
+      roulette_winner: '🎉',
+      roulette_started: '🎯',
+      roulette_ending_soon: '⏰',
+      winner_notification: '🏆',
+      admin_winner_alert: '👑',
+      welcome_message: '👋',
     };
     return icons[type] || '📢';
   };
@@ -170,8 +165,9 @@ const Layout = ({ children }) => {
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Altura estándar */}
           <div className="flex justify-between items-center h-16">
-            {/* Izquierda */}
+            {/* Izquierda: logo (usuario) o emblema admin */}
             <div className="flex items-center">
               <button
                 className="md:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
@@ -180,29 +176,39 @@ const Layout = ({ children }) => {
               >
                 {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
               </button>
-              <div className="flex items-center ml-2 md:ml-0">
-                <div className="bg-blue-600 rounded-full p-2">
-                  <Trophy className="h-6 w-6 text-white" />
-                </div>
-                <div className="ml-3">
-                  <h1 className="text-xl font-bold text-gray-900">Sistema de Ruletas</h1>
-                  <div className="flex items-center space-x-2">
-                    {isAdmin && (
-                      <span className="text-xs bg-red-100 text-red-800 px-2 py-0.5 rounded-full font-medium">
-                        ADMIN
-                      </span>
-                    )}
-                    <span className="text-xs text-gray-500">
-                      {user?.first_name} {user?.last_name}
+
+              <div className="ml-2 md:ml-0 flex items-center gap-2">
+                {/* 👤 Usuario normal: logo como antes */}
+                {!isAdmin && (
+                  <img
+                    key={`logo-${user?.id || 'anon'}`}
+                    src={logo}
+                    alt="HAYU24"
+                    className="h-8 sm:h-9 md:h-10 w-auto object-contain select-none pointer-events-none"
+                    loading="eager"
+                    decoding="async"
+                    draggable="false"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                  />
+                )}
+
+                {/* 🛡️ Administrador: emblema + badge */}
+                {isAdmin && (
+                  <div className="flex items-center gap-2">
+                    <div className="h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11 rounded-full bg-gradient-to-br from-indigo-600 to-blue-600 text-white shadow flex items-center justify-center">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+                    <span className="text-[10px] sm:text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-semibold tracking-wide">
+                      ADMIN
                     </span>
                   </div>
-                </div>
+                )}
               </div>
             </div>
 
-            {/* Acciones derecha */}
+            {/* Derecha: Notificaciones + menú usuario */}
             <div className="flex items-center space-x-4">
-              {/* Notificaciones */}
+              {/* Campana */}
               <div className="relative">
                 <button
                   onClick={() => {
@@ -224,14 +230,7 @@ const Layout = ({ children }) => {
                   <div className="origin-top-right absolute right-0 mt-2 w-96 rounded-lg shadow-xl bg-white ring-1 ring-black ring-opacity-5 z-50">
                     <div className="p-4 border-b border-gray-200">
                       <div className="flex justify-between items-center mb-3">
-                        <div className="flex items-center">
-                          <h3 className="text-base font-semibold text-gray-900">Notificaciones</h3>
-                          {unreadCount > 0 && (
-                            <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                              {unreadCount} nuevas
-                            </span>
-                          )}
-                        </div>
+                        <h3 className="text-base font-semibold text-gray-900">Notificaciones</h3>
                         <div className="flex items-center space-x-2">
                           {unreadCount > 0 && (
                             <button
@@ -290,25 +289,11 @@ const Layout = ({ children }) => {
                         </div>
                       )}
                     </div>
-
-                    {notifications.length > 0 && (
-                      <div className="p-3 border-t border-gray-200 bg-gray-50">
-                        <button
-                          onClick={() => {
-                            setNotificationsOpen(false);
-                            // Navegación a /notifications si usas router
-                          }}
-                          className="w-full text-center text-sm text-blue-600 hover:text-blue-800 font-medium"
-                        >
-                          Ver todas las notificaciones
-                        </button>
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
 
-              {/* Menú de usuario */}
+              {/* Menú de usuario (solo avatar, sin nombre en header) */}
               <div className="relative">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -317,7 +302,7 @@ const Layout = ({ children }) => {
                 >
                   <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center">
                     <span className="text-white font-medium text-sm">
-                      {user?.first_name?.charAt(0)}{user?.last_name?.charAt(0)}
+                      {user?.first_name?.[0]}{user?.last_name?.[0]}
                     </span>
                   </div>
                   <ChevronDown className="ml-1 h-4 w-4 text-gray-400" />
@@ -326,13 +311,6 @@ const Layout = ({ children }) => {
                 {userMenuOpen && (
                   <div className="origin-top-right absolute right-0 mt-2 w-52 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
                     <div className="py-1">
-                      <div className="px-4 py-2 border-b border-gray-200">
-                        <p className="text-sm font-medium text-gray-900">
-                          {user?.first_name} {user?.last_name}
-                        </p>
-                        <p className="text-xs text-gray-500">{user?.email}</p>
-                      </div>
-
                       <button
                         onClick={() => { setProfileOpen(true); setUserMenuOpen(false); }}
                         className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -370,59 +348,10 @@ const Layout = ({ children }) => {
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-gray-200 bg-white">
             <div className="px-2 pt-2 pb-3 space-y-1">
-              {isAdmin ? (
-                <>
-                  <MobileNavLink text="Dashboard" active />
-                  <MobileNavLink text="Ruletas" />
-                  <MobileNavLink text="Sorteos" />
-                  <MobileNavLink text="Usuarios" />
-                  <MobileNavLink text="Reportes" />
-                </>
-              ) : (
-                <>
-                  <MobileNavLink text="Inicio" active />
-                  <MobileNavLink text="Ruletas" />
-                  <MobileNavLink text="Mis Participaciones" />
-                  <MobileNavLink text="Resultados" />
-                </>
-              )}
-            </div>
-            <div className="pt-4 pb-3 border-t border-gray-200">
-              <div className="px-4 flex items-center">
-                <div className="flex-shrink-0">
-                  <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center">
-                    <span className="text-white font-medium text-sm">
-                      {user?.first_name?.charAt(0)}{user?.last_name?.charAt(0)}
-                    </span>
-                  </div>
-                </div>
-                <div className="ml-3">
-                  <div className="text-base font-medium text-gray-800">
-                    {user?.first_name} {user?.last_name}
-                  </div>
-                  <div className="text-sm text-gray-500">{user?.email}</div>
-                </div>
-              </div>
-              <div className="mt-3 px-2 space-y-1">
-                <button
-                  onClick={() => { setProfileOpen(true); setMobileMenuOpen(false); }}
-                  className="block px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md w-full text-left"
-                >
-                  Mi Perfil
-                </button>
-                <button
-                  onClick={() => { setSettingsOpen(true); setMobileMenuOpen(false); }}
-                  className="block px-3 py-2 text-base font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-md w-full text-left"
-                >
-                  Configuración
-                </button>
-                <button
-                  onClick={handleLogout}
-                  className="block px-3 py-2 text-base font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-md w-full text-left"
-                >
-                  Cerrar Sesión
-                </button>
-              </div>
+              <MobileNavLink text="Inicio" active />
+              <MobileNavLink text="Ruletas" />
+              <MobileNavLink text="Mis Participaciones" />
+              <MobileNavLink text="Resultados" />
             </div>
           </div>
         )}
@@ -433,7 +362,7 @@ const Layout = ({ children }) => {
         {children}
       </main>
 
-      {/* Cierra capas al hacer click fuera */}
+      {/* Click fuera para cerrar menús flotantes */}
       {(userMenuOpen || notificationsOpen || mobileMenuOpen) && (
         <div
           className="fixed inset-0 z-40"
@@ -445,7 +374,7 @@ const Layout = ({ children }) => {
         />
       )}
 
-      {/* Paneles: Perfil & Configuración (API real) */}
+      {/* Paneles laterales */}
       <ProfilePanel
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
@@ -455,7 +384,6 @@ const Layout = ({ children }) => {
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
         onSaved={() => {}}
-        isAdmin={!!isAdmin}
       />
     </div>
   );
@@ -543,7 +471,7 @@ const NotificationItem = ({ notification, onMarkAsRead, onDelete, formatTime, ge
 };
 
 /* =========================
-   Enlace móvil
+   Link simple de menú móvil
    ========================= */
 const MobileNavLink = ({ text, active = false, onClick }) => (
   <button

@@ -1,15 +1,15 @@
-// src/App.jsx - ACTUALIZADO con Router + rutas protegidas
+// src/App.jsx - ACTUALIZADO con Page como raíz
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 
-import Home from './pages/Home';           // pantalla pública
-import Layout from './components/Layout';  // layout común (navbar, etc.)
+import Page from './pages/page';           // ⬅️ nuevo contenedor con Home + Login/Register
+import Layout from './components/Layout';  
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
+import TermsPage from './pages/TermsPage';
 
-// IMPORT con espacios en la ruta del archivo:
 import RouletteParticipate from './components/user/Ruletas Disponibles/RouletteParticipate';
 
 // --- Guards simples ---
@@ -31,10 +31,13 @@ const AppContent = () => {
 
   return (
     <Routes>
-      {/* Pública: Home si no hay sesión; si hay sesión, manda al dashboard */}
-      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Home />} />
+      {/* Página raíz: Page contiene Home + Login/Register */}
+      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Page />} />
 
-      {/* Dashboard por rol dentro del Layout */}
+      {/* Página pública de términos y condiciones */}
+      <Route path="/terminos" element={<TermsPage />} />
+
+      {/* Dashboard por rol */}
       <Route
         path="/dashboard"
         element={
@@ -46,7 +49,7 @@ const AppContent = () => {
         }
       />
 
-      {/* Pantalla de participación (requiere login) */}
+      {/* Pantalla de participación */}
       <Route
         path="/ruletas/:id/participar"
         element={

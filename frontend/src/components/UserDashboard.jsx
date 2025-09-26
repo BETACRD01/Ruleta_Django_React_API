@@ -8,7 +8,7 @@
 // ============================================================================
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Trophy, Users, Award, RefreshCw } from "lucide-react";
+import { Trophy, Users, Award } from "lucide-react";
 import { Card, Tabs, LoadingSpinner } from "./UI";
 import { roulettesAPI, participantsAPI, handleAPIError } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
@@ -189,13 +189,6 @@ const UserDashboard = () => {
     [stats.availableRoulettes, stats.myParticipations, stats.completedParticipations]
   );
 
-  // -----------------------------
-  // Refresh manual
-  // -----------------------------
-  const handleRefresh = useCallback(async () => {
-    await loadDashboardData();
-  }, [loadDashboardData]);
-
   /* ============================================================================
      Render
   ============================================================================ */
@@ -232,17 +225,6 @@ const UserDashboard = () => {
               Última actualización: {formatClock(lastRefresh)}
             </p>
           </div>
-
-          <button
-            type="button"
-            onClick={handleRefresh}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-            aria-label="Actualizar dashboard"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Actualizar
-          </button>
         </div>
       </div>
 

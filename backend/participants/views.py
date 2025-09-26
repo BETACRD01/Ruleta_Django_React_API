@@ -12,6 +12,7 @@ from .serializers import (
     ParticipationSerializer,
     ParticipationListSerializer,
     ParticipantBasicSerializer,
+    ParticipantFullSerializer,  # Nuevo serializer más completo
 )
 from roulettes.models import Roulette
 
@@ -42,7 +43,6 @@ def participate(request):
     serializer.is_valid(raise_exception=True)
     participation = serializer.save()  # asigna user autenticado en create()
 
-    # La notificación de confirmación puede ser creada por señales (si las tienes activas).
     return Response(
         {
             "success": True,
@@ -81,29 +81,50 @@ class RouletteParticipantsView(generics.ListAPIView):
     """
     GET /participants/participations/roulette/<id>/
     Devuelve participantes de una ruleta (ordenados por número).
+    ACTUALIZADO: Incluye datos de contacto usando select_related optimizado
     """
-    serializer_class = ParticipantBasicSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         rid = self.kwargs["roulette_id"]
         self.roulette = get_object_or_404(Roulette, id=rid)
+        
+        # Optimización: cargar user y profile en una sola consulta
         return (
             Participation.objects.filter(roulette=self.roulette)
-            .select_related("user")
+            .select_related("user", "user__profile")  # ← Clave: incluir profile
             .order_by("participant_number")
         )
 
+    def get_serializer_class(self):
+        """
+        Usar serializer más completo si se solicitan ganadores
+        o serializer básico para listado general
+        """
+        if self.request.query_params.get('full_data') == 'true':
+            return ParticipantFullSerializer
+        return ParticipantBasicSerializer
+
     def list(self, request, *args, **kwargs):
         qs = self.get_queryset()
-        serializer = self.get_serializer(qs, many=True)
+        
+        # Separar ganadores y participantes regulares
+        winners = qs.filter(is_winner=True)
+        all_participants = qs
+
+        serializer_class = self.get_serializer_class()
+        winners_data = serializer_class(winners, many=True).data
+        participants_data = serializer_class(all_participants, many=True).data
+
         return Response(
             {
                 "success": True,
                 "roulette_id": self.roulette.id,
                 "roulette_name": getattr(self.roulette, "name", f"Roulette #{self.roulette.id}"),
                 "total_participants": qs.count(),
-                "participants": serializer.data,
+                "winners_count": winners.count(),
+                "participants": participants_data,
+                "winners": winners_data,  # Separado para facilitar acceso en frontend
             },
             status=status.HTTP_200_OK,
         )
@@ -115,7 +136,6 @@ def check_participation(request, roulette_id: int):
     """
     GET /participants/participations/check-participation/<id>/
     Verifica si el usuario ya participó en una ruleta.
-    Devuelve ambas claves por compatibilidad: 'is_participating' y 'has_participated'.
     """
     roulette = get_object_or_404(Roulette, id=roulette_id)
     participation = Participation.objects.filter(user=request.user, roulette=roulette).first()
@@ -123,9 +143,39 @@ def check_participation(request, roulette_id: int):
     return Response(
         {
             "success": True,
-            "is_participating": is_participating,  # usado por algunos clientes
+            "is_participating": is_participating,
             "has_participated": is_participating,  # alias de compatibilidad
             "participation": ParticipationListSerializer(participation).data if participation else None,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+# Vista adicional específica para obtener ganadores con información completa
+@api_view(["GET"])
+@permission_classes([permissions.IsAuthenticated])
+def get_roulette_winners(request, roulette_id: int):
+    """
+    GET /participants/participations/roulette/<id>/winners/
+    Devuelve solo los ganadores de una ruleta con información completa de contacto
+    """
+    roulette = get_object_or_404(Roulette, id=roulette_id)
+    
+    winners = (
+        Participation.objects.filter(roulette=roulette, is_winner=True)
+        .select_related("user", "user__profile")
+        .order_by("participant_number")
+    )
+    
+    serializer = ParticipantFullSerializer(winners, many=True)
+    
+    return Response(
+        {
+            "success": True,
+            "roulette_id": roulette.id,
+            "roulette_name": getattr(roulette, "name", f"Roulette #{roulette.id}"),
+            "winners_count": winners.count(),
+            "winners": serializer.data,
         },
         status=status.HTTP_200_OK,
     )

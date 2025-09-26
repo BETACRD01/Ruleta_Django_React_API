@@ -1,211 +1,164 @@
+from __future__ import annotations
+
+import hashlib
+import importlib
+import logging
+import uuid
+from typing import List, Tuple, Type
+
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models, transaction
 from django.utils import timezone
-from django.core.exceptions import ValidationError
-from django.contrib.auth import get_user_model
-from django.core.validators import MinValueValidator, MaxValueValidator
 from django.utils.text import slugify
+
 from participants.models import Participation
-import uuid
-import hashlib
-import logging
-import importlib
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
-# Importación dinámica para CKEditor compatible con Django 5.2.6
-def get_rich_text_field():
-    """Importa CKEditor dinámicamente o usa TextField como fallback"""
+# Servicio de notificaciones (defensivo)
+try:
+    from notifications.services import NotificationService  # type: ignore
+except Exception:
+    NotificationService = None  # type: ignore
+
+
+# ========= RichText dinámico (CKEditor si está disponible) =========
+def get_rich_text_field() -> Tuple[Type[models.Field], bool]:
+    """
+    Intenta importar un campo rich-text compatible con Django 5.2.6.
+    1) django-ckeditor-5 (CKEditor5Field)
+    2) ckeditor clásico (RichTextUploadingField)
+    3) Fallback: TextField (con misma firma básica)
+    Devuelve: (FieldClass, ckeditor_disponible)
+    """
     try:
-        # Intentar con django-ckeditor-5 (más moderno y compatible con Django 5.2.6)
-        ckeditor_module = importlib.import_module('django_ckeditor_5.fields')
-        return ckeditor_module.CKEditor5Field, True
+        ck5 = importlib.import_module("django_ckeditor_5.fields")
+        return ck5.CKEditor5Field, True
     except ImportError:
         try:
-            # Fallback a ckeditor clásico
-            ckeditor_module = importlib.import_module('ckeditor_uploader.fields')
-            return ckeditor_module.RichTextUploadingField, True
+            ckclassic = importlib.import_module("ckeditor_uploader.fields")
+            return ckclassic.RichTextUploadingField, True
         except ImportError:
-            print("⚠️ CKEditor no encontrado. Usando TextField simple.")
-            
-            class RichTextUploadingField(models.TextField):
+            logger.warning("CKEditor no encontrado: usando TextField como fallback.")
+
+            class RichTextUploadingField(models.TextField):  # type: ignore
                 def __init__(self, config_name=None, **kwargs):
-                    # Ignorar parámetros específicos de CKEditor
-                    kwargs.pop('config_name', None)
+                    kwargs.pop("config_name", None)
                     super().__init__(**kwargs)
-            
+
             return RichTextUploadingField, False
 
-# Obtener el campo apropiado
+
 RichTextUploadingField, CKEDITOR_AVAILABLE = get_rich_text_field()
 
 
+# ========= Choices =========
 class RouletteStatus(models.TextChoices):
-    DRAFT = 'draft', 'Borrador'
-    ACTIVE = 'active', 'Activa'
-    SCHEDULED = 'scheduled', 'Programada'
-    COMPLETED = 'completed', 'Completada'
-    CANCELLED = 'cancelled', 'Cancelada'
+    DRAFT = "draft", "Borrador"
+    ACTIVE = "active", "Activa"
+    SCHEDULED = "scheduled", "Programada"
+    COMPLETED = "completed", "Completada"
+    CANCELLED = "cancelled", "Cancelada"
 
 
 class DrawType(models.TextChoices):
-    MANUAL = 'manual', 'Manual'
-    SCHEDULED = 'scheduled', 'Programado'
-    AUTO = 'auto', 'Automático'
-    ADMIN = 'admin', 'Admin'
+    MANUAL = "manual", "Manual"
+    SCHEDULED = "scheduled", "Programado"
+    AUTO = "auto", "Automático"  # compat histórica
+    ADMIN = "admin", "Admin"
 
 
-def prize_image_upload_path(instance, filename):
-    """Path optimizado para imágenes de premios"""
-    ext = filename.split('.')[-1].lower()
-    new_filename = f"{uuid.uuid4().hex}.{ext}"
-    return f'roulette_prizes/{instance.roulette_id}/{new_filename}'
+# ========= Helpers de paths =========
+def prize_image_upload_path(instance: "RoulettePrize", filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower()
+    return f"roulette_prizes/{instance.roulette_id}/{uuid.uuid4().hex}.{ext}"
 
 
-def roulette_cover_upload_path(instance, filename):
-    """Path optimizado para portadas con UUID único"""
-    ext = filename.split('.')[-1].lower()
-    new_filename = f"{uuid.uuid4().hex}.{ext}"
-    return f'roulette_covers/{instance.id or uuid.uuid4().hex}/{new_filename}'
+def roulette_cover_upload_path(instance: "Roulette", filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower()
+    base = instance.id or uuid.uuid4().hex
+    return f"roulette_covers/{base}/{uuid.uuid4().hex}.{ext}"
 
 
+# ========= QuerySet/Manager =========
 class RouletteQuerySet(models.QuerySet):
-    """Custom QuerySet con métodos útiles"""
-    
     def active(self):
         return self.filter(status=RouletteStatus.ACTIVE)
-    
+
     def completed(self):
         return self.filter(status=RouletteStatus.COMPLETED)
-    
+
     def drawable(self):
-        """Ruletas que pueden ser sorteadas"""
-        return self.filter(
-            status__in=[RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED],
-            is_drawn=False,
-            participations__isnull=False
-        ).distinct()
-    
-    def with_participants_count(self):
-        """Anota el conteo de participantes"""
-        return self.annotate(
-            participants_count=models.Count('participations', distinct=True)
+        return (
+            self.filter(
+                status__in=[RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED],
+                is_drawn=False,
+                participations__isnull=False,
+            ).distinct()
         )
+
+    def with_participants_count(self):
+        return self.annotate(participants_count=models.Count("participations", distinct=True))
 
 
 class RouletteManager(models.Manager):
-    """Manager personalizado"""
-    
     def get_queryset(self):
         return RouletteQuerySet(self.model, using=self._db)
-    
+
     def active(self):
         return self.get_queryset().active()
-    
+
     def drawable(self):
         return self.get_queryset().drawable()
 
 
+# ========= Modelos =========
 class Roulette(models.Model):
-    """Modelo principal de Ruleta con todas las funcionalidades requeridas"""
-    
-    # Información básica
-    name = models.CharField(
-        max_length=150, 
-        db_index=True,
-        verbose_name="Título de la Ruleta",
-        help_text="Nombre descriptivo de la ruleta"
-    )
-    
-    # Slug para URLs amigables
+    """
+    Modelo principal de ruleta.
+    """
+
+    # Básico
+    name = models.CharField(max_length=150, db_index=True, verbose_name="Título de la Ruleta")
     slug = models.SlugField(max_length=160, unique=True, blank=True)
-    
-    # Descripción enriquecida con CKEditor
+
     description = RichTextUploadingField(
         blank=True,
-        default='',
+        default="",
         verbose_name="Descripción",
-        help_text='Descripción detallada de la ruleta. Puedes usar negrita, enlaces, imágenes, listas, etc.' + 
-                 (' (Editor enriquecido disponible)' if CKEDITOR_AVAILABLE else ' (Texto simple)'),
-        config_name='roulette_editor' if CKEDITOR_AVAILABLE else None
+        help_text=(
+            "Descripción detallada de la ruleta. Puedes usar negrita, enlaces, imágenes, listas, etc."
+            + (" (Editor enriquecido disponible)" if CKEDITOR_AVAILABLE else " (Texto simple)")
+        ),
+        config_name="roulette_editor" if CKEDITOR_AVAILABLE else None,
     )
 
-    # Imagen de portada
     cover_image = models.ImageField(
-        upload_to=roulette_cover_upload_path,
-        blank=True,
-        null=True,
-        verbose_name="Imagen de Portada",
-        help_text='Imagen principal que representa la ruleta (recomendado: 800x400px)'
+        upload_to=roulette_cover_upload_path, blank=True, null=True, verbose_name="Imagen de Portada"
     )
 
-    # Estado de la ruleta
     status = models.CharField(
-        max_length=12,
-        choices=RouletteStatus.choices,
-        default=RouletteStatus.DRAFT,
-        db_index=True,
-        verbose_name="Estado",
-        help_text="Estado actual de la ruleta"
-    )
-    
-    # Creador
-    created_by = models.ForeignKey(
-        User, 
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='roulettes_created',
-        db_index=True,
-        verbose_name="Creado por"
+        max_length=12, choices=RouletteStatus.choices, default=RouletteStatus.DRAFT, db_index=True
     )
 
-    # Fechas y horarios mejorados
-    participation_start = models.DateTimeField(
-        null=True, 
-        blank=True,
-        verbose_name="Inicio de Participación",
-        help_text="Fecha y hora desde cuando los usuarios pueden participar"
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="roulettes_created", db_index=True
     )
-    
-    participation_end = models.DateTimeField(
-        null=True, 
-        blank=True,
-        verbose_name="Fin de Participación", 
-        help_text="Fecha y hora límite para participar"
-    )
-    
-    scheduled_date = models.DateTimeField(
-        null=True, 
-        blank=True, 
-        verbose_name="Fecha Programada del Sorteo",
-        help_text="Fecha y hora exacta del sorteo automático",
-        db_index=True
-    )
-    
-    # Resultado del sorteo
-    drawn_at = models.DateTimeField(
-        null=True, 
-        blank=True, 
-        db_index=True,
-        verbose_name="Sorteado en"
-    )
-    drawn_by = models.ForeignKey(
-        User, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
-        related_name='roulettes_drawn',
-        verbose_name="Sorteado por"
-    )
-    
-    # Participación ganadora
+
+    # Fechas / planificación
+    participation_start = models.DateTimeField(null=True, blank=True)
+    participation_end = models.DateTimeField(null=True, blank=True)
+    scheduled_date = models.DateTimeField(null=True, blank=True, db_index=True)
+
+    # Resultado
+    drawn_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    drawn_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="roulettes_drawn")
     winner = models.ForeignKey(
-        Participation, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True, 
-        related_name='won_roulettes',
-        verbose_name="Ganador"
+        Participation, on_delete=models.SET_NULL, null=True, blank=True, related_name="won_roulettes"
     )
     is_drawn = models.BooleanField(default=False, db_index=True)
 
@@ -213,24 +166,142 @@ class Roulette(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Managers
     objects = RouletteManager()
 
     class Meta:
-        ordering = ['-created_at']
-        verbose_name = 'Ruleta'
-        verbose_name_plural = 'Ruletas'
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=['status', 'is_drawn']),
-            models.Index(fields=['scheduled_date', 'status']),
-            models.Index(fields=['participation_start', 'participation_end']),
+            models.Index(fields=["status", "is_drawn"]),
+            models.Index(fields=["scheduled_date", "status"]),
+            models.Index(fields=["participation_start", "participation_end"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} ({self.get_status_display()})"
 
+    # ----- Validaciones y guardado -----
+    def clean(self):
+        errors = {}
+        now = timezone.now()
+
+        if self.participation_start and self.participation_end:
+            if self.participation_start >= self.participation_end:
+                errors["participation_end"] = "La fecha de fin debe ser posterior al inicio."
+
+        if self.scheduled_date:
+            if self.scheduled_date <= now:
+                errors["scheduled_date"] = "La fecha programada debe ser futura."
+            if self.participation_end and self.scheduled_date <= self.participation_end:
+                errors["scheduled_date"] = "El sorteo debe ser después del fin de participación."
+
+        if errors:
+            raise ValidationError(errors)
+
+    # ===== Lógica de premios/ganadores =====
+    def available_awards_count(self) -> int:
+        """
+        Unidades disponibles: suma de stock de premios activos con stock>0.
+        """
+        return (
+            self.prizes.filter(is_active=True, stock__gt=0)
+            .aggregate(total=models.Sum("stock"))["total"]
+            or 0
+        )
+
+    def winners_target_effective(self) -> int:
+        """
+        Objetivo EFECTIVO (SOLO para UI):
+        - Si settings.winners_target == 0 -> usar stock DISPONIBLE como referencia visual.
+        - Si > 0 -> usar ese número.
+        - Si no hay settings -> 1.
+        NOTA: No usar este valor para bloquear el sorteo en modo automático.
+        """
+        settings = getattr(self, "settings", None)
+        if not settings:
+            return 1
+        if settings.winners_target == 0:
+            return max(self.available_awards_count(), 1)
+        return max(settings.winners_target, 1)
+
+    def winners_count(self) -> int:
+        qs = self.participations.filter(is_winner=True)
+        count = qs.count()
+        if self.winner_id and not qs.filter(pk=self.winner_id).exists():
+            count += 1
+        return count
+
+    def has_remaining_winners(self) -> bool:
+        """
+        ¿Quedan ganadores por seleccionar?
+        - Meta fija (>0): mientras winners_count < winners_target.
+        - Automático (0): mientras quede stock disponible.
+        (Utilidad general; no se usa para cerrar en reconciliación)
+        """
+        settings = getattr(self, "settings", None)
+        if settings and settings.winners_target and settings.winners_target > 0:
+            return self.winners_count() < max(settings.winners_target, 1)
+        return self.available_awards_count() > 0
+
+    def can_still_draw(self) -> bool:
+        eligibles = self.participations.filter(is_winner=False).exists()
+        awards_left = self.available_awards_count() > 0
+        return eligibles and awards_left and self.has_remaining_winners()
+
+    @transaction.atomic
+    def mark_completed(self, by_user=None):
+        changed = False
+        if self.status != RouletteStatus.COMPLETED:
+            self.status = RouletteStatus.COMPLETED
+            changed = True
+        if not self.is_drawn:
+            self.is_drawn = True
+            changed = True
+        if self.drawn_at is None:
+            self.drawn_at = timezone.now()
+            changed = True
+        if by_user and (self.drawn_by_id is None):
+            self.drawn_by = by_user
+            changed = True
+        if changed:
+            self.save(update_fields=["status", "is_drawn", "drawn_at", "drawn_by"])
+
+    @transaction.atomic
+    def reconcile_completion(self, by_user=None):
+        """
+        Cierra la ruleta SOLO bajo estas reglas:
+        - Si winners_target > 0: cerrar cuando winners_count >= winners_target.
+        - Si winners_target == 0 (modo stock): cerrar cuando available_awards_count() <= 0.
+        No cerrar por “meta” cuando aún queda stock en el modo automático.
+        """
+        settings = getattr(self, "settings", None)
+        target = 0
+        if settings and getattr(settings, "winners_target", None) is not None:
+            target = int(settings.winners_target or 0)
+
+        winners = self.winners_count()
+        available_units = self.available_awards_count()
+
+        if target > 0:
+            done = winners >= target
+        else:
+            done = available_units <= 0
+
+        if done:
+            self.mark_completed(by_user=by_user)
+        else:
+            # Aún se puede seguir sorteando; aseguramos que no quede marcada como “cerrada”
+            updates = {}
+            if self.status == RouletteStatus.COMPLETED:
+                self.status = RouletteStatus.ACTIVE
+                updates["status"] = RouletteStatus.ACTIVE
+            if self.is_drawn:
+                self.is_drawn = False
+                updates["is_drawn"] = False
+            if updates:
+                self.save(update_fields=list(updates.keys()))
+
     def save(self, *args, **kwargs):
-        # Auto-generar slug si no existe
+        # Slug único si no existe
         if not self.slug:
             base_slug = slugify(self.name)
             slug = base_slug
@@ -239,342 +310,327 @@ class Roulette(models.Model):
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
-        
-        # Lógica de estado automático
-        if self.winner and not self.is_drawn:
-            self.is_drawn = True
-            if not self.drawn_at:
-                self.drawn_at = timezone.now()
-            if self.status != RouletteStatus.COMPLETED:
-                self.status = RouletteStatus.COMPLETED
-        
+
+        # Autocierre (mismas reglas que reconcile_completion)
+        if self.pk:
+            settings = getattr(self, "settings", None)
+            target = int(getattr(settings, "winners_target", 0) or 0)
+            if target > 0:
+                if (not self.is_drawn) and self.winners_count() >= max(target, 1):
+                    self.is_drawn = True
+                    self.drawn_at = self.drawn_at or timezone.now()
+                    if self.status != RouletteStatus.COMPLETED:
+                        self.status = RouletteStatus.COMPLETED
+            else:
+                # Automático: cerrar SOLO cuando ya no quede stock
+                if (not self.is_drawn) and self.available_awards_count() <= 0:
+                    self.is_drawn = True
+                    self.drawn_at = self.drawn_at or timezone.now()
+                    if self.status != RouletteStatus.COMPLETED:
+                        self.status = RouletteStatus.COMPLETED
+
         super().save(*args, **kwargs)
 
-    def clean(self):
-        """Validaciones mejoradas"""
-        errors = {}
-        now = timezone.now()
-        
-        # Validar fechas de participación
-        if self.participation_start and self.participation_end:
-            if self.participation_start >= self.participation_end:
-                errors['participation_end'] = 'La fecha de fin debe ser posterior al inicio.'
-        
-        # Validar fecha programada
-        if self.scheduled_date:
-            if self.scheduled_date <= now:
-                errors['scheduled_date'] = 'La fecha programada debe ser futura.'
-            
-            # La fecha programada debe ser después del fin de participación
-            if self.participation_end and self.scheduled_date <= self.participation_end:
-                errors['scheduled_date'] = 'El sorteo debe ser después del fin de participación.'
-        
-        if errors:
-            raise ValidationError(errors)
-
-    # Métodos de participantes
+    # ----- Utilidades participantes/estado -----
     def get_participants_count(self) -> int:
-        """Conteo optimizado de participantes"""
-        if hasattr(self, '_participants_count'):
-            return self._participants_count
+        if "participants_count" in self.__dict__:
+            try:
+                return int(self.__dict__["participants_count"])
+            except (TypeError, ValueError):
+                pass
         return self.participations.count()
 
     def get_participants_list(self):
-        """Lista optimizada de participantes"""
-        return self.participations.select_related('user').order_by('participant_number')
+        return self.participations.select_related("user").order_by("participant_number")
 
-    # Propiedades de estado
-    @property
-    def can_be_drawn_manually(self) -> bool:
-        """Verifica si se puede sortear manualmente"""
+    # Método explícito (y mantener la property por compat)
+    def can_be_drawn_manually_method(self) -> bool:
+        """
+        Manual:
+        - Meta fija (>0): permitido mientras winners_count < target.
+        - Automático (0): permitido mientras available_awards_count() > 0.
+        Además, requiere que existan participantes elegibles.
+        """
         if self.is_drawn or self.status == RouletteStatus.COMPLETED:
             return False
-        return self.participations.exists()
-    
+        if not self.participations.exists():
+            return False
+
+        settings = getattr(self, "settings", None)
+        target = int(getattr(settings, "winners_target", 0) or 0)
+
+        eligibles = self.participations.filter(is_winner=False).exists()
+        if not eligibles:
+            return False
+
+        if target > 0:
+            return self.winners_count() < max(target, 1)
+        return self.available_awards_count() > 0
+
+    @property
+    def can_be_drawn_manually(self) -> bool:
+        # compat con código existente
+        return self.can_be_drawn_manually_method()
+
     @property
     def is_scheduled_ready(self) -> bool:
-        """Verifica si está lista para sorteo programado"""
-        if not self.scheduled_date:
-            return False
-        return (
-            timezone.now() >= self.scheduled_date and 
-            not self.is_drawn and 
-            self.status in [RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED]
+        return bool(
+            self.scheduled_date
+            and timezone.now() >= self.scheduled_date
+            and not self.is_drawn
+            and self.status in [RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED]
         )
-    
+
     @property
     def participation_is_open(self) -> bool:
-        """Verifica si está abierta la participación"""
         now = timezone.now()
-        
-        # Verificar estado
         if self.status not in [RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED]:
             return False
-        
-        # Verificar si ya fue sorteada
         if self.is_drawn:
             return False
-        
-        # Verificar fechas
         if self.participation_start and now < self.participation_start:
             return False
-            
         if self.participation_end and now > self.participation_end:
             return False
-            
         return True
 
     @property
     def participants_count(self) -> int:
-        """Alias para get_participants_count()"""
         return self.get_participants_count()
 
-    # Métodos de negocio
-    def can_participate(self, user) -> tuple[bool, str]:
-        """Verifica si un usuario puede participar"""
+    def can_participate(self, user: AbstractUser) -> tuple[bool, str]:
         if not self.participation_is_open:
             if self.is_drawn:
                 return False, "El sorteo ya fue realizado"
-            elif self.status not in [RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED]:
+            if self.status not in [RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED]:
                 return False, "La ruleta no está disponible para participación"
-            else:
-                now = timezone.now()
-                if self.participation_start and now < self.participation_start:
-                    return False, f"La participación inicia el {self.participation_start.strftime('%d/%m/%Y %H:%M')}"
-                elif self.participation_end and now > self.participation_end:
-                    return False, "El período de participación ha terminado"
-        
-        settings = getattr(self, 'settings', None)
+
+            now = timezone.now()
+            if self.participation_start and now < self.participation_start:
+                return False, f"La participación inicia el {self.participation_start:%d/%m/%Y %H:%M}"
+            if self.participation_end and now > self.participation_end:
+                return False, "El período de participación ha terminado"
+
+        settings = getattr(self, "settings", None)
         if not settings:
             return False, "Configuración faltante"
-        
+
         current_count = self.participations.count()
         if settings.max_participants > 0 and current_count >= settings.max_participants:
             return False, "Se alcanzó el límite de participantes"
-        
-        if not settings.allow_multiple_entries:
-            if self.participations.filter(user=user).exists():
-                return False, "Ya estás participando en esta ruleta"
-        
+
+        if not settings.allow_multiple_entries and self.participations.filter(user=user).exists():
+            return False, "Ya estás participando en esta ruleta"
+
         return True, "OK"
 
     @transaction.atomic
-    def draw_winner(self, drawn_by_user=None, draw_type=DrawType.MANUAL):
-        """Método mejorado para sortear ganador"""
-        if not self.can_be_drawn_manually:
-            raise ValidationError("No se puede realizar el sorteo")
-        
-        participants = list(self.participations.select_related('user'))
-        if not participants:
+    def draw_winner(self, drawn_by_user: AbstractUser | None = None, draw_type: str = DrawType.MANUAL):
+        if self.is_drawn:
+            raise ValidationError("No se puede realizar el sorteo: la ruleta ya fue completada.")
+        if not self.participations.exists():
             raise ValidationError("No hay participantes")
-        
-        # Generar semilla reproducible
+
+        candidates = list(self.participations.select_related("user").filter(is_winner=False))
+        if not candidates:
+            raise ValidationError("No quedan participantes elegibles para ganar.")
+
         import random
         seed_data = f"{self.id}-{timezone.now().isoformat()}"
         seed = hashlib.sha256(seed_data.encode()).hexdigest()
         random.seed(seed)
-        
-        winner_participation = random.choice(participants)
-        
-        # Actualizar estado
-        self.winner = winner_participation
+
+        winner_participation = random.choice(candidates)
+
+        winner_participation.is_winner = True
+        winner_participation.save(update_fields=["is_winner"])
+
+        if not self.winner_id:
+            self.winner = winner_participation
+
         self.drawn_by = drawn_by_user
-        self.drawn_at = timezone.now()
-        self.is_drawn = True
-        self.status = RouletteStatus.COMPLETED
-        self.save()
-        
-        # Crear historial
+        self.save()  # autocierre solo si corresponde (según reglas de arriba)
+
         DrawHistory.objects.create(
             roulette=self,
             winner_selected=winner_participation,
             drawn_by=drawn_by_user,
             draw_type=draw_type,
-            participants_count=len(participants),
-            random_seed=seed
+            participants_count=self.participations.count(),
+            random_seed=seed,
         )
-        
-        logger.info(f"Ruleta {self.name} sorteada. Ganador: {winner_participation}")
+
+        logger.info("Ruleta %s: ganador %s", self.name, winner_participation)
         return winner_participation
+
+    @transaction.atomic
+    def draw_winners(self, n: int, drawn_by_user: AbstractUser | None = None, draw_type: str = DrawType.MANUAL) -> List[Participation]:
+        if n <= 0:
+            return []
+
+        if self.is_drawn:
+            raise ValidationError("No se puede realizar el sorteo: la ruleta ya fue completada.")
+
+        total_candidates_qs = self.participations.select_related("user").filter(is_winner=False)
+        total_candidates = total_candidates_qs.count()
+        if total_candidates == 0:
+            raise ValidationError("No quedan participantes elegibles para ganar.")
+
+        # Calcular límite por meta fija; en auto limitamos por stock disponible
+        settings = getattr(self, "settings", None)
+        if settings and settings.winners_target and settings.winners_target > 0:
+            target = max(settings.winners_target, 1)
+            already = self.winners_count()
+            remaining_target = max(target - already, 0)
+            picks = min(n, total_candidates, remaining_target)
+        else:
+            # Auto: picks limitado por stock disponible y candidatos
+            picks = min(n, total_candidates, max(self.available_awards_count(), 0))
+
+        import random
+        seed_base = hashlib.sha256(f"{self.id}-{timezone.now().isoformat()}".encode()).hexdigest()
+        random.seed(seed_base)
+
+        winners: List[Participation] = []
+        pool = list(total_candidates_qs)
+
+        notify_flag = True
+        try:
+            s = getattr(self, "settings", None)
+            if s:
+                notify_flag = bool(s.notify_on_draw)
+        except Exception:
+            notify_flag = True
+
+        for i in range(min(picks, len(pool))):
+            seed_i = hashlib.sha256(f"{seed_base}-{i}".encode()).hexdigest()
+            random.seed(seed_i)
+
+            choice = random.choice(pool)
+            pool.remove(choice)
+
+            choice.is_winner = True
+            if hasattr(choice, "won_at"):
+                choice.won_at = timezone.now()
+                choice.save(update_fields=["is_winner", "won_at"])
+            else:
+                choice.save(update_fields=["is_winner"])
+
+            if not self.winner_id:
+                self.winner = choice
+
+            prize = (
+                self.prizes.select_for_update()
+                .filter(is_active=True, stock__gt=0)
+                .order_by("display_order", "id")
+                .first()
+            )
+            if prize:
+                new_stock = int(prize.stock) - 1
+                prize.stock = new_stock if new_stock >= 0 else 0
+                if prize.stock <= 0 and prize.is_active:
+                    prize.is_active = False
+                prize.save(update_fields=["stock", "is_active"])
+
+            DrawHistory.objects.create(
+                roulette=self,
+                winner_selected=choice,
+                drawn_by=drawn_by_user,
+                draw_type=draw_type,
+                participants_count=self.participations.count(),
+                random_seed=seed_i,
+            )
+
+            try:
+                if notify_flag and NotificationService:
+                    prize_details = ""
+                    if prize:
+                        desc = (prize.description or "").strip()
+                        prize_details = f"Premio: {prize.name}" + (f". {desc}" if desc else "")
+                    NotificationService.create_winner_announcement(
+                        winner_user=choice.user,
+                        roulette_name=self.name,
+                        roulette_id=self.id,
+                        total_participants=self.participations.count(),
+                        prize_details=prize_details,
+                    )
+            except Exception:
+                logger.warning("Fallo al notificar ganador múltiple", exc_info=True)
+
+            winners.append(choice)
+
+        self.drawn_by = drawn_by_user
+        self.save()
+        logger.info("Ruleta %s: %d ganadores seleccionados", self.name, len(winners))
+        return winners
 
 
 class RouletteSettings(models.Model):
-    """Configuración detallada de la ruleta"""
-    
-    roulette = models.OneToOneField(
-        Roulette, 
-        on_delete=models.CASCADE, 
-        related_name='settings'
-    )
-    
-    # Límites de participación
-    max_participants = models.PositiveIntegerField(
-        default=0, 
-        help_text='0 = sin límite',
-        validators=[MinValueValidator(0)],
-        verbose_name="Máximo de participantes"
-    )
-    allow_multiple_entries = models.BooleanField(
-        default=False,
-        verbose_name="Permitir múltiples participaciones",
-        help_text="Permite que el mismo usuario participe varias veces"
-    )
-    
-    # Configuración adicional
-    auto_draw_when_full = models.BooleanField(
-        default=False,
-        verbose_name="Sortear automáticamente al llenarse",
-        help_text='Ejecutar sorteo automático cuando se alcance el límite de participantes'
-    )
-    
-    # Configuración de cronómetro/temporizador
-    show_countdown = models.BooleanField(
-        default=True,
-        verbose_name="Mostrar cronómetro",
-        help_text="Mostrar cuenta regresiva para el sorteo"
-    )
-    
-    # Configuración de notificaciones
-    notify_on_participation = models.BooleanField(
-        default=True,
-        verbose_name="Notificar nuevas participaciones"
-    )
-    
-    notify_on_draw = models.BooleanField(
-        default=True,
-        verbose_name="Notificar resultado del sorteo"
-    )
+    roulette = models.OneToOneField(Roulette, on_delete=models.CASCADE, related_name="settings")
 
-    def __str__(self):
-        return f'Configuración: {self.roulette.name}'
-    
+    max_participants = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+    allow_multiple_entries = models.BooleanField(default=False)
+
+    show_countdown = models.BooleanField(default=True)
+
+    notify_on_participation = models.BooleanField(default=True)
+    notify_on_draw = models.BooleanField(default=True)
+
+    # 0 = automático (cierra por stock); >0 = meta fija de ganadores
+    winners_target = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+
+    def __str__(self) -> str:
+        return f"Configuración: {self.roulette.name}"
+
     def clean(self):
-        """Validaciones de configuración"""
-        errors = {}
-        
         if self.max_participants < 0:
-            errors['max_participants'] = 'No puede ser negativo'
-            
-        if errors:
-            raise ValidationError(errors)
+            raise ValidationError({"max_participants": "No puede ser negativo"})
 
 
 class DrawHistory(models.Model):
-    """Historial detallado de sorteos"""
-    
-    roulette = models.ForeignKey(
-        Roulette, 
-        on_delete=models.CASCADE, 
-        related_name='draw_history'
-    )
+    roulette = models.ForeignKey(Roulette, on_delete=models.CASCADE, related_name="draw_history")
     winner_selected = models.ForeignKey(
-        Participation, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        related_name='draw_history'
+        Participation, on_delete=models.SET_NULL, null=True, related_name="draw_history"
     )
-    drawn_by = models.ForeignKey(
-        User, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        related_name='draws_made'
-    )
-    draw_type = models.CharField(
-        max_length=20, 
-        choices=DrawType.choices,
-        default=DrawType.MANUAL
-    )
+    drawn_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="draws_made")
+    draw_type = models.CharField(max_length=20, choices=DrawType.choices, default=DrawType.MANUAL)
     drawn_at = models.DateTimeField(default=timezone.now, db_index=True)
     participants_count = models.PositiveIntegerField(default=0)
-    random_seed = models.CharField(max_length=64, blank=True, default='')
-    
-    # Metadatos adicionales para auditoría
+    random_seed = models.CharField(max_length=64, blank=True, default="")
     ip_address = models.GenericIPAddressField(null=True, blank=True)
-    user_agent = models.TextField(blank=True, default='')
+    user_agent = models.TextField(blank=True, default="")
 
     class Meta:
-        ordering = ['-drawn_at']
-        verbose_name = 'Historial de Sorteo'
-        verbose_name_plural = 'Historial de Sorteos'
+        ordering = ["-drawn_at"]
 
-    def __str__(self):
-        return f'[{self.drawn_at:%Y-%m-%d %H:%M}] {self.roulette.name}'
+    def __str__(self) -> str:
+        return f"[{self.drawn_at:%Y-%m-%d %H:%M}] {self.roulette.name}"
 
 
 class RoulettePrize(models.Model):
-    """Premios de la ruleta con soporte para múltiples premios e imágenes"""
-    
-    roulette = models.ForeignKey(
-        Roulette, 
-        on_delete=models.CASCADE, 
-        related_name='prizes'
-    )
-    name = models.CharField(
-        max_length=120, 
-        db_index=True,
-        verbose_name="Nombre del Premio"
-    )
-    description = models.TextField(
-        blank=True, 
-        default='',
-        verbose_name="Descripción del Premio",
-        help_text="Descripción detallada del premio"
-    )
-    image = models.ImageField(
-        upload_to=prize_image_upload_path, 
-        blank=True, 
-        null=True,
-        verbose_name="Imagen del Premio",
-        help_text="Foto del premio (recomendado: 400x400px)"
-    )
-    
-    # Inventario y probabilidades
-    stock = models.PositiveIntegerField(
-        default=1,
-        validators=[MinValueValidator(0)],
-        verbose_name="Stock disponible",
-        help_text="Cantidad disponible de este premio"
-    )
-    probability = models.DecimalField(
-        max_digits=5, 
-        decimal_places=2, 
-        default=0,
-        validators=[MinValueValidator(0), MaxValueValidator(100)],
-        help_text='Probabilidad 0-100% (opcional)',
-        verbose_name="Probabilidad"
-    )
-    
-    # Orden de visualización
-    display_order = models.PositiveIntegerField(
-        default=0,
-        verbose_name="Orden de visualización",
-        help_text="Orden en que se muestra el premio (menor número = primero)"
-    )
-    
-    # Estado del premio
-    is_active = models.BooleanField(
-        default=True,
-        verbose_name="Activo",
-        help_text="Si está disponible para ser ganado"
-    )
-    
-    # Metadatos
+    roulette = models.ForeignKey(Roulette, on_delete=models.CASCADE, related_name="prizes")
+    name = models.CharField(max_length=120, db_index=True)
+    description = models.TextField(blank=True, default="")
+    image = models.ImageField(upload_to=prize_image_upload_path, blank=True, null=True)
+
+    stock = models.PositiveIntegerField(default=1, validators=[MinValueValidator(0)])
+
+    display_order = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['display_order', '-created_at']
-        verbose_name = 'Premio de Ruleta'
-        verbose_name_plural = 'Premios de Ruleta'
+        ordering = ["display_order", "-created_at"]
         indexes = [
-            models.Index(fields=['roulette', 'is_active']),
-            models.Index(fields=['display_order']),
+            models.Index(fields=["roulette", "is_active"]),
+            models.Index(fields=["display_order"]),
         ]
 
-    def __str__(self):
-        return f'{self.name} ({self.roulette.name})'
-    
+    def __str__(self) -> str:
+        return f"{self.name} ({self.roulette.name})"
+
     @property
     def is_available(self) -> bool:
-        """Verifica si el premio está disponible"""
-        return self.is_active and self.stock > 0
+        return bool(self.is_active and self.stock > 0)

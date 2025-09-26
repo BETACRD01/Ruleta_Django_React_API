@@ -1,551 +1,601 @@
+// src/pages/Home.jsx — Home público SIN login/registro (colores sólidos + animaciones)
 import React from "react";
-import {
-  Sparkles, Shield, Bell, Award, UserPlus, Key
-} from "lucide-react";
-import { useAuthNotifications } from "../contexts/NotificationContext";
+import { Shield, Bell, Sparkles, Award, Trophy, Activity, Users, Gift, Clock, Star } from "lucide-react";
+import { publicAPI } from "../config/publicApi";
+import { useAuth } from "../contexts/AuthContext";
+import RouletteCard from "../components/public/RouletteCard";
 
-// ✅ Usa tu API real
-import { AuthAPI } from "../config/api"; // maneja tokens/errores (login/register/reset)
-const authAPI = new AuthAPI();
+/* ---------- Paleta centralizada (sólidos) ---------- */
+const COLORS = {
+  brandDark: "#003049",
+  brandRed:  "#D62829",
+  brandMint: "#4dc9b1",
+  brandTeal: "#389fae",
+  brandBlue: "#0b56a7",
+  text:      "#0f172a",
+  muted:     "#475569",
+  card:      "rgba(255,255,255,0.90)",
+  border:    "rgba(226,232,240,0.7)",
+};
 
-const LoginForm = ({ onSubmit }) => {
-  const [currentView, setCurrentView] = React.useState("login");
-  const [formData, setFormData] = React.useState({
-    email: "",
-    password: "",
-    confirmPassword: "",
-    username: "",
-    firstName: "",
-    lastName: "",
-    rememberMe: false,
-  });
-  const [showPassword, setShowPassword] = React.useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
+/* ---------- UI helpers ---------- */
+const FeatureCard = ({ color, Icon, title, sub }) => (
+  <div
+    className="flex items-center gap-4 p-5 rounded-2xl border transition-all duration-300 group will-change-transform"
+    style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, transform: "translateZ(0)" }}
+    onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-4px)")}
+    onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0)")}
+  >
+    <div
+      className="rounded-xl p-3 shrink-0 shadow-sm transition-shadow duration-300"
+      style={{ backgroundColor: color, boxShadow: "0 6px 18px rgba(0,0,0,0.08)" }}
+    >
+      <Icon className="h-6 w-6 text-white" />
+    </div>
+    <div className="min-w-0">
+      <h3 className="font-bold text-lg" style={{ color: COLORS.text }}>{title}</h3>
+      <p className="text-sm leading-relaxed" style={{ color: COLORS.muted }}>{sub}</p>
+    </div>
+  </div>
+);
+
+const Pill = ({ label, value, color = COLORS.brandDark }) => (
+  <div
+    className="rounded-2xl border-2 px-6 py-5 transition-all duration-200"
+    style={{
+      borderColor: "rgba(255,255,255,0.8)",
+      backgroundColor: "rgba(255,255,255,0.95)",
+      boxShadow: "0 10px 24px rgba(2, 8, 23, 0.05)",
+    }}
+  >
+    <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: COLORS.muted }}>{label}</p>
+    <p className="text-3xl font-black" style={{ color }}>{value}</p>
+  </div>
+);
+
+const SkeletonCard = () => (
+  <div className="rounded-2xl border p-5 animate-pulse" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+    <div className="h-36 bg-gray-200 rounded-xl mb-4"></div>
+    <div className="h-5 bg-gray-200 rounded mb-3"></div>
+    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+  </div>
+);
+
+/* ---------- Card: Actividad & Ganadores ---------- */
+function WinnersAndActivityCard() {
+  const { token } = useAuth();
+  const [tab, setTab] = React.useState("actividad");
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
 
-  // Notificaciones UI (toast/snackbar) desde tu contexto
-  const {
-    handleLoginSuccess,
-    handleRegisterSuccess,
-    handlePasswordResetSuccess,
-    handleAuthError,
-  } = useAuthNotifications();
+  const [metrics, setMetrics] = React.useState({
+    roulettes_total: 0,
+    active_roulettes: 0,
+    winners_total: 0,
+    participants_total: 0
+  });
+  const [winners, setWinners] = React.useState([]);
+  const [roulettes, setRoulettes] = React.useState([]);
+  const [serverTime, setServerTime] = React.useState(null);
 
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
-    if (error) setError("");
-  };
+  React.useEffect(() => {
+    let isCancelled = false;
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (!formData.email || !formData.password) {
-      setError("Por favor completa todos los campos");
-      return;
-    }
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setError("");
 
-    try {
-      setLoading(true);
-      setError("");
+        const [metricsResult, winnersResult, roulettesResult] = await Promise.allSettled([
+          publicAPI.getPublicMetrics(),
+          publicAPI.getPublicDrawHistory({ page_size: 8 }),
+          publicAPI.getPublicRoulettes({ page_size: 6, status: "active" }),
+        ]);
 
-      if (onSubmit) {
-        await onSubmit(formData);
-      } else {
-        const result = await authAPI.login({
-          email: formData.email,
-          password: formData.password,
-        });
-        if (result?.success && result?.token) {
-          localStorage.setItem("authToken", result.token);
-          if (result.user) localStorage.setItem("user", JSON.stringify(result.user));
-          handleLoginSuccess(result);
-          // Evita parpadeos: da tiempo al toast y luego recarga
-          setTimeout(() => window.location.reload(), 1200);
+        if (isCancelled) return;
+
+        if (metricsResult.status === "fulfilled") {
+          const m = metricsResult.value;
+          setMetrics({
+            roulettes_total:   m.roulettes_total   || 0,
+            active_roulettes:  m.active_roulettes  || 0,
+            winners_total:     m.winners_total     || 0,
+            participants_total:m.participants_total|| 0,
+          });
+          setServerTime(m.server_time);
         }
+
+        if (winnersResult.status === "fulfilled") {
+          const data = winnersResult.value;
+          setWinners(
+            Array.isArray(data.results)
+              ? data.results.map((d, i) => ({
+                  id: d.id || `winner-${i}`,
+                  roulette_name: d.roulette_name || "Sorteo",
+                  winner_name: d.winner_name || "Ganador",
+                  created_at: d.draw_date || new Date().toISOString(),
+                  participants_count: d.participants_count || 0,
+                  draw_type: d.draw_type || "manual",
+                }))
+              : []
+          );
+        } else {
+          setWinners([]);
+        }
+
+        if (roulettesResult.status === "fulfilled") {
+          const data = roulettesResult.value;
+          const actives = Array.isArray(data.results)
+            ? data.results.filter(
+                r => r.participation_is_open === true || r.status === "active" || r.status === "scheduled"
+              )
+            : [];
+          setRoulettes(actives);
+        } else {
+          setRoulettes([]);
+        }
+      } catch (e) {
+        if (!isCancelled) {
+          setError(e?.message || "Error cargando datos");
+          setMetrics({ roulettes_total: 0, active_roulettes: 0, winners_total: 0, participants_total: 0 });
+          setWinners([]);
+          setRoulettes([]);
+        }
+      } finally {
+        if (!isCancelled) setLoading(false);
       }
-    } catch (err) {
-      const msg = err?.message || "Error al iniciar sesión";
-      setError(msg);
-      handleAuthError(err, "inicio de sesión");
-    } finally {
-      setLoading(false);
-    }
+    };
+
+    loadData();
+    return () => { isCancelled = true; };
+  }, [token]);
+
+  const handleRouletteClick = (roulette) => {
+    console.log("Clicked roulette:", roulette);
   };
-
-  const handleRegister = async (e) => {
-    e.preventDefault();
-
-    if (!formData.email || !formData.password || !formData.username || !formData.firstName || !formData.lastName) {
-      setError("Por favor completa todos los campos");
-      return;
-    }
-    if (formData.password !== formData.confirmPassword) {
-      setError("Las contraseñas no coinciden");
-      return;
-    }
-    if (formData.password.length < 8) {
-      setError("La contraseña debe tener al menos 8 caracteres");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError("");
-
-      const result = await authAPI.register({
-        username: formData.username,
-        email: formData.email,
-        password: formData.password,
-        password_confirm: formData.confirmPassword,
-        first_name: formData.firstName,
-        last_name: formData.lastName,
-      });
-
-      // 🔧 Backend devuelve el usuario directamente (201) sin { success }
-      // Envolvemos en { user: ... } para que el hook muestre el toast correctamente
-      handleRegisterSuccess({ user: result });
-
-      setFormData((prev) => ({
-        ...prev,
-        password: "",
-        confirmPassword: "",
-        username: "",
-        firstName: "",
-        lastName: "",
-        rememberMe: false,
-      }));
-      setTimeout(() => setCurrentView("login"), 1200);
-    } catch (err) {
-      const msg = err?.message || "Error al registrarse";
-      setError(msg);
-      handleAuthError(err, "registro");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handlePasswordReset = async (e) => {
-    e.preventDefault();
-    if (!formData.email) {
-      setError("Por favor ingresa tu correo electrónico");
-      return;
-    }
-    try {
-      setLoading(true);
-      setError("");
-      await authAPI.requestPasswordReset(formData.email);
-      handlePasswordResetSuccess(formData.email);
-      setTimeout(() => setCurrentView("login"), 1200);
-    } catch (err) {
-      const msg = err?.message || "Error al solicitar recuperación de contraseña";
-      setError(msg);
-      handleAuthError(err, "recuperación de contraseña");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Header de la tarjeta (color sólido por vista)
-  const header = React.useMemo(() => {
-    switch (currentView) {
-      case "register":
-        return { title: "Crear Cuenta", sub: "Únete a nuestra plataforma", color: "#389fae", Icon: UserPlus };
-      case "reset":
-        return { title: "Recuperar Contraseña", sub: "Te ayudamos a recuperarla", color: "#4dc9b1", Icon: Key };
-      default:
-        return { title: "Iniciar Sesión", sub: "Accede a tu cuenta", color: "#0b56a7", Icon: Sparkles };
-    }
-  }, [currentView]);
 
   return (
     <div
-      className="
-        w-full
-        max-w-[min(420px,100%)]
-        bg-white/95 backdrop-blur-sm
-        rounded-2xl shadow-2xl
-        p-6 sm:p-8
-        border border-white/20
-      "
+      className="rounded-3xl border-2 p-8 shadow-xl hover:shadow-2xl transition-all duration-300"
+      style={{ borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.92)" }}
     >
-      {/* Cabecera */}
-      <div className="text-center mb-8">
-        <div
-          className="rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center shadow-lg"
-          style={{ backgroundColor: header.color }}
-        >
-          <header.Icon className="h-8 w-8 text-white" />
+      {/* Header */}
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="rounded-2xl p-3 text-white shadow-lg" style={{ backgroundColor: COLORS.brandDark }}>
+            <Trophy size={24} />
+          </div>
+          <h3 className="text-2xl font-black" style={{ color: COLORS.text }}>Actividad & Ganadores</h3>
         </div>
-        <h2
-          className="font-bold mb-2"
-          style={{ color: "#0b56a7", fontSize: "clamp(1.25rem, 1vw + 1rem, 1.75rem)" }}
+        <span
+          className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white shadow-md"
+          style={{ backgroundColor: COLORS.brandRed }}
         >
-          {header.title}
-        </h2>
-        <p className="text-gray-600" style={{ fontSize: "clamp(.9rem, .5vw + .7rem, 1rem)" }}>
-          {header.sub}
-        </p>
+          <Activity size={16} />
+          En vivo
+        </span>
       </div>
 
-      {/* Errores */}
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-6 mb-8">
+        {loading ? (
+          <>
+            <div className="rounded-2xl border px-6 py-5 animate-pulse" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+              <div className="h-4 bg-gray-200 rounded mb-3"></div>
+              <div className="h-8 bg-gray-200 rounded"></div>
+            </div>
+            <div className="rounded-2xl border px-6 py-5 animate-pulse" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
+              <div className="h-4 bg-gray-200 rounded mb-3"></div>
+              <div className="h-8 bg-gray-200 rounded"></div>
+            </div>
+          </>
+        ) : (
+          <>
+            <Pill label="Ruletas Activas" value={metrics.active_roulettes || 0} color={COLORS.brandDark} />
+            <Pill label="Total Ganadores" value={metrics.winners_total || 0} color={COLORS.brandRed} />
+          </>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div
+        className="mb-6 inline-flex rounded-2xl p-1.5 shadow-inner border-2"
+        style={{ backgroundColor: "rgba(255,255,255,0.95)", borderColor: COLORS.border }}
+      >
+        <button
+          onClick={() => setTab("actividad")}
+          className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-200 ${
+            tab === "actividad" ? "text-white shadow-lg transform scale-105" : "hover:bg-gray-50"
+          }`}
+          style={{ backgroundColor: tab === "actividad" ? COLORS.brandDark : "transparent", color: tab === "actividad" ? "#fff" : COLORS.muted }}
+        >
+          Ruletas Activas ({roulettes.length})
+        </button>
+        <button
+          onClick={() => setTab("ganadores")}
+          className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-200 ${
+            tab === "ganadores" ? "text-white shadow-lg transform scale-105" : "hover:bg-gray-50"
+          }`}
+          style={{ backgroundColor: tab === "ganadores" ? COLORS.brandDark : "transparent", color: tab === "ganadores" ? "#fff" : COLORS.muted }}
+        >
+          Ganadores ({winners.length})
+        </button>
+      </div>
+
+      {/* Error */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-          <p className="text-red-700 text-sm">{error}</p>
+        <div
+          className="rounded-2xl border-2 px-6 py-4 text-sm mb-6"
+          style={{ borderColor: "rgb(254,202,202)", backgroundColor: "rgba(254,226,226,0.8)", color: "#991b1b" }}
+        >
+          <div className="font-bold mb-2">Error al cargar datos</div>
+          <div className="mb-3">{error}</div>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-xs font-semibold underline hover:no-underline px-3 py-1 rounded-lg"
+            style={{ backgroundColor: "rgba(254,202,202,0.5)" }}
+          >
+            Recargar página
+          </button>
         </div>
       )}
 
-      {/* VISTA: LOGIN */}
-      {currentView === "login" && (
-        <form className="space-y-6" onSubmit={handleLogin}>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Correo electrónico</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              placeholder="tu@email.com"
-              className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#0b56a7] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={loading}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Contraseña</label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                name="password"
-                value={formData.password}
-                onChange={handleInputChange}
-                placeholder="••••••••••"
-                className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#0b56a7] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-                disabled={loading}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#0b56a7] transition-colors"
-                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-              >
-                {showPassword ? "🙈" : "👁️"}
-              </button>
+      {/* Actividad */}
+      {!error && tab === "actividad" && (
+        <div>
+          {loading ? (
+            <div className="grid gap-6">
+              <SkeletonCard />
+              <SkeletonCard />
             </div>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <label className="flex items-center">
-              <input
-                type="checkbox"
-                name="rememberMe"
-                checked={formData.rememberMe}
-                onChange={handleInputChange}
-                className="w-4 h-4 border-2 border-gray-300 rounded focus:ring-2"
-                style={{ "--tw-ring-color": "#0b56a7", accentColor: "#0b56a7" }}
-                disabled={loading}
-              />
-              <span className="ml-2 text-sm text-gray-600">Recordarme</span>
-            </label>
-            <button
-              type="button"
-              className="text-sm font-medium"
-              style={{ color: "#4dc9b1" }}
-              onClick={() => setCurrentView("reset")}
+          ) : roulettes.length === 0 ? (
+            <div
+              className="rounded-2xl border-2 px-6 py-12 text-center"
+              style={{ borderColor: COLORS.border, backgroundColor: "rgba(248,250,252,0.9)" }}
             >
-              ¿Olvidaste tu contraseña?
-            </button>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading || !formData.email || !formData.password}
-            className="w-full text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]"
-            style={{ backgroundColor: loading || !formData.email || !formData.password ? "#9ca3af" : "#0b56a7" }}
-          >
-            {loading ? "Iniciando sesión..." : "Entrar ✨"}
-          </button>
-
-          <p className="text-center text-gray-600 text-sm">
-            ¿No tienes cuenta?{" "}
-            <button type="button" onClick={() => setCurrentView("register")} className="font-semibold" style={{ color: "#389fae" }}>
-              Regístrate gratis
-            </button>
-          </p>
-        </form>
+              <div className="text-6xl mb-4">🎰</div>
+              <p className="text-lg font-bold mb-2" style={{ color: COLORS.text }}>¡No hay ruletas activas ahora!</p>
+              <p className="text-sm" style={{ color: COLORS.muted }}>Vuelve pronto para participar en nuevos sorteos</p>
+              {metrics.roulettes_total > 0 && (
+                <p className="text-xs mt-3" style={{ color: "#64748b" }}>
+                  Total de ruletas en el sistema: {metrics.roulettes_total}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {roulettes.slice(0, 3).map((roulette) => (
+                <div key={roulette.id} className="transform hover:scale-[1.02] transition-all duration-300 hover:shadow-lg">
+                  <RouletteCard roulette={roulette} serverTime={serverTime} onClick={handleRouletteClick} />
+                </div>
+              ))}
+              {roulettes.length > 3 && (
+                <div className="text-center pt-4">
+                  <div className="text-sm font-medium" style={{ color: COLORS.muted }}>
+                    ... y {roulettes.length - 3} ruletas más disponibles
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
-      {/* VISTA: REGISTRO */}
-      {currentView === "register" && (
-        <form className="space-y-5" onSubmit={handleRegister}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Nombre</label>
-              <input
-                type="text"
-                name="firstName"
-                value={formData.firstName}
-                onChange={handleInputChange}
-                placeholder="Tu nombre"
-                className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-                disabled={loading}
-                required
-              />
+      {/* Ganadores */}
+      {!error && tab === "ganadores" && (
+        <div className="space-y-4">
+          {loading ? (
+            <>
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="animate-pulse">
+                  <div className="h-5 bg-gray-200 rounded w-3/4 mb-3"></div>
+                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                </div>
+              ))}
+            </>
+          ) : winners.length === 0 ? (
+            <div
+              className="rounded-2xl border-2 px-6 py-12 text-center"
+              style={{ borderColor: COLORS.border, backgroundColor: "rgba(248,250,252,0.9)" }}
+            >
+              <div className="text-6xl mb-4">🏆</div>
+              <p className="text-lg font-bold mb-2" style={{ color: COLORS.text }}>¡Sé el primero en ganar!</p>
+              <p className="text-sm" style={{ color: COLORS.muted }}>Los ganadores recientes aparecerán aquí</p>
+              {metrics.winners_total > 0 && (
+                <p className="text-xs mt-3" style={{ color: "#64748b" }}>
+                  Total histórico de ganadores: {metrics.winners_total}
+                </p>
+              )}
             </div>
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Apellido</label>
-              <input
-                type="text"
-                name="lastName"
-                value={formData.lastName}
-                onChange={handleInputChange}
-                placeholder="Tu apellido"
-                className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-                disabled={loading}
-                required
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Usuario</label>
-            <input
-              type="text"
-              name="username"
-              value={formData.username}
-              onChange={handleInputChange}
-              placeholder="usuario123"
-              className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={loading}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Correo electrónico</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              placeholder="tu@email.com"
-              className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duración-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={loading}
-              required
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Contraseña</label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                name="password"
-                value={formData.password}
-                onChange={handleInputChange}
-                placeholder="••••••••••"
-                className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-                disabled={loading}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#389fae] transition-colors"
-                aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+          ) : (
+            winners.slice(0, 5).map((winner, idx) => (
+              <div
+                key={winner.id || `winner-${idx}`}
+                className="rounded-2xl border-2 transition-all duration-300 p-6"
+                style={{ borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.95)", boxShadow: "0 10px 24px rgba(2, 8, 23, 0.05)" }}
               >
-                {showPassword ? "🙈" : "👁️"}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Confirmar contraseña</label>
-            <div className="relative">
-              <input
-                type={showConfirmPassword ? "text" : "password"}
-                name="confirmPassword"
-                value={formData.confirmPassword}
-                onChange={handleInputChange}
-                placeholder="••••••••••"
-                className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-                disabled={loading}
-                required
-              />
-              <button
-                type="button"
-                onClick={() => setShowConfirmPassword((v) => !v)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#389fae] transition-colors"
-                aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-              >
-                {showConfirmPassword ? "🙈" : "👁️"}
-              </button>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={
-              loading ||
-              !formData.email ||
-              !formData.password ||
-              !formData.username ||
-              !formData.firstName ||
-              !formData.lastName
-            }
-            className="w-full text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]"
-            style={{
-              backgroundColor:
-                loading ||
-                !formData.email ||
-                !formData.password ||
-                !formData.username ||
-                !formData.firstName ||
-                !formData.lastName
-                  ? "#9ca3af"
-                  : "#389fae",
-            }}
-          >
-            {loading ? "Creando cuenta..." : "Crear cuenta ✨"}
-          </button>
-
-          <p className="text-center text-gray-600 text-sm">
-            ¿Ya tienes cuenta?{" "}
-            <button type="button" onClick={() => setCurrentView("login")} className="font-semibold" style={{ color: "#0b56a7" }}>
-              Inicia sesión
-            </button>
-          </p>
-        </form>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <p className="text-base font-bold truncate" style={{ color: COLORS.text }}>
+                      {winner.roulette_name}
+                    </p>
+                    <div className="flex items-center gap-3 text-sm flex-wrap">
+                      <span
+                        className="flex items-center gap-2 px-3 py-2 rounded-full font-bold text-white shadow-sm"
+                        style={{ backgroundColor: COLORS.brandRed }}
+                      >
+                        🏆 {winner.winner_name}
+                      </span>
+                      {winner.participants_count > 0 && (
+                        <span
+                          className="flex items-center gap-2 px-3 py-1 rounded-full"
+                          style={{ backgroundColor: "#f1f5f9", color: COLORS.muted }}
+                        >
+                          👥 {winner.participants_count} participantes
+                        </span>
+                      )}
+                    </div>
+                    {winner.created_at && (
+                      <p className="text-sm font-medium" style={{ color: "#64748b" }}>
+                        {new Date(winner.created_at).toLocaleDateString("es-ES", {
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    )}
+                  </div>
+                  <div
+                    className="shrink-0 text-xs font-bold text-white px-3 py-2 rounded-full shadow-sm"
+                    style={{ backgroundColor: COLORS.brandMint }}
+                  >
+                    Sorteado ✨
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       )}
-
-      {/* VISTA: RECUPERACIÓN */}
-      {currentView === "reset" && (
-        <form className="space-y-6" onSubmit={handlePasswordReset}>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Correo electrónico</label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              placeholder="tu@email.com"
-              className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#4dc9b1] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={loading}
-              required
-            />
-          </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-            <p className="text-blue-700 text-sm">
-              Te enviaremos un enlace para restablecer tu contraseña al correo electrónico proporcionado.
-            </p>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading || !formData.email}
-            className="w-full text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]"
-            style={{ backgroundColor: loading || !formData.email ? "#9ca3af" : "#4dc9b1" }}
-          >
-            {loading ? "Enviando..." : "Enviar enlace ✨"}
-          </button>
-
-          <p className="text-center text-gray-600 text-sm">
-            ¿Recordaste tu contraseña?{" "}
-            <button type="button" onClick={() => setCurrentView("login")} className="font-semibold" style={{ color: "#0b56a7" }}>
-              Volver al login
-            </button>
-          </p>
-        </form>
-      )}
-    </div>
-  );
-};
-
-export default function Home() {
-  return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Fondo decorativo */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[10vh] left-[8vw] w-[22vmin] h-[22vmin] rounded-full blur-2xl opacity-20" style={{ backgroundColor: "#0b56a7" }} />
-        <div className="absolute top-[18vh] right-[10vw] w-[28vmin] h-[28vmin] rounded-full blur-2xl opacity-20" style={{ backgroundColor: "#389fae" }} />
-        <div className="absolute bottom-[10vh] left-1/3 w-[24vmin] h-[24vmin] rounded-full blur-2xl opacity-20" style={{ backgroundColor: "#4dc9b1" }} />
-        <div className="absolute bottom-[18vh] right-[20vw] w-[20vmin] h-[20vmin] rounded-full blur-2xl opacity-20" style={{ backgroundColor: "#207ba8" }} />
-      </div>
-
-      <main className="relative z-10 mx-auto w-full max-w-[min(1200px,92vw)] px-4 sm:px-6 lg:px-8 py-10 lg:py-14">
-        {/* Header */}
-        <header className="text-center mb-12 lg:mb-16">
-          <div className="inline-flex items-center gap-3 mb-4">
-            <div className="rounded-2xl p-3 shadow-lg" style={{ backgroundColor: "#0b56a7" }}>
-              <Award className="h-8 w-8 text-white" />
-            </div>
-            <h1 className="font-bold" style={{ color: "#0b56a7", fontSize: "clamp(2rem, 3vw + 1rem, 3rem)" }}>
-              LuckySpin
-            </h1>
-          </div>
-          <p className="text-gray-600 mx-auto leading-relaxed" style={{ maxWidth: "60ch", fontSize: "clamp(1rem, .7vw + .9rem, 1.25rem)" }}>
-            Sorteos transparentes y experiencias educativas.
-            <span className="font-semibold" style={{ color: "#4dc9b1" }}> ¡Tu suerte te está esperando!</span>
-          </p>
-        </header>
-
-        {/* Grid principal */}
-        <section className="grid lg:grid-cols-2 gap-10 lg:gap-14 items-start max-w-[min(1200px,100%)] mx-auto">
-          {/* Información izquierda */}
-          <div className="space-y-8">
-            <div>
-              <h2 className="text-gray-900 mb-6 leading-tight" style={{ fontWeight: 800, fontSize: "clamp(1.75rem, 2vw + 1rem, 2.5rem)" }}>
-                Bienvenido a tu
-                <span className="block" style={{ color: "#207ba8" }}>
-                  plataforma de sorteos
-                </span>
-              </h2>
-              <p className="text-gray-600 leading-relaxed mb-8" style={{ fontSize: "clamp(1rem, .6vw + .9rem, 1.125rem)" }}>
-                Únete a miles de usuarios que ya disfrutan de sorteos justos,
-                verificables y completamente transparentes.
-              </p>
-            </div>
-
-            {/* Características */}
-            <div className="grid gap-4">
-              <FeatureCard color="#0b56a7" Icon={Shield} title="100% Transparente" sub="Verifica todos los resultados" />
-              <FeatureCard color="#389fae" Icon={Bell} title="Notificaciones Instantáneas" sub="Recibe alertas al momento" />
-              <FeatureCard color="#4dc9b1" Icon={Sparkles} title="Experiencia Premium" sub="Interfaz moderna y fluida" />
-            </div>
-
-            <div className="rounded-2xl p-6 border" style={{ borderColor: "#207ba8", backgroundColor: "rgba(32,123,168,0.06)" }}>
-              <p className="font-medium text-center" style={{ color: "#0b56a7" }}>
-                🎉 ¡Más de <span className="font-bold">10,000 usuarios</span> ya confían en nosotros!
-              </p>
-            </div>
-          </div>
-
-          {/* Formulario derecha */}
-          <div className="flex justify-center">
-            <LoginForm />
-          </div>
-        </section>
-
-        {/* Footer */}
-        <footer className="text-center mt-16 text-gray-500 text-sm">
-          <p>© {new Date().getFullYear()} LuckySpin - Sorteos seguros y transparentes</p>
-        </footer>
-      </main>
     </div>
   );
 }
 
-const FeatureCard = ({ color, Icon, title, sub }) => (
-  <div className="flex items-center gap-4 p-4 bg-white/70 backdrop-blur-sm rounded-xl border border-white/30">
-    <div className="rounded-lg p-2 shrink-0" style={{ backgroundColor: color }}>
-      <Icon className="h-5 w-5 text-white" />
+/* ---------- Sidebar con información ---------- */
+function InfoSidebar() {
+  return (
+    <div className="space-y-8">
+      {/* Cómo Funciona */}
+      <div
+        className="rounded-3xl border-2 p-8 shadow-xl transition-all duration-300"
+        style={{ borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.92)" }}
+      >
+        <div className="mb-6 flex items-center gap-4">
+          <div className="rounded-2xl p-3 text-white shadow-lg" style={{ backgroundColor: COLORS.brandMint }}>
+            <Star size={24} />
+          </div>
+          <h3 className="text-xl font-black" style={{ color: COLORS.text }}>¿Cómo Funciona?</h3>
+        </div>
+        <div className="space-y-6">
+          {[
+            { n: 1, t: "Regístrate", s: "Crea tu cuenta gratuita en segundos" },
+            { n: 2, t: "Participa", s: "Únete a las ruletas que más te gusten" },
+            { n: 3, t: "¡Gana!",   s: "Sorteos 100% aleatorios y transparentes" },
+          ].map(step => (
+            <div key={step.n} className="flex items-start gap-4">
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-black text-white shadow-md"
+                style={{ backgroundColor: COLORS.brandMint }}
+              >
+                {step.n}
+              </div>
+              <div>
+                <p className="text-base font-bold" style={{ color: COLORS.text }}>{step.t}</p>
+                <p className="text-sm leading-relaxed" style={{ color: COLORS.muted }}>{step.s}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Estadísticas */}
+      <div
+        className="rounded-3xl border-2 p-8 shadow-xl transition-all duration-300"
+        style={{ borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.92)" }}
+      >
+        <div className="mb-6 flex items-center gap-4">
+          <div className="rounded-2xl p-3 text-white shadow-lg" style={{ backgroundColor: COLORS.brandTeal }}>
+            <Users size={24} />
+          </div>
+          <h3 className="text-xl font-black" style={{ color: COLORS.text }}>Nuestra Comunidad</h3>
+        </div>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between py-2">
+            <span className="text-base font-medium" style={{ color: COLORS.muted }}>Usuarios Registrados</span>
+            <span className="text-2xl font-black" style={{ color: COLORS.brandTeal }}>15,234+</span>
+          </div>
+          <div className="flex items-center justify-between py-2">
+            <span className="text-base font-medium" style={{ color: COLORS.muted }}>Sorteos Realizados</span>
+            <span className="text-2xl font-black" style={{ color: COLORS.brandTeal }}>2,847</span>
+          </div>
+          <div className="flex items-center justify-between py-2">
+            <span className="text-base font-medium" style={{ color: COLORS.muted }}>Premios Entregados</span>
+            <span className="text-2xl font-black" style={{ color: COLORS.brandTeal }}>$125,430</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Próximas Funcionalidades */}
+      <div
+        className="rounded-3xl border-2 p-8 shadow-xl transition-all duration-300"
+        style={{ borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.92)" }}
+      >
+        <div className="mb-6 flex items-center gap-4">
+          <div className="rounded-2xl p-3 text-white shadow-lg" style={{ backgroundColor: COLORS.brandBlue }}>
+            <Gift size={24} />
+          </div>
+          <h3 className="text-xl font-black" style={{ color: COLORS.text }}>Próximamente</h3>
+        </div>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Clock size={18} style={{ color: COLORS.brandBlue }} />
+            <span className="text-base font-medium" style={{ color: COLORS.text }}>Sorteos automáticos programados</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Shield size={18} style={{ color: COLORS.brandBlue }} />
+            <span className="text-base font-medium" style={{ color: COLORS.text }}>Verificación blockchain</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Bell size={18} style={{ color: COLORS.brandBlue }} />
+            <span className="text-base font-medium" style={{ color: COLORS.text }}>Notificaciones push</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Trophy size={18} style={{ color: COLORS.brandBlue }} />
+            <span className="text-base font-medium" style={{ color: COLORS.text }}>Sistema de recompensas</span>
+          </div>
+        </div>
+      </div>
     </div>
-    <div className="min-w-0">
-      <h3 className="font-semibold text-gray-900">{title}</h3>
-      <p className="text-sm text-gray-600">{sub}</p>
+  );
+}
+
+/* ========================= HOME COMPONENT ========================= */
+export default function Home() {
+  return (
+    <div
+      className="min-h-screen"
+      style={{
+        background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%)"
+      }}
+    >
+      {/* Fondo decorativo */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[10vh] left-[8vw] w-[25vmin] h-[25vmin] rounded-full blur-3xl opacity-15" style={{ backgroundColor: COLORS.brandDark }} />
+        <div className="absolute top-[18vh] right-[10vw] w-[30vmin] h-[30vmin] rounded-full blur-3xl opacity-15" style={{ backgroundColor: COLORS.brandRed }} />
+        <div className="absolute bottom-[10vh] left-1/3 w-[28vmin] h-[28vmin] rounded-full blur-3xl opacity-15" style={{ backgroundColor: COLORS.brandMint }} />
+        <div className="absolute bottom-[18vh] right-[20vw] w-[22vmin] h-[22vmin] rounded-full blur-3xl opacity-15" style={{ backgroundColor: COLORS.brandTeal }} />
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[35vmin] h-[35vmin] rounded-full blur-3xl opacity-10" style={{ backgroundColor: COLORS.brandBlue }} />
+      </div>
+
+      <main className="relative z-10 mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
+        {/* Keyframes globales para este archivo */}
+        <style>{`
+          @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes popIn {
+            0%   { transform: scale(0.92); opacity: .0; }
+            60%  { transform: scale(1.06); opacity: .9; }
+            100% { transform: scale(1);    opacity: 1;  }
+          }
+          @keyframes growLine {
+            from { width: 0; opacity: .0; }
+            to   { width: 100%; opacity: 1; }
+          }
+          @keyframes softPulse {
+            0%,100% { text-shadow: 0 4px 18px rgba(0,0,0,.08); }
+            50%     { text-shadow: 0 6px 28px rgba(0,0,0,.16); }
+          }
+        `}</style>
+
+        {/* Header (animado y XL) */}
+        <div className="text-center max-w-3xl mx-auto space-y-10">
+          <h1
+            className="font-extrabold tracking-tight leading-[1.1]"
+            style={{
+              fontSize: "clamp(2.25rem, 3vw + 2rem, 4.25rem)",
+              animation: "fadeInUp .6s ease-out both",
+              color: COLORS.text,
+            }}
+          >
+         <span style={{ color: COLORS.brandBlue }}>Bienvenido a</span>
+        <span
+          style={{
+         color: COLORS.brandRed,
+          marginLeft: "0.5rem",              // ← separa del “a”
+          animation: "popIn .55s .1s ease-out both, softPulse 2.8s 1.2s ease-in-out infinite",
+          display: "inline-block",
+           }}
+          >
+       24 Hayu
+        </span>
+
+          </h1>
+
+          {/* Subrayado animado con margen extra */}
+          <div
+            className="mx-auto h-1.5 rounded-full my-8"
+            style={{
+              background: `linear-gradient(90deg, ${COLORS.brandBlue}, ${COLORS.brandRed})`,
+              animation: "growLine .6s .15s ease-out both",
+              width: "min(520px, 76%)",
+              boxShadow: "0 6px 18px rgba(2,8,23,.06)",
+            }}
+          />
+
+          {/* Descripción con separación */}
+          <p
+            className="font-medium leading-relaxed mx-auto"
+            style={{
+              color: COLORS.muted,
+              fontSize: "clamp(1rem, .4vw + 1rem, 1.25rem)",
+              maxWidth: "52ch",
+              animation: "fadeInUp .6s .12s ease-out both",
+            }}
+          >
+            La plataforma más confiable para participar en sorteos y rifas online.
+            <br className="hidden sm:block" />
+            Transparente, segura y completamente verificable.
+          </p>
+        </div>
+
+        {/* Layout con dos columnas */}
+        <section className="grid lg:grid-cols-3 gap-10">
+          {/* Columna principal (izquierda) - 2/3 del espacio */}
+          <div className="lg:col-span-2 space-y-10" id="ruletas">
+            <WinnersAndActivityCard />
+
+            {/* Características principales */}
+            <div className="grid md:grid-cols-2 gap-6">
+              <FeatureCard
+                color={COLORS.brandDark}
+                Icon={Shield}
+                title="🔒 100% Transparente"
+                sub="Verifica todos los resultados con tecnología blockchain"
+              />
+              <FeatureCard
+                color={COLORS.brandRed}
+                Icon={Bell}
+                title="⚡ Notificaciones Instantáneas"
+                sub="Recibe alertas en tiempo real sobre tus sorteos"
+              />
+              <FeatureCard
+                color={COLORS.brandMint}
+                Icon={Sparkles}
+                title="✨ Experiencia Premium"
+                sub="Interfaz moderna, fluida y fácil de usar"
+              />
+              <FeatureCard
+                color={COLORS.brandTeal}
+                Icon={Award}
+                title="🏆 Premios Garantizados"
+                sub="Todos los sorteos tienen ganadores reales verificados"
+              />
+            </div>
+          </div>
+
+          {/* Sidebar (derecha) - 1/3 del espacio */}
+          <div className="lg:col-span-1" id="como-funciona">
+            <div className="lg:sticky lg:top-8">
+              <InfoSidebar />
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
-  </div>
-);
+  );
+}

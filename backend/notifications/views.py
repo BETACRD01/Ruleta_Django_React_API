@@ -44,6 +44,7 @@ class UserNotificationListView(generics.ListAPIView):
     """
     GET /api/notifications/user/
     Lista notificaciones del usuario autenticado + las públicas.
+    🚫 EXCLUYE notificaciones de ganadores (roulette_winner) para evitar spoilers
     Parámetros opcionales:
       - unread_only=true (solo no leídas)
       - roulette_id=<id> (filtrar por ruleta)
@@ -61,10 +62,14 @@ class UserNotificationListView(generics.ListAPIView):
         priority = self.request.query_params.get('priority')
 
         # 🔒 Filtro base: privadas del usuario + públicas
-        #     Si es staff, solo incluir admin-only ASIGNADAS A ÉL MISMO.
-        q_filter = Q(user=user) | Q(is_public=True)
+        # 🚫 EXCLUIR notificaciones de ganadores para usuarios normales
+        q_filter = Q(user=user) | (Q(is_public=True) & ~Q(notification_type='roulette_winner'))
+        
         if user.is_staff:
+            # Admin puede ver sus admin-only Y notificaciones de ganadores
             q_filter |= Q(is_admin_only=True, user=user)
+            # Admin SÍ puede ver notificaciones de ganadores en su bandeja
+            q_filter = Q(user=user) | Q(is_public=True) | Q(is_admin_only=True, user=user)
 
         qs = Notification.objects.filter(q_filter)
 
@@ -87,9 +92,12 @@ class UserNotificationListView(generics.ListAPIView):
 
         if request.query_params.get('include_stats', 'false').lower() == 'true':
             user = request.user
-            q_filter = Q(user=user) | Q(is_public=True)
+            
+            # Stats también excluyen ganadores para usuarios normales
             if user.is_staff:
-                q_filter |= Q(is_admin_only=True, user=user)
+                q_filter = Q(user=user) | Q(is_public=True) | Q(is_admin_only=True, user=user)
+            else:
+                q_filter = Q(user=user) | (Q(is_public=True) & ~Q(notification_type='roulette_winner'))
             
             stats = {
                 'total_count': Notification.objects.filter(q_filter).count(),
@@ -105,7 +113,8 @@ class UserNotificationListView(generics.ListAPIView):
 class PublicNotificationListView(generics.ListAPIView):
     """
     GET /api/notifications/public/
-    Lista solo notificaciones públicas.
+    🎯 Lista SOLO notificaciones públicas - INCLUYE notificaciones de ganadores
+    Este endpoint es para consumo en homepage/inicio público
     """
     serializer_class = PublicNotificationSerializer
     permission_classes = [permissions.AllowAny]
@@ -114,7 +123,9 @@ class PublicNotificationListView(generics.ListAPIView):
     def get_queryset(self):
         priority = self.request.query_params.get('priority')
         roulette_id = self.request.query_params.get('roulette_id')
+        notification_type = self.request.query_params.get('type')
         
+        # ✅ INCLUYE todas las notificaciones públicas (incluidos ganadores)
         qs = Notification.objects.filter(is_public=True)
         
         if priority:
@@ -124,8 +135,64 @@ class PublicNotificationListView(generics.ListAPIView):
                 qs = qs.filter(roulette_id=int(roulette_id))
             except ValueError:
                 pass
+        if notification_type:
+            qs = qs.filter(notification_type=notification_type)
         
         return qs.order_by('-priority', '-created_at')
+
+
+class WinnerNotificationListView(generics.ListAPIView):
+    """
+    GET /api/notifications/winners/
+    🏆 Endpoint específico para mostrar SOLO notificaciones de ganadores
+    Para consumo en homepage, carruseles, etc.
+    """
+    serializer_class = PublicNotificationSerializer
+    permission_classes = [permissions.AllowAny]
+    pagination_class = NotificationPagination
+
+    def get_queryset(self):
+        roulette_id = self.request.query_params.get('roulette_id')
+        days_back = self.request.query_params.get('days', 30)
+        
+        try:
+            days_back = int(days_back)
+        except (ValueError, TypeError):
+            days_back = 30
+        
+        # Solo notificaciones de ganadores públicas
+        qs = Notification.objects.filter(
+            is_public=True,
+            notification_type='roulette_winner'
+        )
+        
+        # Filtrar por fecha (últimos X días)
+        if days_back > 0:
+            cutoff_date = timezone.now() - timedelta(days=days_back)
+            qs = qs.filter(created_at__gte=cutoff_date)
+        
+        if roulette_id:
+            try:
+                qs = qs.filter(roulette_id=int(roulette_id))
+            except ValueError:
+                pass
+        
+        return qs.order_by('-created_at')
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        
+        # Agregar metadata útil
+        response.data['metadata'] = {
+            'total_winners': response.data.get('count', 0),
+            'generated_at': timezone.now(),
+            'filters_applied': {
+                'roulette_id': request.query_params.get('roulette_id'),
+                'days_back': request.query_params.get('days', 30),
+            }
+        }
+        
+        return response
 
 
 class AdminNotificationListView(generics.ListAPIView):
@@ -167,9 +234,14 @@ class NotificationDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         user = self.request.user
-        q_filter = Q(user=user) | Q(is_public=True)
+        
         if user.is_staff:
-            q_filter |= Q(is_admin_only=True, user=user)
+            # Admin ve todo (incluyendo notificaciones de ganadores)
+            q_filter = Q(user=user) | Q(is_public=True) | Q(is_admin_only=True, user=user)
+        else:
+            # Usuario normal NO ve notificaciones de ganadores públicas
+            q_filter = Q(user=user) | (Q(is_public=True) & ~Q(notification_type='roulette_winner'))
+        
         return Notification.objects.filter(q_filter)
 
     def get_serializer_class(self):
@@ -218,9 +290,12 @@ def mark_all_notifications_read(request):
     Marca todas las notificaciones no leídas del usuario como leídas
     """
     user = request.user
-    q_filter = Q(user=user) | Q(is_public=True)
+    
     if user.is_staff:
-        q_filter |= Q(is_admin_only=True, user=user)
+        q_filter = Q(user=user) | Q(is_public=True) | Q(is_admin_only=True, user=user)
+    else:
+        # Usuario normal NO incluye notificaciones de ganadores
+        q_filter = Q(user=user) | (Q(is_public=True) & ~Q(notification_type='roulette_winner'))
     
     count = Notification.objects.filter(q_filter, is_read=False).update(is_read=True)
     return Response({'success': True, 'updated_count': count}, status=status.HTTP_200_OK)
@@ -245,9 +320,12 @@ def notification_stats(request):
     Estadísticas del usuario autenticado.
     """
     user = request.user
-    q_filter = Q(user=user) | Q(is_public=True)
+    
     if user.is_staff:
-        q_filter |= Q(is_admin_only=True, user=user)
+        q_filter = Q(user=user) | Q(is_public=True) | Q(is_admin_only=True, user=user)
+    else:
+        # Usuario normal NO incluye notificaciones de ganadores en stats
+        q_filter = Q(user=user) | (Q(is_public=True) & ~Q(notification_type='roulette_winner'))
     
     user_notifications = Notification.objects.filter(q_filter)
 
@@ -302,11 +380,12 @@ def roulette_notifications(request, roulette_id):
     accessible = []
     for n in notifications:
         if n.is_public:
-            accessible.append(n)
+            # ✅ Admin ve todo, usuario normal NO ve ganadores
+            if user.is_staff or n.notification_type != 'roulette_winner':
+                accessible.append(n)
         elif n.user_id == user.id:
             accessible.append(n)
         elif n.is_admin_only and user.is_staff and n.user_id == user.id:
-            # admin-only solo del propio admin
             accessible.append(n)
 
     serializer = NotificationSerializer(accessible, many=True)
@@ -543,4 +622,116 @@ def notification_summary_dashboard(request):
         'daily_activity': daily_activity,
         'recent_winners': winner_data,
         'generated_at': timezone.now(),
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def public_winner_feed(request):
+    """
+    GET /api/notifications/public/winners/feed/
+    🎯 Feed público de ganadores para homepage
+    Parámetros:
+      - limit: número de ganadores a mostrar (default: 10)
+      - days: días hacia atrás (default: 30)
+      - roulette_id: filtrar por ruleta específica
+    """
+    try:
+        limit = int(request.query_params.get('limit', 10))
+        days_back = int(request.query_params.get('days', 30))
+        roulette_id = request.query_params.get('roulette_id')
+    except (ValueError, TypeError):
+        limit = 10
+        days_back = 30
+        roulette_id = None
+    
+    # Validar límites
+    limit = max(1, min(limit, 50))  # Entre 1 y 50
+    days_back = max(1, min(days_back, 365))  # Entre 1 y 365 días
+    
+    cutoff_date = timezone.now() - timedelta(days=days_back)
+    
+    qs = Notification.objects.filter(
+        is_public=True,
+        notification_type='roulette_winner',
+        created_at__gte=cutoff_date
+    )
+    
+    if roulette_id:
+        try:
+            qs = qs.filter(roulette_id=int(roulette_id))
+        except ValueError:
+            pass
+    
+    winners = qs.order_by('-created_at')[:limit]
+    
+    # Formatear respuesta optimizada para frontend
+    winner_feed = []
+    for winner in winners:
+        extra_data = winner.extra_data or {}
+        winner_feed.append({
+            'id': winner.id,
+            'winner_name': extra_data.get('winner_name', 'Ganador'),
+            'roulette_name': extra_data.get('roulette_name', ''),
+            'roulette_id': winner.roulette_id,
+            'participants': extra_data.get('total_participants', 0),
+            'prize_details': extra_data.get('prize_details', ''),
+            'created_at': winner.created_at,
+            'message': winner.message,
+            'priority': winner.priority,
+        })
+    
+    return Response({
+        'winners': winner_feed,
+        'total_count': len(winner_feed),
+        'filters_applied': {
+            'limit': limit,
+            'days_back': days_back,
+            'roulette_id': roulette_id,
+        },
+        'generated_at': timezone.now(),
+    })
+
+
+@api_view(['GET'])
+@permission_classes([permissions.AllowAny])
+def public_stats(request):
+    """
+    GET /api/notifications/public/stats/
+    📊 Estadísticas públicas del sistema (sin datos sensibles)
+    """
+    total_winners = Notification.objects.filter(
+        notification_type='roulette_winner',
+        is_public=True
+    ).count()
+    
+    recent_winners_7d = Notification.objects.filter(
+        notification_type='roulette_winner',
+        is_public=True,
+        created_at__gte=timezone.now() - timedelta(days=7)
+    ).count()
+    
+    recent_winners_30d = Notification.objects.filter(
+        notification_type='roulette_winner',
+        is_public=True,
+        created_at__gte=timezone.now() - timedelta(days=30)
+    ).count()
+    
+    # Contar ganadores por ruleta (top 5)
+    top_roulettes = dict(
+        Notification.objects.filter(
+            notification_type='roulette_winner',
+            is_public=True,
+            roulette_id__isnull=False
+        ).values('roulette_id').annotate(
+            winner_count=Count('id')
+        ).order_by('-winner_count')[:5].values_list('roulette_id', 'winner_count')
+    )
+    
+    return Response({
+        'total_winners_all_time': total_winners,
+        'recent_winners_7_days': recent_winners_7d,
+        'recent_winners_30_days': recent_winners_30d,
+        'top_roulettes_by_winners': top_roulettes,
+        'last_updated': timezone.now(),
     })

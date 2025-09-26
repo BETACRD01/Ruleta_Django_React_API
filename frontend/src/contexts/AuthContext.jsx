@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.jsx
 import React, { createContext, useState, useEffect, useContext, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom'; // Removed unused Navigate import
+import { useNavigate } from 'react-router-dom';
 import { authAPI, setGlobalAuthToken, clearAllTokens, isAuthenticated } from '../config/api';
 import { useNotification } from './NotificationContext';
 
@@ -8,11 +8,24 @@ const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null); // ✅ Nuevo estado para perfil completo
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(null);
   const [error, setError] = useState(null);
 
   const { showSuccess, showError, showInfo } = useNotification();
+
+  // ✅ Función helper para cargar perfil completo
+  const loadUserProfile = useCallback(async () => {
+    try {
+      const profileDetail = await authAPI.getProfileDetail();
+      setUserProfile(profileDetail);
+      return profileDetail;
+    } catch (err) {
+      console.error('Error al cargar perfil completo:', err);
+      return null;
+    }
+  }, []);
 
   useEffect(() => {
     const initializeAuth = async () => {
@@ -21,6 +34,8 @@ export const AuthProvider = ({ children }) => {
           const userInfo = await authAPI.getUserInfo();
           setUser(userInfo);
           setToken(localStorage.getItem('token') || localStorage.getItem('auth_token') || localStorage.getItem('authToken'));
+          // ✅ Cargar perfil completo también
+          await loadUserProfile();
         }
       } catch (err) {
         console.error('Error al inicializar autenticación:', err);
@@ -30,7 +45,7 @@ export const AuthProvider = ({ children }) => {
       }
     };
     initializeAuth();
-  }, []);
+  }, [loadUserProfile]);
 
   const login = useCallback(async (credentials) => {
     try {
@@ -44,6 +59,8 @@ export const AuthProvider = ({ children }) => {
         setGlobalAuthToken(result.token);
         const userInfo = await authAPI.getUserInfo();
         setUser(userInfo);
+        // ✅ Cargar perfil completo después del login
+        await loadUserProfile();
         showSuccess(`¡Bienvenido de vuelta, ${userInfo.first_name || userInfo.username || 'Usuario'}!`, 'Inicio de sesión exitoso');
         return { success: true, user: userInfo };
       }
@@ -61,12 +78,28 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [showSuccess, showError]);
+  }, [showSuccess, showError, loadUserProfile]);
 
+  // ✅ Función de registro mejorada que incluye teléfono y términos
   const register = useCallback(async (userData) => {
     try {
       setLoading(true);
       setError(null);
+
+      // ✅ Validar que incluya los campos requeridos
+      if (!userData.phone) {
+        const errorMessage = 'El número de teléfono es requerido';
+        setError(errorMessage);
+        showError(errorMessage, 'Error en el registro');
+        return { success: false, message: errorMessage };
+      }
+
+      if (!userData.accept_terms) {
+        const errorMessage = 'Debe aceptar los términos y condiciones';
+        setError(errorMessage);
+        showError(errorMessage, 'Error en el registro');
+        return { success: false, message: errorMessage };
+      }
 
       const result = await authAPI.register(userData);
 
@@ -75,6 +108,8 @@ export const AuthProvider = ({ children }) => {
         setGlobalAuthToken(result.token);
         const userInfo = await authAPI.getUserInfo();
         setUser(userInfo);
+        // ✅ Cargar perfil completo después del registro
+        await loadUserProfile();
         showSuccess(
           `¡Cuenta creada exitosamente! Bienvenido ${userInfo.first_name || userInfo.username || 'Usuario'}!`,
           'Registro completado',
@@ -96,7 +131,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [showSuccess, showError]);
+  }, [showSuccess, showError, loadUserProfile]);
 
   const logout = useCallback(async () => {
     try {
@@ -108,6 +143,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       clearAllTokens();
       setUser(null);
+      setUserProfile(null); // ✅ Limpiar perfil también
       setToken(null);
       setError(null);
     }
@@ -136,6 +172,8 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       const updatedUser = await authAPI.updateProfile(profileData);
       setUser(updatedUser);
+      // ✅ Recargar perfil completo después de actualizar
+      await loadUserProfile();
       showSuccess('Tu perfil ha sido actualizado correctamente', 'Perfil actualizado');
       return { success: true, user: updatedUser };
     } catch (err) {
@@ -147,7 +185,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [showSuccess, showError]);
+  }, [showSuccess, showError, loadUserProfile]);
 
   const changePassword = useCallback(async (passwordData) => {
     try {
@@ -178,6 +216,19 @@ export const AuthProvider = ({ children }) => {
 
   const hasRole = useCallback((role) => user?.role === role, [user]);
 
+  // ✅ Helpers para teléfono y términos
+  const hasAcceptedTerms = useCallback(() => {
+    return userProfile?.profile?.terms_accepted_at !== null && userProfile?.profile?.terms_accepted_at !== undefined;
+  }, [userProfile]);
+
+  const getUserPhone = useCallback(() => {
+    return userProfile?.profile?.phone || '';
+  }, [userProfile]);
+
+  const getTermsAcceptedDate = useCallback(() => {
+    return userProfile?.profile?.terms_accepted_at;
+  }, [userProfile]);
+
   const clearError = useCallback(() => setError(null), []);
 
   const refreshUser = useCallback(async () => {
@@ -185,18 +236,23 @@ export const AuthProvider = ({ children }) => {
       if (isAuthenticated()) {
         const userInfo = await authAPI.getUserInfo();
         setUser(userInfo);
+        await loadUserProfile(); // ✅ Recargar perfil también
         return userInfo;
       }
     } catch (err) {
       console.error('Error al refrescar usuario:', err);
       logout();
     }
-  }, [logout]);
+  }, [logout, loadUserProfile]);
 
   const debugUserInfo = useCallback(() => {
     console.group('🔍 Debug User Info');
     console.log('User object:', user);
+    console.log('User profile:', userProfile);
     console.log('User role:', user?.role);
+    console.log('User phone:', getUserPhone());
+    console.log('Terms accepted:', hasAcceptedTerms());
+    console.log('Terms date:', getTermsAcceptedDate());
     console.log('Is admin (role):', user?.role === 'admin');
     console.log('Is admin (method):', user?.is_admin);
     console.log('Is staff:', user?.is_staff);
@@ -206,12 +262,23 @@ export const AuthProvider = ({ children }) => {
     console.log('Token present:', !!token);
     console.log('Is authenticated:', !!user);
     console.groupEnd();
-    return { user, role: user?.role, isAdmin: isAdmin(), isUser: isUser(), hasToken: !!token, isAuthenticated: !!user };
-  }, [user, token, isAdmin, isUser]);
+    return { 
+      user, 
+      userProfile,
+      role: user?.role, 
+      phone: getUserPhone(),
+      termsAccepted: hasAcceptedTerms(),
+      isAdmin: isAdmin(), 
+      isUser: isUser(), 
+      hasToken: !!token, 
+      isAuthenticated: !!user 
+    };
+  }, [user, userProfile, token, isAdmin, isUser, getUserPhone, hasAcceptedTerms, getTermsAcceptedDate]);
 
   const value = useMemo(() => ({
     // Estado
     user,
+    userProfile, // ✅ Exponer perfil completo
     token,
     loading,
     error,
@@ -225,6 +292,7 @@ export const AuthProvider = ({ children }) => {
     updateProfile,
     changePassword,
     requestPasswordReset,
+    loadUserProfile, // ✅ Método para recargar perfil
 
     // Verificaciones (exportamos booleans y helpers)
     isAuthenticated: !!user,
@@ -237,12 +305,18 @@ export const AuthProvider = ({ children }) => {
     hasPermission,
     hasRole,
 
+    // ✅ Nuevos helpers para teléfono y términos
+    hasAcceptedTerms: hasAcceptedTerms(),
+    getUserPhone: getUserPhone(),
+    getTermsAcceptedDate: getTermsAcceptedDate(),
+
     // Utilidades
     clearError,
     refreshUser,
     debugUserInfo,
   }), [
     user, 
+    userProfile,
     token, 
     loading, 
     error, 
@@ -252,10 +326,14 @@ export const AuthProvider = ({ children }) => {
     updateProfile, 
     changePassword, 
     requestPasswordReset,
+    loadUserProfile,
     isAdmin,
     isUser,
     hasPermission, 
     hasRole, 
+    hasAcceptedTerms,
+    getUserPhone,
+    getTermsAcceptedDate,
     clearError, 
     refreshUser, 
     debugUserInfo
@@ -270,7 +348,7 @@ export const useAuth = () => {
   return context;
 };
 
-// Rutas protegidas
+// Rutas protegidas (sin cambios)
 export const ProtectedRoute = ({ children, requireAdmin = false, requireRole = null, requirePermission = null }) => {
   const { user, loading, isAdmin, hasRole, hasPermission } = useAuth();
 
@@ -329,14 +407,19 @@ const AccessDenied = ({ message = 'No tienes permisos para acceder a esta secci�
 
 const LoginRedirect = () => {
   const navigate = useNavigate();
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="max-w-md w-full text-center">
         <div className="bg-white shadow rounded-lg p-6">
-          <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">Sesión Requerida</h3>
-          <p className="text-sm text-gray-500 mb-4">Debes iniciar sesión para acceder a esta página.</p>
+          <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+            Sesión Requerida
+          </h3>
+          <p className="text-sm text-gray-500 mb-4">
+            Debes iniciar sesión para acceder a esta página.
+          </p>
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => navigate("/login")}
             className="inline-flex justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
           >
             Ir al Login

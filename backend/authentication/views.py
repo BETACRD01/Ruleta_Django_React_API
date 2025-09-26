@@ -3,6 +3,7 @@ from rest_framework import status, generics, permissions
 from rest_framework.decorators import api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
+from rest_framework.authentication import TokenAuthentication, SessionAuthentication
 from rest_framework.views import APIView
 
 from django.contrib.auth import login, logout
@@ -37,17 +38,36 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [permissions.AllowAny]
     authentication_classes = []  # público real
 
-    def perform_create(self, serializer):
+    def create(self, request, *args, **kwargs):
+        """
+        Si falla: 400 con errores del serializer.
+        Si éxito: 201 con representación segura del usuario (sin contraseña).
+        """
+        serializer = self.get_serializer(data=request.data)
+        if not serializer.is_valid():
+            logger.warning(f"Registro inválido: {serializer.errors}")
+            return Response({"success": False, "errors": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+
         with transaction.atomic():
             user = serializer.save()
-            logger.info(f"Nuevo usuario registrado: {user.email}")
+
+            try:
+                phone = getattr(user.profile, "phone", None)
+            except UserProfile.DoesNotExist:
+                phone = None
+
+            logger.info(f"Nuevo usuario registrado: {user.email} con teléfono: {phone or ''}")
+
+            # Correo de bienvenida (no bloqueante)
             self.send_welcome_email(user)
 
+        # Re-serializamos para respuesta (sin campos write_only)
+        out = self.get_serializer(instance=user)
+        # Opcional: puedes envolver como {"success": True, "user": out.data}
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
     def send_welcome_email(self, user):
-        """
-        Intenta enviar HTML; si no hay template, cae a texto plano.
-        No rompe el registro si el email falla.
-        """
+        """Intenta enviar HTML; si no hay template, cae a texto plano. No rompe el registro si falla."""
         try:
             subject = "¡Bienvenido al Sistema de Ruletas!"
             ctx = {"user": user, "site_name": "Sistema de Ruletas"}
@@ -65,7 +85,7 @@ class RegisterView(generics.CreateAPIView):
 
             send_mail(
                 subject,
-                plain_message,
+                plain_message if not html_message else strip_tags(html_message),
                 getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@ruletas.local"),
                 [user.email],
                 html_message=html_message,
@@ -84,28 +104,52 @@ class LoginView(APIView):
         serializer = UserLoginSerializer(data=request.data, context={"request": request})
         if serializer.is_valid():
             user = serializer.validated_data["user"]
+
             token, _ = Token.objects.get_or_create(user=user)
+            login(request, user)
+
             user.last_login = timezone.now()
             user.save(update_fields=["last_login"])
-            login(request, user)
+
             logger.info(f"Usuario logueado: {user.email}")
-            return Response(
-                {
-                    "success": True,
-                    "message": "Inicio de sesión exitoso",
-                    "token": token.key,
-                    "user": {
-                        "id": user.id,
-                        "username": user.username,
-                        "email": user.email,
-                        "first_name": user.first_name,
-                        "last_name": user.last_name,
-                        "role": user.role,
-                        "is_admin": user.is_admin(),
-                    },
+
+            # Agregamos teléfono del perfil si existe (útil para el front)
+            phone = None
+            try:
+                phone = getattr(user.profile, "phone", None)
+            except UserProfile.DoesNotExist:
+                pass
+
+            resp = {
+                "success": True,
+                "message": "Inicio de sesión exitoso",
+                "token_type": "Token",
+                "token": token.key,
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                    "role": user.role,
+                    "is_admin": user.is_admin(),
+                    "profile": {"phone": phone} if phone else None,
                 },
-                status=status.HTTP_200_OK,
-            )
+            }
+
+            response = Response(resp, status=status.HTTP_200_OK)
+            try:
+                response.set_cookie(
+                    "authToken",
+                    token.key,
+                    max_age=60 * 60 * 24 * 7,
+                    secure=False,
+                    httponly=False,
+                    samesite="Lax",
+                )
+            except Exception:
+                pass
+            return response
 
         return Response(
             {"success": False, "message": "Credenciales inválidas", "errors": serializer.errors},
@@ -115,6 +159,7 @@ class LoginView(APIView):
 
 class LogoutView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [TokenAuthentication, SessionAuthentication]
 
     def post(self, request):
         try:
@@ -125,7 +170,9 @@ class LogoutView(APIView):
                 pass
             logout(request)
             logger.info(f"Usuario deslogueado: {user_email}")
-            return Response({"success": True, "message": "Sesión cerrada exitosamente"}, status=status.HTTP_200_OK)
+            response = Response({"success": True, "message": "Sesión cerrada exitosamente"}, status=status.HTTP_200_OK)
+            response.delete_cookie("authToken")
+            return response
         except Exception as e:
             logger.error(f"Error durante logout: {str(e)}")
             return Response(
@@ -137,6 +184,7 @@ class LogoutView(APIView):
 class ProfileView(generics.RetrieveUpdateAPIView):
     serializer_class = UserProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [TokenAuthentication, SessionAuthentication]
 
     def get_object(self):
         return self.request.user
@@ -145,6 +193,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 class ProfileDetailView(generics.RetrieveAPIView):
     serializer_class = UserProfileDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [TokenAuthentication, SessionAuthentication]
 
     def get_object(self):
         return self.request.user
@@ -156,7 +205,7 @@ class PasswordResetRequestView(APIView):
 
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
-        # Para no filtrar información, devolvemos 200 aunque el serializer traiga errores
+        # Para no filtrar info, devolvemos 200 aunque traiga errores
         if not serializer.is_valid():
             logger.info("Solicitud de reset con datos inválidos (respuesta genérica 200).")
             return Response(
@@ -175,7 +224,7 @@ class PasswordResetRequestView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # Límite diario (el serializer ya lo validó; doble check sin delatar info)
+        # Límite diario (doble check sin delatar info)
         if not PasswordResetRequest.can_request_reset(user):
             logger.info(f"Límite diario alcanzado para {email}")
             return Response(
@@ -202,24 +251,18 @@ class PasswordResetRequestView(APIView):
         )
 
     def send_reset_email(self, user, token):
-        """
-        Envío con fallback:
-        - Si falta el HTML, se usa texto plano.
-        - Si falta el TXT, se construye un mensaje básico.
-        """
+        """Envío con fallback: HTML si hay template, si no, texto plano."""
         try:
             subject = "Restablecimiento de Contraseña - Sistema de Ruletas"
             base = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:3000").rstrip("/")
             reset_url = f"{base}/reset-password?token={token}"
             ctx = {"user": user, "reset_url": reset_url, "site_name": "Sistema de Ruletas"}
 
-            # HTML opcional
             try:
                 html_message = render_to_string("authentication/password_reset_email.html", ctx)
             except TemplateDoesNotExist:
                 html_message = None
 
-            # TXT opcional; si no existe, generamos uno básico
             try:
                 plain_message = render_to_string("authentication/password_reset_email.txt", ctx)
             except TemplateDoesNotExist:
@@ -236,7 +279,7 @@ class PasswordResetRequestView(APIView):
                 getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@ruletas.local"),
                 [user.email],
                 html_message=html_message,
-                fail_silently=False,  # si falla, devolvemos False y borramos la solicitud
+                fail_silently=False,
             )
             logger.info(f"Email de restablecimiento enviado a: {user.email}")
             return True
@@ -274,6 +317,7 @@ class PasswordResetConfirmView(APIView):
 
 class ChangePasswordView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    authentication_classes = [TokenAuthentication, SessionAuthentication]
 
     def post(self, request):
         serializer = ChangePasswordSerializer(data=request.data, context={"request": request})
@@ -297,8 +341,16 @@ class ChangePasswordView(APIView):
 
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
+@authentication_classes([TokenAuthentication, SessionAuthentication])
 def user_info(request):
     user = request.user
+    # añadimos teléfono del perfil si existe
+    phone = None
+    try:
+        phone = getattr(user.profile, "phone", None)
+    except UserProfile.DoesNotExist:
+        pass
+
     return Response(
         {
             "id": user.id,
@@ -311,6 +363,7 @@ def user_info(request):
             "is_email_verified": user.is_email_verified,
             "last_login": user.last_login,
             "date_joined": user.date_joined,
+            "profile": {"phone": phone} if phone else None,
         }
     )
 

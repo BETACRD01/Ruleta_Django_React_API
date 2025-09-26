@@ -1,0 +1,71 @@
+/* src/styles/corporate-colors.css */
+/* Colores corporativos basados en tu paleta */
+
+:root {
+  /* Rojo Corporativo - Pantone #D62829 */
+  --corporate-red: #D62829;
+  --corporate-red-50: #FEF2F2;
+  --corporate-red-100: #FEE2E2;
+  --corporate-red-200: #FECACA;
+  --corporate-red-300: #FCA5A5;
+  --corporate-red-400: #F87171;
+  --corporate-red-500: #EF4444;
+  --corporate-red-600: #D62829;
+  --corporate-red-700: #B91C1C;
+  --corporate-red-800: #991B1B;
+  --corporate-red-900: #7F1D1D;
+
+  /* Azul Corporativo - Pantone #003049 */
+  --corporate-teal: #003049;
+  --corporate-teal-50: #F0FDFA;
+  --corporate-teal-100: #CCFBF1;
+  --corporate-teal-200: #99F6E4;
+  --corporate-teal-300: #5EEAD4;
+  --corporate-teal-400: #2DD4BF;
+  --corporate-teal-500: #14B8A6;
+  --corporate-teal-600: #0D9488;
+  --corporate-teal-700: #003049;
+  --corporate-teal-800: #134E4A;
+  --corporate-teal-900: #134E4A;
+}
+
+/* Clases utilitarias para usar los colores corporativos */
+.text-corporate-red { color: var(--corporate-red); }
+.bg-corporate-red { background-color: var(--corporate-red); }
+.border-corporate-red { border-color: var(--corporate-red); }
+.hover\:text-corporate-red:hover { color: var(--corporate-red); }
+.hover\:bg-corporate-red:hover { background-color: var(--corporate-red); }
+
+.text-corporate-teal { color: var(--corporate-teal); }
+.bg-corporate-teal { background-color: var(--corporate-teal); }
+.border-corporate-teal { border-color: var(--corporate-teal); }
+.hover\:text-corporate-teal:hover { color: var(--corporate-teal); }
+.hover\:bg-corporate-teal:hover { background-color: var(--corporate-teal); }
+
+/* Efectos especiales para el logo */
+.logo-hover-effect {
+  transition: all 0.3s ease;
+}
+
+/* Solo en desktop (md y arriba) aplicar efectos hover */
+@media (min-width: 768px) {
+  .logo-hover-effect:hover {
+    transform: scale(1.05);
+    filter: drop-shadow(0 4px 8px rgba(214, 40, 41, 0.2));
+  }
+}
+
+@media (min-width: 1024px) {
+  .logo-hover-effect:hover {
+    transform: scale(1.1);
+    filter: drop-shadow(0 6px 12px rgba(214, 40, 41, 0.3));
+  }
+}
+
+/* En móvil, mantener el logo estático */
+@media (max-width: 767px) {
+  .logo-hover-effect {
+    transform: none !important;
+    filter: none !important;
+  }
+}

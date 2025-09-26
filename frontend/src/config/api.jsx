@@ -49,7 +49,7 @@ export const ENDPOINTS = {
     CREATE: "/roulettes/create/",
     DETAIL: (id) => `/roulettes/${id}/`,
     UPDATE: (id) => `/roulettes/${id}/update/`,
-    DELETE: (id) => `/roulettes/${id}/delete/`,        // soporta ?force=1 en la vista
+    DELETE: (id) => `/roulettes/${id}/delete/`, // soporta ?force=1
     STATS:  (id) => `/roulettes/${id}/stats/`,
     DRAW_EXECUTE: "/roulettes/draw/execute/",
     DRAW_HISTORY: "/roulettes/draw/history/",
@@ -58,11 +58,11 @@ export const ENDPOINTS = {
       UPDATE: (id) => `/roulettes/${id}/settings/`,
     },
     PRIZES: {
-      LIST:   (rid)            => `/roulettes/${rid}/prizes/`,
-      ADD:    (rid)            => `/roulettes/${rid}/prizes/`,
-      ITEM:   (rid, pid)       => `/roulettes/${rid}/prizes/${pid}/`,
-      UPDATE: (rid, pid)       => `/roulettes/${rid}/prizes/${pid}/update/`,
-      DELETE: (rid, pid)       => `/roulettes/${rid}/prizes/${pid}/delete/`,
+      LIST:   (rid)      => `/roulettes/${rid}/prizes/`,
+      ADD:    (rid)      => `/roulettes/${rid}/prizes/`,
+      ITEM:   (rid, pid) => `/roulettes/${rid}/prizes/${pid}/`,
+      UPDATE: (rid, pid) => `/roulettes/${rid}/prizes/${pid}/update/`,
+      DELETE: (rid, pid) => `/roulettes/${rid}/prizes/${pid}/delete/`,
     },
   },
 
@@ -71,6 +71,9 @@ export const ENDPOINTS = {
     MY_PARTICIPATIONS:     "/participants/participations/my-participations/",
     ROULETTE_PARTICIPANTS: (id) => `/participants/participations/roulette/${id}/`,
     CHECK_PARTICIPATION:   (id) => `/participants/participations/check-participation/${id}/`,
+
+    // ⤵️ NUEVO: detalle de una participación para leer/actualizar contacto del ganador
+    PARTICIPATION_DETAIL:  (pid) => `/participants/participations/${pid}/`,
   },
 };
 
@@ -113,7 +116,7 @@ const hasFileDeep = (value) => {
 const appendFormData = (fd, key, val) => {
   if (val === undefined || val === null) return;
   if (isFileLike(val)) {
-    if (val instanceof FileList) {
+    if (typeof FileList !== "undefined" && val instanceof FileList) {
       Array.from(val).forEach((file, i) => fd.append(`${key}[${i}]`, file));
     } else {
       fd.append(key, val);
@@ -131,6 +134,31 @@ const buildFormData = (data = {}) => {
   const fd = new FormData();
   Object.entries(data).forEach(([k, v]) => appendFormData(fd, k, v));
   return fd;
+};
+
+/* ================================
+   Utils comunes
+================================ */
+const toQuery = (params = {}) => {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") q.append(k, String(v));
+  });
+  const s = q.toString();
+  return s ? `?${s}` : "";
+};
+
+const jsonOrNull = async (res) => {
+  const ctype = res.headers.get("content-type") || "";
+  if (!ctype.toLowerCase().includes("application/json")) return null;
+  try { return await res.json(); }
+  catch { return null; }
+};
+
+const safeStringify = (maybeObject) => {
+  if (maybeObject == null) return null;
+  if (typeof maybeObject === "string") return maybeObject;
+  try { return JSON.stringify(maybeObject); } catch { return null; }
 };
 
 /* ================================
@@ -157,10 +185,19 @@ class BaseAPI {
 
   async request(endpoint, options = {}) {
     const url = `${this.baseURL}${endpoint}`;
+    const isMultipart = Boolean(options.isMultipart);
+    const headers = this.getHeaders(isMultipart);
+
+    // Permite pasar objeto o string; si es objeto y no es multipart, lo convierte a JSON.
+    let body = options.body;
+    if (!isMultipart && body && typeof body !== "string") {
+      body = safeStringify(body);
+    }
+
     const requestOptions = {
       method: options.method || "GET",
-      headers: this.getHeaders(options.isMultipart),
-      body: options.body,
+      headers,
+      body,
       signal: options.signal,
     };
 
@@ -168,14 +205,14 @@ class BaseAPI {
       const res = await fetch(url, requestOptions);
 
       if (!res.ok) {
-        let data = {};
-        try { data = await res.json(); } catch (_) {}
+        const data = await jsonOrNull(res);
 
         const backendMessage =
           data?.message
           || (Array.isArray(data?.non_field_errors) && data.non_field_errors.join(", "))
           || (typeof data?.detail === "string" && data.detail)
           || (data?.errors && JSON.stringify(data.errors))
+          || ((data && typeof data === "object") ? JSON.stringify(data) : null)
           || null;
 
         if (res.status === 401) {
@@ -195,7 +232,8 @@ class BaseAPI {
       }
 
       if (res.status === 204) return null;
-      return await res.json();
+      const parsed = await jsonOrNull(res);
+      return parsed ?? null;
     } catch (err) {
       console.error(`API Error [${endpoint}]`, err);
       throw err;
@@ -210,13 +248,13 @@ export class AuthAPI extends BaseAPI {
   constructor() { super(API_URL); }
 
   async login(credentials) {
-    const result = await this.request(ENDPOINTS.AUTH.LOGIN, { method: "POST", body: JSON.stringify(credentials) });
+    const result = await this.request(ENDPOINTS.AUTH.LOGIN, { method: "POST", body: credentials });
     if (result?.success && result?.token) this.setAuthToken(result.token);
     return result;
   }
 
   async register(data) {
-    const result = await this.request(ENDPOINTS.AUTH.REGISTER, { method: "POST", body: JSON.stringify(data) });
+    const result = await this.request(ENDPOINTS.AUTH.REGISTER, { method: "POST", body: data });
     if (result?.success && result?.token) this.setAuthToken(result.token);
     return result;
   }
@@ -230,23 +268,23 @@ export class AuthAPI extends BaseAPI {
   getProfileDetail() { return this.request(ENDPOINTS.AUTH.PROFILE_DETAIL); }
 
   updateProfile(profile) {
-    return this.request(ENDPOINTS.AUTH.PROFILE, { method: "PUT", body: JSON.stringify(profile) });
+    return this.request(ENDPOINTS.AUTH.PROFILE, { method: "PUT", body: profile });
   }
 
   changePassword(payload) {
-    return this.request(ENDPOINTS.AUTH.CHANGE_PASSWORD, { method: "POST", body: JSON.stringify(payload) });
+    return this.request(ENDPOINTS.AUTH.CHANGE_PASSWORD, { method: "POST", body: payload });
   }
 
   requestPasswordReset(email) {
-    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_REQUEST, { method: "POST", body: JSON.stringify({ email }) });
+    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_REQUEST, { method: "POST", body: { email } });
   }
 
   confirmPasswordReset(payload) {
-    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_CONFIRM, { method: "POST", body: JSON.stringify(payload) });
+    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_CONFIRM, { method: "POST", body: payload });
   }
 
   validateResetToken(token) {
-    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_VALIDATE, { method: "POST", body: JSON.stringify({ token }) });
+    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_VALIDATE, { method: "POST", body: { token } });
   }
 }
 
@@ -257,11 +295,7 @@ export class RoulettesAPI extends BaseAPI {
   constructor(token = null) { super(API_URL, token); }
 
   getRoulettes(params = {}) {
-    const q = new URLSearchParams();
-    if (params.status)    q.append("status", params.status);
-    if (params.page)      q.append("page", params.page);
-    if (params.page_size) q.append("page_size", params.page_size);
-    const ep = `${ENDPOINTS.ROULETTES.LIST}${q.toString() ? `?${q}` : ""}`;
+    const ep = `${ENDPOINTS.ROULETTES.LIST}${toQuery(params)}`;
     return this.request(ep);
   }
 
@@ -269,23 +303,22 @@ export class RoulettesAPI extends BaseAPI {
 
   createRoulette(data) {
     const isMulti = hasFileDeep(data);
-    const body    = isMulti ? buildFormData(data) : JSON.stringify(data);
+    const body    = isMulti ? buildFormData(data) : data;
     return this.request(ENDPOINTS.ROULETTES.CREATE, { method: "POST", body, isMultipart: isMulti });
   }
 
   updateRoulette(id, data) {
     const isMulti = hasFileDeep(data);
-    const body    = isMulti ? buildFormData(data) : JSON.stringify(data);
+    const body    = isMulti ? buildFormData(data) : data;
     return this.request(ENDPOINTS.ROULETTES.UPDATE(id), { method: "PUT", body, isMultipart: isMulti });
   }
 
   patchRoulette(id, data) {
     const isMulti = hasFileDeep(data);
-    const body    = isMulti ? buildFormData(data) : JSON.stringify(data);
+    const body    = isMulti ? buildFormData(data) : data;
     return this.request(ENDPOINTS.ROULETTES.UPDATE(id), { method: "PATCH", body, isMultipart: isMulti });
   }
 
-  // Borrado normal o forzado (?force=1) según tu vista de backend
   deleteRoulette(id, { force = false } = {}) {
     const qs = force ? "?force=1" : "";
     return this.request(`${ENDPOINTS.ROULETTES.DELETE(id)}${qs}`, { method: "DELETE" });
@@ -294,43 +327,39 @@ export class RoulettesAPI extends BaseAPI {
   executeRouletteDraw(rouletteId) {
     return this.request(ENDPOINTS.ROULETTES.DRAW_EXECUTE, {
       method: "POST",
-      body: JSON.stringify({ roulette_id: rouletteId }),
+      body: { roulette_id: rouletteId },
     });
   }
 
   getRouletteStats(id) { return this.request(ENDPOINTS.ROULETTES.STATS(id)); }
 
   getDrawHistory(params = {}) {
-    const q = new URLSearchParams();
-    if (params.roulette_id) q.append("roulette_id", params.roulette_id);
-    if (params.page)        q.append("page", params.page);
-    if (params.page_size)   q.append("page_size", params.page_size);
-    const ep = `${ENDPOINTS.ROULETTES.DRAW_HISTORY}${q.toString() ? `?${q}` : ""}`;
+    const ep = `${ENDPOINTS.ROULETTES.DRAW_HISTORY}${toQuery(params)}`;
     return this.request(ep);
   }
 
-  getRouletteSettings(id)                 { return this.request(ENDPOINTS.ROULETTES.SETTINGS.GET(id)); }
-  updateRouletteSettings(id, settings)    { return this.request(ENDPOINTS.ROULETTES.SETTINGS.UPDATE(id), { method: "PUT",   body: JSON.stringify(settings) }); }
-  patchRouletteSettings(id, settings)     { return this.request(ENDPOINTS.ROULETTES.SETTINGS.UPDATE(id), { method: "PATCH", body: JSON.stringify(settings) }); }
+  getRouletteSettings(id)              { return this.request(ENDPOINTS.ROULETTES.SETTINGS.GET(id)); }
+  updateRouletteSettings(id, settings) { return this.request(ENDPOINTS.ROULETTES.SETTINGS.UPDATE(id), { method: "PUT",   body: settings }); }
+  patchRouletteSettings(id, settings)  { return this.request(ENDPOINTS.ROULETTES.SETTINGS.UPDATE(id), { method: "PATCH", body: settings }); }
 
-  listPrizes(rouletteId)                  { return this.request(ENDPOINTS.ROULETTES.PRIZES.LIST(rouletteId)); }
-  getPrize(rouletteId, prizeId)           { return this.request(ENDPOINTS.ROULETTES.PRIZES.ITEM(rouletteId, prizeId)); }
-  addPrize(rouletteId, prize)             {
+  listPrizes(rouletteId)                { return this.request(ENDPOINTS.ROULETTES.PRIZES.LIST(rouletteId)); }
+  getPrize(rouletteId, prizeId)         { return this.request(ENDPOINTS.ROULETTES.PRIZES.ITEM(rouletteId, prizeId)); }
+  addPrize(rouletteId, prize)           {
     const isMulti = hasFileDeep(prize);
-    const body    = isMulti ? buildFormData(prize) : JSON.stringify(prize);
+    const body    = isMulti ? buildFormData(prize) : prize;
     return this.request(ENDPOINTS.ROULETTES.PRIZES.ADD(rouletteId), { method: "POST", body, isMultipart: isMulti });
   }
-  updatePrize(rouletteId, prizeId, data)  {
-    const isMulti = hasFileDeep(data);
-    const body    = isMulti ? buildFormData(data) : JSON.stringify(data);
+  updatePrize(rouletteId, prizeId, d)   {
+    const isMulti = hasFileDeep(d);
+    const body    = isMulti ? buildFormData(d) : d;
     return this.request(ENDPOINTS.ROULETTES.PRIZES.UPDATE(rouletteId, prizeId), { method: "PUT", body, isMultipart: isMulti });
   }
-  patchPrize(rouletteId, prizeId, data)   {
-    const isMulti = hasFileDeep(data);
-    const body    = isMulti ? buildFormData(data) : JSON.stringify(data);
+  patchPrize(rouletteId, prizeId, d)    {
+    const isMulti = hasFileDeep(d);
+    const body    = isMulti ? buildFormData(d) : d;
     return this.request(ENDPOINTS.ROULETTES.PRIZES.UPDATE(rouletteId, prizeId), { method: "PATCH", body, isMultipart: isMulti });
   }
-  deletePrize(rouletteId, prizeId)        { return this.request(ENDPOINTS.ROULETTES.PRIZES.DELETE(rouletteId, prizeId), { method: "DELETE" }); }
+  deletePrize(rouletteId, prizeId)      { return this.request(ENDPOINTS.ROULETTES.PRIZES.DELETE(rouletteId, prizeId), { method: "DELETE" }); }
 }
 
 /* ================================
@@ -347,22 +376,59 @@ export class ParticipantsAPI extends BaseAPI {
   }
 
   getMyParticipations(params = {}) {
-    const q = new URLSearchParams();
-    if (params.page)      q.append("page", params.page);
-    if (params.page_size) q.append("page_size", params.page_size);
-    const ep = `${ENDPOINTS.PARTICIPANTS.MY_PARTICIPATIONS}${q.toString() ? `?${q}` : ""}`;
+    const ep = `${ENDPOINTS.PARTICIPANTS.MY_PARTICIPATIONS}${toQuery(params)}`;
     return this.request(ep);
   }
 
   getRouletteParticipants(rouletteId, params = {}) {
-    const q = new URLSearchParams();
-    if (params.page)      q.append("page", params.page);
-    if (params.page_size) q.append("page_size", params.page_size);
-    const ep = `${ENDPOINTS.PARTICIPANTS.ROULETTE_PARTICIPANTS(rouletteId)}${q.toString() ? `?${q}` : ""}`;
+    const ep = `${ENDPOINTS.PARTICIPANTS.ROULETTE_PARTICIPANTS(rouletteId)}${toQuery(params)}`;
     return this.request(ep);
   }
 
   checkParticipation(rouletteId) { return this.request(ENDPOINTS.PARTICIPANTS.CHECK_PARTICIPATION(rouletteId)); }
+
+  // ===== NUEVO: helpers de detalle de participación =====
+
+  /** Obtiene una participación por id (usado para GANADORES). */
+  getParticipant(participationId) {
+    return this.request(ENDPOINTS.PARTICIPANTS.PARTICIPATION_DETAIL(participationId));
+  }
+
+  /** Actualiza parcialmente una participación (email/phone del ganador). */
+  patchParticipant(participationId, data) {
+    return this.request(ENDPOINTS.PARTICIPANTS.PARTICIPATION_DETAIL(participationId), {
+      method: "PATCH",
+      body: data,
+    });
+  }
+
+  /**
+   * Trae contacto del ganador desde el backend.
+   * Aunque se pasa rouletteId, aquí usamos el id de participación (participantId).
+   * Si tu backend usa otra ruta, ajusta ENDPOINTS o reemplaza esta implementación.
+   */
+  async getWinnerContact(rouletteId, participantId) {
+    const detail = await this.getParticipant(participantId);
+    return {
+      email: detail?.email ?? detail?.contact_email ?? "",
+      phone: detail?.phone ?? detail?.contact_phone ?? "",
+    };
+  }
+
+  /**
+   * Actualiza email y phone del ganador.
+   * Ajusta keys si tu backend espera otros nombres (contact_email/contact_phone, etc.).
+   */
+  updateWinnerContact(rouletteId, participantId, { email, phone }) {
+    // Normalizamos posibles nombres de campos
+    const payload = {
+      email,
+      phone,
+      // contact_email: email,
+      // contact_phone: phone,
+    };
+    return this.patchParticipant(participantId, payload);
+  }
 }
 
 /* ================================
@@ -372,66 +438,56 @@ export class NotificationAPI extends BaseAPI {
   constructor(token = null) { super(API_URL, token); }
 
   async getUserNotifications(params = {}) {
-    const query = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') query.append(k, String(v)); });
-    const endpoint = `${NOTIFICATION_ENDPOINTS.USER}${query.toString() ? `?${query}` : ''}`;
-    return this.request(endpoint);
+    const ep = `${NOTIFICATION_ENDPOINTS.USER}${toQuery(params)}`;
+    return this.request(ep);
   }
 
   async getPublicNotifications(params = {}) {
-    const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.append(k, String(v)); });
-    const ep = `${NOTIFICATION_ENDPOINTS.PUBLIC}${q.toString() ? `?${q}` : ''}`;
+    const ep = `${NOTIFICATION_ENDPOINTS.PUBLIC}${toQuery(params)}`;
     return this.request(ep);
   }
 
   async getAdminNotifications(params = {}) {
-    const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.append(k, String(v)); });
-    const ep = `${NOTIFICATION_ENDPOINTS.ADMIN}${q.toString() ? `?${q}` : ''}`;
+    const ep = `${NOTIFICATION_ENDPOINTS.ADMIN}${toQuery(params)}`;
     return this.request(ep);
   }
 
   async getRouletteNotifications(rouletteId, params = {}) {
-    const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.append(k, String(v)); });
-    const ep = `${NOTIFICATION_ENDPOINTS.ROULETTE(rouletteId)}${q.toString() ? `?${q}` : ''}`;
+    const ep = `${NOTIFICATION_ENDPOINTS.ROULETTE(rouletteId)}${toQuery(params)}`;
     return this.request(ep);
   }
 
   // ---- Acciones
-  markAsRead(notification_ids)  { return this.request(NOTIFICATION_ENDPOINTS.MARK_READ, { method: "POST", body: JSON.stringify({ notification_ids }) }); }
+  markAsRead(notification_ids)  { return this.request(NOTIFICATION_ENDPOINTS.MARK_READ, { method: "POST", body: { notification_ids } }); }
   markAllAsRead()               { return this.request(NOTIFICATION_ENDPOINTS.MARK_ALL_READ, { method: "POST" }); }
   deleteReadNotifications()     { return this.request(NOTIFICATION_ENDPOINTS.DELETE_READ, { method: "DELETE" }); }
 
-  // ---- CRUD por notificación (necesario para el Centro Admin)
+  // ---- CRUD por notificación (Centro Admin)
   deleteNotification(id)        { return this.request(NOTIFICATION_ENDPOINTS.DETAIL(id), { method: "DELETE" }); }
-  patchNotification(id, data)   { return this.request(NOTIFICATION_ENDPOINTS.DETAIL(id), { method: "PATCH", body: JSON.stringify(data) }); }
+  patchNotification(id, data)   { return this.request(NOTIFICATION_ENDPOINTS.DETAIL(id), { method: "PATCH", body: data }); }
 
   // ---- Utilidades varias
   getStats()                    { return this.request(NOTIFICATION_ENDPOINTS.STATS); }
   getDashboard()                { return this.request(NOTIFICATION_ENDPOINTS.DASHBOARD); }
   cleanup(days = 30)            { return this.request(`${NOTIFICATION_ENDPOINTS.CLEANUP}?days=${days}`, { method: "DELETE" }); }
-  createNotification(data)      { return this.request(NOTIFICATION_ENDPOINTS.WEBHOOK, { method: "POST", body: JSON.stringify(data) }); }
-  createWinnerAnnouncement(d)   { return this.request(NOTIFICATION_ENDPOINTS.WINNER_ANNOUNCEMENT, { method: "POST", body: JSON.stringify(d) }); }
+  createNotification(data)      { return this.request(NOTIFICATION_ENDPOINTS.WEBHOOK, { method: "POST", body: data }); }
+  createWinnerAnnouncement(d)   { return this.request(NOTIFICATION_ENDPOINTS.WINNER_ANNOUNCEMENT, { method: "POST", body: d }); }
   getAdminPreferences()         { return this.request(NOTIFICATION_ENDPOINTS.ADMIN_PREFERENCES); }
-  updateAdminPreferences(data)  { return this.request(NOTIFICATION_ENDPOINTS.ADMIN_PREFERENCES, { method: "PATCH", body: JSON.stringify(data) }); }
+  updateAdminPreferences(data)  { return this.request(NOTIFICATION_ENDPOINTS.ADMIN_PREFERENCES, { method: "PATCH", body: data }); }
   getTemplates()                { return this.request(NOTIFICATION_ENDPOINTS.TEMPLATES); }
-  createTemplate(data)          { return this.request(NOTIFICATION_ENDPOINTS.TEMPLATES, { method: "POST", body: JSON.stringify(data) }); }
+  createTemplate(data)          { return this.request(NOTIFICATION_ENDPOINTS.TEMPLATES, { method: "POST", body: data }); }
   getTemplate(id)               { return this.request(NOTIFICATION_ENDPOINTS.TEMPLATE_DETAIL(id)); }
-  updateTemplate(id, data)      { return this.request(NOTIFICATION_ENDPOINTS.TEMPLATE_DETAIL(id), { method: "PATCH", body: JSON.stringify(data) }); }
+  updateTemplate(id, data)      { return this.request(NOTIFICATION_ENDPOINTS.TEMPLATE_DETAIL(id), { method: "PATCH", body: data }); }
   deleteTemplate(id)            { return this.request(NOTIFICATION_ENDPOINTS.TEMPLATE_DETAIL(id), { method: "DELETE" }); }
 
-  getRealTimeMessages(params={}) {
-    const q = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== '') q.append(k, String(v)); });
-    const ep = `${NOTIFICATION_ENDPOINTS.REALTIME}${q.toString() ? `?${q}` : ''}`;
+  getRealTimeMessages(params = {}) {
+    const ep = `${NOTIFICATION_ENDPOINTS.REALTIME}${toQuery(params)}`;
     return this.request(ep);
   }
 
   async getUnreadNotifications(params = {}) {
     return this.getUserNotifications({ ...params, unread_only: true, include_stats: true });
-  }
+    }
 
   async getUnreadCount() {
     try {
@@ -466,7 +522,9 @@ export class NotificationManager {
   }
   addEventListener(cb) { this.listeners.add(cb); return () => this.listeners.delete(cb); }
   addListener(cb)      { return this.addEventListener(cb); }
-  notifyListeners(event, data) { this.listeners.forEach((cb) => { try { cb(event, data); } catch (e) { console.error("Listener error:", e); } }); }
+  notifyListeners(event, data) {
+    this.listeners.forEach((cb) => { try { cb(event, data); } catch (e) { console.error("Listener error:", e); } });
+  }
   async refresh({ silent = false } = {}) {
     try {
       const data = await this.api.getUserNotifications({ include_stats: true, unread_only: false, page_size: 20 });
@@ -499,12 +557,7 @@ export const handleAPIError = (err, fallback = "Error de red") => {
   return msg;
 };
 
-export const createPaginationParams = (page, page_size) => {
-  const q = new URLSearchParams();
-  if (page)      q.append("page", page);
-  if (page_size) q.append("page_size", page_size);
-  return q.toString() ? `?${q.toString()}` : "";
-};
+export const createPaginationParams = (page, page_size) => toQuery({ page, page_size });
 
 export const formatPaginatedResponse = (resp) => ({
   count: resp?.count ?? 0,
@@ -513,7 +566,6 @@ export const formatPaginatedResponse = (resp) => ({
   results: resp?.results ?? [],
 });
 
-// Validadores corregidos y expandidos
 export const validators = {
   required: (v) => v !== undefined && v !== null && String(v).trim() !== "",
   email: (email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
@@ -522,32 +574,30 @@ export const validators = {
   isNumber: (v) => !isNaN(Number(v)) && isFinite(Number(v)),
   isPositive: (v) => Number(v) > 0,
   isInteger: (v) => Number.isInteger(Number(v)),
-  
-  // Validadores de archivos que necesitas
+
   fileExtension: (allowedExts = []) => (file) => {
     if (!file || !file.name) return false;
     if (!Array.isArray(allowedExts) || allowedExts.length === 0) return true;
     const ext = file.name.split('.').pop()?.toLowerCase();
     return allowedExts.map(e => e.toLowerCase().replace('.', '')).includes(ext);
   },
-  
+
   maxFileSize: (maxSizeMB) => (file) => {
     if (!file || !file.size) return true;
     return file.size <= maxSizeMB * 1024 * 1024;
   },
-  
+
   isImageFile: (file) => {
     if (!file || !file.type) return false;
     return file.type.startsWith('image/');
   },
-  
+
   minFileSize: (minSizeMB) => (file) => {
     if (!file || !file.size) return false;
     return file.size >= minSizeMB * 1024 * 1024;
   }
 };
 
-// Formateadores corregidos y expandidos
 export const formatters = {
   date: (iso, options = {}) => {
     if (!iso) return "";
@@ -565,8 +615,7 @@ export const formatters = {
       return iso;
     }
   },
-  
-  // Formateador de tamaño de archivo que necesitas
+
   fileSize: (bytes) => {
     if (!bytes || bytes === 0) return '0 B';
     const k = 1024;
@@ -574,31 +623,23 @@ export const formatters = {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   },
-  
-  currency: (amount, currency = 'USD') => {
-    return new Intl.NumberFormat('es-ES', {
-      style: 'currency',
-      currency: currency
-    }).format(amount);
-  },
-  
-  percentage: (value, decimals = 1) => {
-    return `${Number(value).toFixed(decimals)}%`;
-  },
-  
-  number: (value, decimals = 0) => {
-    return Number(value).toLocaleString('es-ES', {
+
+  currency: (amount, currency = 'USD') =>
+    new Intl.NumberFormat('es-ES', { style: 'currency', currency }).format(amount),
+
+  percentage: (value, decimals = 1) => `${Number(value).toFixed(decimals)}%`,
+
+  number: (value, decimals = 0) =>
+    Number(value).toLocaleString('es-ES', {
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals
-    });
-  }
+    }),
 };
 
 export const websocketUtils = { WS_URL };
 export const uploadWithProgress = null;
 export const generateId = (p = "id") => `${p}_${Math.random().toString(36).slice(2, 9)}`;
 
-// deepMerge corregido (arreglado el typo)
 export const deepMerge = (target = {}, source = {}) => {
   const result = { ...target };
   for (const key in source) {
@@ -614,7 +655,8 @@ export const deepMerge = (target = {}, source = {}) => {
 export const deviceUtils = {
   isMobile:  () => /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
   isTablet:  () => /iPad|Android/i.test(navigator.userAgent) && window.innerWidth >= 768,
-  isDesktop: () => !( /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ) && !( /iPad|Android/i.test(navigator.userAgent) && window.innerWidth >= 768 ),
+  isDesktop: () => !( /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) )
+                   && !( /iPad|Android/i.test(navigator.userAgent) && window.innerWidth >= 768 ),
   getScreenSize: () => {
     const w = window.innerWidth;
     if (w < 640) return "sm";
@@ -624,50 +666,30 @@ export const deviceUtils = {
   }
 };
 
-// Utilidades adicionales para archivos y formularios
 export const fileUtils = {
-  createPreviewUrl: (file) => {
-    if (!file) return null;
-    return URL.createObjectURL(file);
-  },
-  
-  revokePreviewUrl: (url) => {
-    if (url && url.startsWith('blob:')) {
-      URL.revokeObjectURL(url);
-    }
-  },
-  
-  getFileExtension: (filename) => {
-    if (!filename) return '';
-    return filename.split('.').pop()?.toLowerCase() || '';
-  },
-  
+  createPreviewUrl: (file) => file ? URL.createObjectURL(file) : null,
+  revokePreviewUrl: (url) => { if (url && url.startsWith('blob:')) URL.revokeObjectURL(url); },
+  getFileExtension: (filename) => (filename ? (filename.split('.').pop()?.toLowerCase() || '') : ''),
   isValidImageType: (file) => {
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-    return file && validTypes.includes(file.type);
+    const valid = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    return file && valid.includes(file.type);
   },
-  
-  compressImage: async (file, maxWidth = 800, quality = 0.8) => {
-    return new Promise((resolve) => {
+  compressImage: async (file, maxWidth = 800, quality = 0.8) =>
+    new Promise((resolve) => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       const img = new Image();
-      
       img.onload = () => {
         const ratio = Math.min(maxWidth / img.width, maxWidth / img.height);
         canvas.width = img.width * ratio;
         canvas.height = img.height * ratio;
-        
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(resolve, file.type, quality);
       };
-      
       img.src = URL.createObjectURL(file);
-    });
-  }
+    }),
 };
 
-// Utilidades para formularios
 export const formUtils = {
   serializeFormData: (formData) => {
     const obj = {};
@@ -681,41 +703,28 @@ export const formUtils = {
     }
     return obj;
   },
-  
+
   validateForm: (data, rules) => {
     const errors = {};
-    
     Object.entries(rules).forEach(([field, fieldRules]) => {
       const value = data[field];
       const fieldErrors = [];
-      
       fieldRules.forEach(rule => {
         if (typeof rule === 'function') {
-          if (!rule(value)) {
-            fieldErrors.push(`El campo ${field} no es válido`);
-          }
+          if (!rule(value)) fieldErrors.push(`El campo ${field} no es válido`);
         } else if (rule.validator && !rule.validator(value)) {
           fieldErrors.push(rule.message || `El campo ${field} no es válido`);
         }
       });
-      
-      if (fieldErrors.length > 0) {
-        errors[field] = fieldErrors;
-      }
+      if (fieldErrors.length > 0) errors[field] = fieldErrors;
     });
-    
-    return {
-      isValid: Object.keys(errors).length === 0,
-      errors
-    };
+    return { isValid: Object.keys(errors).length === 0, errors };
   },
-  
+
   cleanFormData: (data) => {
     const cleaned = {};
     Object.entries(data).forEach(([key, value]) => {
-      if (value !== null && value !== undefined && value !== '') {
-        cleaned[key] = value;
-      }
+      if (value !== null && value !== undefined && value !== '') cleaned[key] = value;
     });
     return cleaned;
   }
@@ -774,13 +783,13 @@ const APIClient = {
     if (config.enableNotificationPolling !== false && isAuthenticated()) {
       notificationManager.startPolling(config.notificationPollInterval || 30000);
     }
-    return { 
-      success: true, 
-      message: "API Client initialized successfully", 
-      config: { 
-        apiUrl: config.apiUrl || API_URL, 
-        hasToken: !!readAnyToken() 
-      } 
+    return {
+      success: true,
+      message: "API Client initialized successfully",
+      config: {
+        apiUrl: config.apiUrl || API_URL,
+        hasToken: !!readAnyToken(),
+      }
     };
   }
 };
