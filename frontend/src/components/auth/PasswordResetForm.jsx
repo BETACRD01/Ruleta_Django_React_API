@@ -1,3 +1,4 @@
+// src/components/auth/PasswordResetForm.jsx - VERSIÓN COMPLETA
 import React from "react";
 import { Key, CheckCircle, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
@@ -9,7 +10,7 @@ const authAPI = new AuthAPI();
 const PasswordResetForm = ({ onBackToLogin }) => {
   // ------------------- Estado común -------------------
   const [formData, setFormData] = React.useState({ email: "" });
-  const [submittedEmail, setSubmittedEmail] = React.useState(""); // para mostrar en éxito (request)
+  const [submittedEmail, setSubmittedEmail] = React.useState("");
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState("");
   const [success, setSuccess] = React.useState(false);
@@ -33,9 +34,16 @@ const PasswordResetForm = ({ onBackToLogin }) => {
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [showNew, setShowNew] = React.useState(false);
   const [showConfirm, setShowConfirm] = React.useState(false);
-  const [submittedReset, setSubmittedReset] = React.useState(false); // éxito en reset
+  const [submittedReset, setSubmittedReset] = React.useState(false);
 
-  // Si hay token, validarlo y cambiar a modo reset; si falla, se queda en request + mensaje
+  // DEBUG: Ver qué está pasando
+  React.useEffect(() => {
+    console.log("🔍 URL completa:", window.location.href);
+    console.log("🎫 Token recibido:", token);
+    console.log("📋 Modo detectado:", initialMode);
+  }, [token, initialMode]);
+
+  // Validar token si existe
   React.useEffect(() => {
     let mounted = true;
     if (!token) {
@@ -44,23 +52,29 @@ const PasswordResetForm = ({ onBackToLogin }) => {
       setTokenValid(false);
       return;
     }
+
     setMode("reset");
     setValidating(true);
     setError("");
+
     (async () => {
       try {
+        console.log("🚀 Validando token:", token);
         const res = await authAPI.validateResetToken(token);
+        console.log("✅ Respuesta validación:", res);
+        
         if (!mounted) return;
+        
         if (res?.valid) {
           setTokenValid(true);
           if (res?.email) setMaskedEmail(res.email);
         } else {
           setTokenValid(false);
-          // Mostramos error y dejamos visible el formulario de solicitud
           setError(res?.message || "Token inválido o expirado");
           setMode("request");
         }
       } catch (e) {
+        console.error("❌ Error validando token:", e);
         if (!mounted) return;
         setTokenValid(false);
         setError("No se pudo validar el token. Intenta nuevamente.");
@@ -69,16 +83,16 @@ const PasswordResetForm = ({ onBackToLogin }) => {
         if (mounted) setValidating(false);
       }
     })();
+
     return () => { mounted = false; };
   }, [token]);
 
-  // Countdown para volver al login tras éxito en request
+  // Countdown para volver al login
   React.useEffect(() => {
     if (countdown > 0) {
       const t = setTimeout(() => setCountdown(s => s - 1), 1000);
       return () => clearTimeout(t);
     } else if (countdown === 0 && success && !token) {
-      // Solo auto-regresar cuando fue éxito de solicitud (no en reset)
       onBackToLogin();
     }
   }, [countdown, success, token, onBackToLogin]);
@@ -131,7 +145,7 @@ const PasswordResetForm = ({ onBackToLogin }) => {
   };
 
   // ------------------- Guardar nueva contraseña (con token) -------------------
-  const clientPwdOk = (pwd) => pwd && pwd.length >= 8; // Django validará más
+  const clientPwdOk = (pwd) => pwd && pwd.length >= 8;
 
   const handleConfirmNewPassword = async (e) => {
     e.preventDefault();
@@ -142,15 +156,20 @@ const PasswordResetForm = ({ onBackToLogin }) => {
 
     try {
       setLoading(true);
+      console.log("🔄 Confirmando nueva contraseña...");
+      
       await authAPI.confirmPasswordReset({
         token,
         new_password: newPassword,
         confirm_password: confirmPassword,
       });
+      
+      console.log("✅ Contraseña cambiada exitosamente");
       setSubmittedReset(true);
       setNewPassword("");
       setConfirmPassword("");
     } catch (err) {
+      console.error("❌ Error confirmando nueva contraseña:", err);
       const backendMsg =
         err?.errors?.confirm_password?.[0] ||
         err?.errors?.token ||
@@ -178,7 +197,7 @@ const PasswordResetForm = ({ onBackToLogin }) => {
       <p className="text-gray-600" style={{ fontSize: "clamp(.9rem, .5vw + .7rem, 1rem)" }}>
         {mode === "reset"
           ? validating
-            ? "Validando token…"
+            ? "Validando token..."
             : tokenValid
               ? (maskedEmail ? `Token válido para ${maskedEmail}` : "Ingresa tu nueva contraseña")
               : "El token no es válido. Puedes solicitar otro."
@@ -276,7 +295,10 @@ const PasswordResetForm = ({ onBackToLogin }) => {
       {mode === "reset" && (
         <div>
           {validating ? (
-            <p className="text-gray-600">Validando token…</p>
+            <div className="text-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+              <p className="text-gray-600">Validando token...</p>
+            </div>
           ) : tokenValid ? (
             submittedReset ? (
               <>
@@ -306,9 +328,11 @@ const PasswordResetForm = ({ onBackToLogin }) => {
                       type={showNew ? "text" : "password"}
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-emerald-500 focus:ring-0 bg-gray-50 focus:bg-white"
+                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#4dc9b1] focus:ring-0 outline-none transition-all duration-200 text-gray-900 bg-gray-50 focus:bg-white"
+                      placeholder="Mínimo 8 caracteres"
                       autoComplete="new-password"
                       required
+                      autoFocus
                     />
                     <button
                       type="button"
@@ -329,7 +353,8 @@ const PasswordResetForm = ({ onBackToLogin }) => {
                       type={showConfirm ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-emerald-500 focus:ring-0 bg-gray-50 focus:bg-white"
+                      className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#4dc9b1] focus:ring-0 outline-none transition-all duration-200 text-gray-900 bg-gray-50 focus:bg-white"
+                      placeholder="Repite la contraseña"
                       autoComplete="new-password"
                       required
                     />
@@ -346,17 +371,23 @@ const PasswordResetForm = ({ onBackToLogin }) => {
 
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="w-full text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
-                  style={{ backgroundColor: loading ? "#9ca3af" : "#4dc9b1" }}
+                  disabled={loading || !newPassword || !confirmPassword}
+                  className="w-full text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 transform hover:scale-[1.02] active:scale-[0.98]"
+                  style={{ backgroundColor: loading || !newPassword || !confirmPassword ? "#9ca3af" : "#4dc9b1" }}
                 >
                   {loading ? "Guardando..." : "Guardar nueva contraseña"}
                 </button>
+
+                <p className="text-center text-gray-600 text-sm">
+                  ¿Recordaste tu contraseña?{" "}
+                  <button type="button" onClick={onBackToLogin} className="font-semibold hover:underline transition-colors" style={{ color: "#0b56a7" }}>
+                    Volver al login
+                  </button>
+                </p>
               </form>
             )
           ) : (
-            // Si token inválido, ya cambiamos a modo "request" arriba; por si acaso mostramos algo mínimo
-            <p className="text-gray-600">El token no es válido. Solicita un nuevo enlace.</p>
+            <p className="text-gray-600 text-center py-4">El token no es válido. Solicita un nuevo enlace.</p>
           )}
         </div>
       )}
@@ -365,7 +396,7 @@ const PasswordResetForm = ({ onBackToLogin }) => {
       {mode === "request" && success && (
         <button
           onClick={onBackToLogin}
-          className="w-full text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98]"
+          className="w-full text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-[1.02] active:scale-[0.98] mt-4"
           style={{ backgroundColor: "#4dc9b1" }}
         >
           Volver al login ahora

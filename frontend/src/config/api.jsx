@@ -40,10 +40,10 @@ export const ENDPOINTS = {
     PROFILE_DETAIL: "/auth/profile/detail/",
     PASSWORD_RESET_REQUEST: "/auth/password-reset/request/",
     PASSWORD_RESET_CONFIRM: "/auth/password-reset/confirm/",
-    PASSWORD_RESET_VALIDATE: "/auth/password-reset/validate-token/",
+    PASSWORD_RESET_VALIDATE: "/auth/validate-reset-token/", // Cambiado aquí
     CHANGE_PASSWORD: "/auth/change-password/",
   },
-
+  
   ROULETTES: {
     LIST: "/roulettes/",
     CREATE: "/roulettes/create/",

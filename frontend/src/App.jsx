@@ -1,14 +1,15 @@
-// src/App.jsx - ACTUALIZADO con Page como raíz
+// src/App.jsx - ACTUALIZADO con ruta de reset password
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 
-import Page from './pages/page';           // ⬅️ nuevo contenedor con Home + Login/Register
+import Page from './pages/page';           
 import Layout from './components/Layout';  
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import TermsPage from './pages/TermsPage';
+import PasswordResetForm from './components/auth/PasswordResetForm'; // ⬅️ IMPORTAR
 
 import RouletteParticipate from './components/user/Ruletas Disponibles/RouletteParticipate';
 
@@ -33,6 +34,16 @@ const AppContent = () => {
     <Routes>
       {/* Página raíz: Page contiene Home + Login/Register */}
       <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Page />} />
+
+      {/* ⬅️ NUEVA RUTA PARA RESET PASSWORD */}
+      <Route 
+        path="/reset-password" 
+        element={
+          <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600">
+            <PasswordResetForm onBackToLogin={() => window.location.href = '/'} />
+          </div>
+        } 
+      />
 
       {/* Página pública de términos y condiciones */}
       <Route path="/terminos" element={<TermsPage />} />

@@ -15,7 +15,7 @@ urlpatterns = [
 
     path("password-reset/request/", views.PasswordResetRequestView.as_view(), name="password-reset-request"),
     path("password-reset/confirm/", views.PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
-    path("password-reset/validate-token/", views.validate_reset_token, name="validate-reset-token"),
+    path("validate-reset-token/", views.validate_reset_token, name="validate-reset-token"),  # CAMBIADO AQUÍ
 
     path("change-password/", views.ChangePasswordView.as_view(), name="change-password"),
 ]
