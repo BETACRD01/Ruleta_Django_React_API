@@ -589,7 +589,7 @@ const DrawTools = ({ onRefresh }) => {
       bannerResolverRef.current = resolve;
     });
 
-    // Sincronizar con backend tras cerrar el banner
+    // Sincronizar con backend tras cerrar el banner (se hace ahora también en dismissWinner)
     await Promise.all([loadDetail(selectedId), loadList().catch(() => {})]);
 
     return true;
@@ -601,8 +601,8 @@ const DrawTools = ({ onRefresh }) => {
     setShowWinnerAnimation(true);
   }, []);
 
-  // Cerrar banner (manual)
-  const dismissWinner = useCallback(() => {
+  // Cerrar banner (manual) — AHORA refresca backend al cerrar
+  const dismissWinner = useCallback(async () => {
     setShowWinnerAnimation(false);
     setRouletteWinner(null);
     if (typeof bannerResolverRef.current === "function") {
@@ -610,7 +610,11 @@ const DrawTools = ({ onRefresh }) => {
       bannerResolverRef.current = null;
       r(); // liberar el await de doOneSpin
     }
-  }, []);
+    // 🔄 Refrescar datos al cerrar el banner (segundo cambio solicitado)
+    try {
+      await Promise.all([loadDetail(selectedId), loadList().catch(() => {})]);
+    } catch (_) {}
+  }, [selectedId, loadDetail, loadList]);
 
   // Acción manual: un giro por click
   const handleSingleDraw = useCallback(async () => {
@@ -1160,8 +1164,6 @@ const PremiumRoulette = ({
     mode === "focus"
       ? "h-[560px] sm:h-[660px] md:h-[720px] lg:h-[740px]"
       : "h-[500px] sm:h-[560px] md:h-[600px] lg:h-[620px]";
-
-  // ❌ pointerPos eliminado (no se usaba)
 
   // Centro visual
   const centerOuterR = Math.max(mode === "focus" ? 28 : 24, radius * 0.155);

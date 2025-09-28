@@ -83,7 +83,7 @@ class RoulettePrizeSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "position", "status"]
+    read_only_fields = ["id", "created_at", "updated_at", "position", "status"]
 
     def get_image_url(self, obj) -> Optional[str]:
         return _abs_url(self.context.get("request"), obj.image)
@@ -511,6 +511,7 @@ class DrawExecuteSerializer(serializers.Serializer):
         except Roulette.DoesNotExist:
             raise serializers.ValidationError({"roulette_id": "Ruleta no encontrada"})
 
+        # Estado base
         if roulette.is_drawn or roulette.status == RouletteStatus.COMPLETED:
             raise serializers.ValidationError("La ruleta ya fue sorteada.")
 
@@ -518,14 +519,12 @@ class DrawExecuteSerializer(serializers.Serializer):
         if total_participants == 0:
             raise serializers.ValidationError("No hay participantes para sortear.")
 
-        # Verificar elegibles (no ganadores)
+        # Elegibles
         eligibles = roulette.participations.filter(is_winner=False).count()
         if eligibles == 0:
             raise serializers.ValidationError("No quedan participantes elegibles para ganar.")
 
-        # LÓGICA DE BLOQUEO:
-        # - Meta fija (>0): bloquear al alcanzar meta (winners_count >= target)
-        # - Automático (0): NO usar winners_target_effective; solo exigir stock > 0
+        # Política corregida: el limitante REAL es el stock; la meta es referencial
         settings = getattr(roulette, "settings", None)
         target = int(getattr(settings, "winners_target", 0) or 0)
 
@@ -533,21 +532,22 @@ class DrawExecuteSerializer(serializers.Serializer):
         if roulette.winner_id and not roulette.participations.filter(pk=roulette.winner_id, is_winner=True).exists():
             already += 1
 
+        available_stock = max(roulette.available_awards_count(), 0)
+        if available_stock <= 0:
+            raise serializers.ValidationError("No quedan premios disponibles.")
+
         if target > 0:
-            remaining_to_target = max(target - already, 0)
-            if remaining_to_target == 0:
-                raise serializers.ValidationError("Ya se alcanzó la cantidad de ganadores objetivo.")
-            # Ajustar count para no exceder la meta
-            attrs["count"] = min(count, remaining_to_target, eligibles)
+            # Si ya se alcanzó la meta PERO todavía hay stock, permitir continuar.
+            # Solo bloquear si meta alcanzada Y además ya no hay stock (ya controlado arriba).
+            # Por claridad explícita:
+            if already >= target and available_stock <= 0:
+                raise serializers.ValidationError("Se alcanzó la meta de ganadores y no quedan más premios.")
+            attrs["count"] = min(count, available_stock, eligibles)
         else:
-            # Automático por stock: solo verificar stock disponible
-            available_stock = max(roulette.available_awards_count(), 0)
-            if available_stock <= 0:
-                raise serializers.ValidationError("No quedan premios disponibles.")
-            # Ajustar count a stock y elegibles
+            # Automático por stock
             attrs["count"] = min(count, available_stock, eligibles)
 
-        # Permisos (defensivo para evitar KeyError 'request')
+        # Permisos
         request = self.context.get("request")
         user = getattr(request, "user", None)
         if user is None or not user.is_authenticated:
@@ -735,5 +735,3 @@ class RouletteStatsSerializer(serializers.Serializer):
             "prizes_info": prizes_info,
             "participation_trends": participation_trends,
         }
-    
-

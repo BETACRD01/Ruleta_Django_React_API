@@ -29,7 +29,7 @@ except Exception:
 # ========= RichText dinámico (CKEditor si está disponible) =========
 def get_rich_text_field() -> Tuple[Type[models.Field], bool]:
     """
-    Intenta importar un campo rich-text compatible con Django 5.2.6.
+    Intenta importar un campo rich-text compatible con Django.
     1) django-ckeditor-5 (CKEditor5Field)
     2) ckeditor clásico (RichTextUploadingField)
     3) Fallback: TextField (con misma firma básica)
@@ -210,11 +210,7 @@ class Roulette(models.Model):
 
     def winners_target_effective(self) -> int:
         """
-        Objetivo EFECTIVO (SOLO para UI):
-        - Si settings.winners_target == 0 -> usar stock DISPONIBLE como referencia visual.
-        - Si > 0 -> usar ese número.
-        - Si no hay settings -> 1.
-        NOTA: No usar este valor para bloquear el sorteo en modo automático.
+        Objetivo EFECTIVO (SOLO para UI).
         """
         settings = getattr(self, "settings", None)
         if not settings:
@@ -232,10 +228,7 @@ class Roulette(models.Model):
 
     def has_remaining_winners(self) -> bool:
         """
-        ¿Quedan ganadores por seleccionar?
-        - Meta fija (>0): mientras winners_count < winners_target.
-        - Automático (0): mientras quede stock disponible.
-        (Utilidad general; no se usa para cerrar en reconciliación)
+        Utilidad general (orientativa para UI).
         """
         settings = getattr(self, "settings", None)
         if settings and settings.winners_target and settings.winners_target > 0:
@@ -265,40 +258,34 @@ class Roulette(models.Model):
         if changed:
             self.save(update_fields=["status", "is_drawn", "drawn_at", "drawn_by"])
 
+    # ========================================================================
+    # CORRECCIÓN 1: reconcile_completion() — más conservadora (NO reabre)
+    #   - Cierra si: (a) no hay elegibles, o (b) no hay premios.
+    #   - En meta fija: cierra si se alcanzó la meta Y no hay premios.
+    #   - En los demás casos: no modifica estado.
+    # ========================================================================
     @transaction.atomic
     def reconcile_completion(self, by_user=None):
-        """
-        Cierra la ruleta SOLO bajo estas reglas:
-        - Si winners_target > 0: cerrar cuando winners_count >= winners_target.
-        - Si winners_target == 0 (modo stock): cerrar cuando available_awards_count() <= 0.
-        No cerrar por “meta” cuando aún queda stock en el modo automático.
-        """
-        settings = getattr(self, "settings", None)
-        target = 0
-        if settings and getattr(settings, "winners_target", None) is not None:
-            target = int(settings.winners_target or 0)
-
-        winners = self.winners_count()
-        available_units = self.available_awards_count()
-
-        if target > 0:
-            done = winners >= target
-        else:
-            done = available_units <= 0
-
-        if done:
+        # Participantes elegibles
+        eligible_count = self.participations.filter(is_winner=False).count()
+        if eligible_count == 0:
             self.mark_completed(by_user=by_user)
-        else:
-            # Aún se puede seguir sorteando; aseguramos que no quede marcada como “cerrada”
-            updates = {}
-            if self.status == RouletteStatus.COMPLETED:
-                self.status = RouletteStatus.ACTIVE
-                updates["status"] = RouletteStatus.ACTIVE
-            if self.is_drawn:
-                self.is_drawn = False
-                updates["is_drawn"] = False
-            if updates:
-                self.save(update_fields=list(updates.keys()))
+            return
+
+        # Premios disponibles
+        available_awards = self.available_awards_count()
+        if available_awards <= 0:
+            self.mark_completed(by_user=by_user)
+            return
+
+        # Meta fija (referencial): si se alcanzó la meta Y no hay premios -> cerrar
+        settings = getattr(self, "settings", None)
+        if settings and settings.winners_target and settings.winners_target > 0:
+            if self.winners_count() >= max(settings.winners_target, 1) and available_awards <= 0:
+                self.mark_completed(by_user=by_user)
+                return
+
+        # Si llegamos aquí: AÚN se puede continuar. No tocar estado.
 
     def save(self, *args, **kwargs):
         # Slug único si no existe
@@ -311,23 +298,36 @@ class Roulette(models.Model):
                 counter += 1
             self.slug = slug
 
-        # Autocierre (mismas reglas que reconcile_completion)
+        # ====================================================================
+        # Autocierre alineado a la lógica conservadora:
+        # - Cierra solo cuando YA NO se puede continuar sorteando:
+        #   a) sin participantes elegibles, o b) sin premios.
+        # - En meta fija, solo cierra si se alcanzó la meta Y no hay premios.
+        # ====================================================================
         if self.pk:
-            settings = getattr(self, "settings", None)
-            target = int(getattr(settings, "winners_target", 0) or 0)
-            if target > 0:
-                if (not self.is_drawn) and self.winners_count() >= max(target, 1):
-                    self.is_drawn = True
-                    self.drawn_at = self.drawn_at or timezone.now()
-                    if self.status != RouletteStatus.COMPLETED:
-                        self.status = RouletteStatus.COMPLETED
+            try:
+                eligibles = self.participations.filter(is_winner=False).exists()
+            except Exception:
+                eligibles = False
+
+            available = self.available_awards_count()
+
+            must_close = False
+            if not eligibles or available <= 0:
+                must_close = True
             else:
-                # Automático: cerrar SOLO cuando ya no quede stock
-                if (not self.is_drawn) and self.available_awards_count() <= 0:
+                settings = getattr(self, "settings", None)
+                target = int(getattr(settings, "winners_target", 0) or 0)
+                if target > 0 and self.winners_count() >= max(target, 1) and available <= 0:
+                    must_close = True
+
+            if must_close:
+                # Marcar como completada / dibujada si aún no lo está
+                if not self.is_drawn:
                     self.is_drawn = True
                     self.drawn_at = self.drawn_at or timezone.now()
-                    if self.status != RouletteStatus.COMPLETED:
-                        self.status = RouletteStatus.COMPLETED
+                if self.status != RouletteStatus.COMPLETED:
+                    self.status = RouletteStatus.COMPLETED
 
         super().save(*args, **kwargs)
 
@@ -343,29 +343,23 @@ class Roulette(models.Model):
     def get_participants_list(self):
         return self.participations.select_related("user").order_by("participant_number")
 
-    # Método explícito (y mantener la property por compat)
+    # ========================================================================
+    # CORRECCIÓN 2: can_be_drawn_manually_method() — más permisiva
+    #   Permite sortear mientras haya:
+    #   1) participantes elegibles (no ganadores) y
+    #   2) premios disponibles (>0),
+    #   y la ruleta no esté marcada como drawn/completed.
+    # ========================================================================
     def can_be_drawn_manually_method(self) -> bool:
-        """
-        Manual:
-        - Meta fija (>0): permitido mientras winners_count < target.
-        - Automático (0): permitido mientras available_awards_count() > 0.
-        Además, requiere que existan participantes elegibles.
-        """
         if self.is_drawn or self.status == RouletteStatus.COMPLETED:
             return False
         if not self.participations.exists():
             return False
-
-        settings = getattr(self, "settings", None)
-        target = int(getattr(settings, "winners_target", 0) or 0)
-
-        eligibles = self.participations.filter(is_winner=False).exists()
-        if not eligibles:
+        if not self.participations.filter(is_winner=False).exists():
             return False
-
-        if target > 0:
-            return self.winners_count() < max(target, 1)
-        return self.available_awards_count() > 0
+        if self.available_awards_count() <= 0:
+            return False
+        return True
 
     @property
     def can_be_drawn_manually(self) -> bool:
@@ -449,7 +443,7 @@ class Roulette(models.Model):
             self.winner = winner_participation
 
         self.drawn_by = drawn_by_user
-        self.save()  # autocierre solo si corresponde (según reglas de arriba)
+        self.save()  # autocierre conservador (solo si ya no se puede continuar)
 
         DrawHistory.objects.create(
             roulette=self,
@@ -476,16 +470,9 @@ class Roulette(models.Model):
         if total_candidates == 0:
             raise ValidationError("No quedan participantes elegibles para ganar.")
 
-        # Calcular límite por meta fija; en auto limitamos por stock disponible
-        settings = getattr(self, "settings", None)
-        if settings and settings.winners_target and settings.winners_target > 0:
-            target = max(settings.winners_target, 1)
-            already = self.winners_count()
-            remaining_target = max(target - already, 0)
-            picks = min(n, total_candidates, remaining_target)
-        else:
-            # Auto: picks limitado por stock disponible y candidatos
-            picks = min(n, total_candidates, max(self.available_awards_count(), 0))
+        # Límite por stock disponible (y candidatos).
+        # En meta fija, la UI puede contar meta, pero el bloqueo real es por stock/eligibles.
+        picks = min(n, total_candidates, max(self.available_awards_count(), 0))
 
         import random
         seed_base = hashlib.sha256(f"{self.id}-{timezone.now().isoformat()}".encode()).hexdigest()
@@ -560,7 +547,7 @@ class Roulette(models.Model):
             winners.append(choice)
 
         self.drawn_by = drawn_by_user
-        self.save()
+        self.save()  # autocierre conservador tras cada tanda
         logger.info("Ruleta %s: %d ganadores seleccionados", self.name, len(winners))
         return winners
 
@@ -576,7 +563,7 @@ class RouletteSettings(models.Model):
     notify_on_participation = models.BooleanField(default=True)
     notify_on_draw = models.BooleanField(default=True)
 
-    # 0 = automático (cierra por stock); >0 = meta fija de ganadores
+    # 0 = automático (control por stock); >0 = meta fija (solo referencial p/ UI)
     winners_target = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
 
     def __str__(self) -> str:

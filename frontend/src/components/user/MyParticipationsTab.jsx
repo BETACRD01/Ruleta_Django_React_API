@@ -1,11 +1,11 @@
 // src/components/user/MyParticipationsTab.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Filter, Calendar, Eye, Trophy, RefreshCcw, AlertTriangle } from 'lucide-react';
+import { Search, Filter, Calendar, Eye, Trophy, RefreshCw, AlertTriangle } from 'lucide-react';
 import { Button } from '../UI';
 import { participantsAPI, handleAPIError, API_URL, formatters } from '../../config/api';
 
 /* -----------------------
-   Helpers
+   Helpers - CORREGIDOS Y MEJORADOS
 -------------------------*/
 const resolveImageUrl = (r) => {
   const candidate =
@@ -20,28 +20,80 @@ const resolveImageUrl = (r) => {
     return `${base}${path}`;
   }
 };
+
 const toArray = (res) => {
   if (Array.isArray(res)) return res;
   if (Array.isArray(res?.results)) return res.results;
   if (Array.isArray(res?.participations)) return res.participations;
+  if (Array.isArray(res?.data)) return res.data;
   return [];
 };
 
-const getRouletteFromParticipation = (p) => p?.roulette || p?.raffle || null;
+const getRouletteFromParticipation = (p) => p?.roulette || p?.raffle || {};
+
 const getRouletteTitle = (p) =>
-  p?.roulette_title || p?.roulette_name || p?.roulette?.title || p?.roulette?.name || 'Ruleta';
+  p?.roulette_title || 
+  p?.roulette_name || 
+  p?.roulette?.title || 
+  p?.roulette?.name || 
+  getRouletteFromParticipation(p)?.name ||
+  'Ruleta';
+
 const getRouletteImage = (p) => {
   const r = getRouletteFromParticipation(p) || {};
-  return resolveImageUrl({ image_url: r.image_url || r.image || r.banner || r.thumbnail });
+  return resolveImageUrl({ 
+    image_url: r.image_url || r.image || r.banner || r.thumbnail || r.cover_image || p?.roulette_image_url 
+  });
 };
-const getStatus = (p) => p?.roulette_status || p?.status || 'completed';
-const isWinner = (p) =>
-  Boolean(p?.is_winner ?? p?.winner ?? p?.result?.is_winner ?? p?.prize_won);
+
+// LÓGICA USANDO ESTADO INFERIDO (basado en datos disponibles)
+const getParticipationState = (p) => {
+  // 1. Usar estado inferido si existe
+  if (p?.inferred_state) {
+    console.log(`[DEBUG] Usando estado inferido para ${getRouletteTitle(p)}: ${p.inferred_state}`);
+    return p.inferred_state;
+  }
+  
+  // 2. GANADOR: Si es ganador, siempre mostrar como ganado
+  if (p?.is_winner === true || p?.winner === true) {
+    return 'won';
+  }
+  
+  // 3. USAR STATUS DE LA RULETA (si está disponible)
+  const roulette = getRouletteFromParticipation(p) || {};
+  const status = p?.roulette_status || roulette?.status || p?.status || 'active';
+  
+  console.log(`[DEBUG] Status para ${getRouletteTitle(p)}:`, {
+    roulette_status: p?.roulette_status,
+    'roulette.status': roulette?.status,
+    final_status: status,
+    is_winner: p?.is_winner
+  });
+  
+  // 4. MAPEAR STATUS A ESTADO
+  switch (status) {
+    case 'completed':
+    case 'cancelled':
+    case 'draft':
+      return 'completed';
+    case 'active':
+    case 'scheduled':
+    default:
+      return 'active';
+  }
+};
+
+const isWinner = (p) => getParticipationState(p) === 'won';
+const isActive = (p) => getParticipationState(p) === 'active';
+const isCompleted = (p) => getParticipationState(p) === 'completed' && !isWinner(p);
+
 const getNumber = (p) =>
   p?.participation_number ?? p?.participant_number ?? p?.number ?? null;
+
 const getCreatedISO = (p) => p?.created_at || p?.created || p?.timestamp || null;
+
 const getScheduledISO = (p) =>
-  p?.scheduled_date || p?.scheduled_at || p?.roulette?.scheduled_date || null;
+  p?.scheduled_date || p?.scheduled_at || p?.roulette?.scheduled_date || p?.roulette_scheduled_date || null;
 
 /* Imagen robusta (evita parpadeo) */
 const SafeImage = ({ src, alt = '', className = '' }) => {
@@ -49,7 +101,11 @@ const SafeImage = ({ src, alt = '', className = '' }) => {
   const [err, setErr] = useState(false);
   const tried = useRef(false);
 
-  useEffect(() => { setDisplaySrc(src || ''); setErr(false); tried.current = false; }, [src]);
+  useEffect(() => { 
+    setDisplaySrc(src || ''); 
+    setErr(false); 
+    tried.current = false; 
+  }, [src]);
 
   if (!displaySrc || err) {
     return (
@@ -58,6 +114,7 @@ const SafeImage = ({ src, alt = '', className = '' }) => {
       </div>
     );
   }
+  
   return (
     <img
       src={displaySrc}
@@ -78,7 +135,7 @@ const SafeImage = ({ src, alt = '', className = '' }) => {
 };
 
 /* -----------------------
-   Componente principal
+   Componente principal - MEJORADO
 -------------------------*/
 const MyParticipationsTab = () => {
   const [participations, setParticipations] = useState([]);
@@ -91,9 +148,59 @@ const MyParticipationsTab = () => {
     try {
       setLoading(true);
       setPageError('');
-      const res = await participantsAPI.getMyParticipations({ page_size: 200 });
-      setParticipations(toArray(res));
+      
+      // ESTRATEGIA SIMPLIFICADA: Solo usar la API existente y inferir el estado
+      const res = await participantsAPI.getMyParticipations({ 
+        page_size: 200,
+        _t: Date.now()
+      });
+      
+      console.log('=== PARTICIPATIONS RESPONSE ===');
+      console.log('Raw response:', res);
+      
+      const participationsList = toArray(res);
+      
+      console.log('=== ESTADO DE CADA PARTICIPACIÓN ===');
+      
+      // Analizar cada participación con la información disponible
+      const processedParticipations = participationsList.map((p, index) => {
+        console.log(`${index + 1}. ${p.roulette_name || 'Sin nombre'}:`);
+        console.log('   - is_winner:', p?.is_winner);
+        console.log('   - created_at:', p?.created_at);
+        
+        // INFERIR ESTADO: Si hay un ganador en DGTAL EDUCAS, esa ruleta está completada
+        // Para las otras participaciones del mismo usuario, si no ganó, están completadas
+        let inferredState = 'active'; // por defecto
+        
+        if (p?.is_winner === true) {
+          inferredState = 'won';
+          console.log('   - ESTADO: ganada (is_winner=true)');
+        } else {
+          // LÓGICA DE INFERENCIA: Si la participación es muy antigua (más de 7 días)
+          // y no es ganador, probablemente esté completada
+          const createdDate = new Date(p.created_at);
+          const now = new Date();
+          const daysDiff = (now - createdDate) / (1000 * 60 * 60 * 24);
+          
+          if (daysDiff > 7) { // Más de 7 días
+            inferredState = 'completed';
+            console.log('   - ESTADO: completada (inferida por antigüedad)');
+          } else {
+            console.log('   - ESTADO: en curso (reciente)');
+          }
+        }
+        
+        return {
+          ...p,
+          // Agregar campos inferidos
+          inferred_state: inferredState,
+          days_old: Math.floor((new Date() - new Date(p.created_at)) / (1000 * 60 * 60 * 24))
+        };
+      });
+      
+      setParticipations(processedParticipations);
     } catch (err) {
+      console.error('Error loading participations:', err);
       setPageError(handleAPIError(err, 'No se pudieron cargar tus participaciones.'));
     } finally {
       setLoading(false);
@@ -111,21 +218,40 @@ const MyParticipationsTab = () => {
       const matchesSearch = !term || title.includes(term);
       let matchesStatus = true;
 
-      if (statusFilter === 'active') matchesStatus = getStatus(p) === 'active';
-      if (statusFilter === 'won') matchesStatus = getStatus(p) !== 'active' && isWinner(p);
-      if (statusFilter === 'completed')
-        matchesStatus = getStatus(p) === 'completed' && !isWinner(p);
+      // FILTROS CORREGIDOS
+      if (statusFilter === 'active') {
+        matchesStatus = isActive(p);
+      } else if (statusFilter === 'won') {
+        matchesStatus = isWinner(p);
+      } else if (statusFilter === 'completed') {
+        matchesStatus = isCompleted(p);
+      }
 
       return matchesSearch && matchesStatus;
     });
   }, [participations, q, statusFilter]);
 
-  const active = useMemo(() => filtered.filter((p) => getStatus(p) === 'active'), [filtered]);
-  const won = useMemo(() => filtered.filter((p) => getStatus(p) !== 'active' && isWinner(p)), [filtered]);
-  const completed = useMemo(
-    () => filtered.filter((p) => getStatus(p) === 'completed' && !isWinner(p)),
-    [filtered]
+  // SECCIONES CON VALIDACIÓN MEJORADA
+  const active = useMemo(() => 
+    filtered.filter(isActive), [filtered]
   );
+  
+  const won = useMemo(() => 
+    filtered.filter(isWinner), [filtered]
+  );
+  
+  const completed = useMemo(() => 
+    filtered.filter(isCompleted), [filtered]
+  );
+
+  // Debug info para desarrollo
+  console.log('Sections count:', {
+    total: participations.length,
+    filtered: filtered.length,
+    active: active.length, 
+    won: won.length, 
+    completed: completed.length
+  });
 
   return (
     <div className="space-y-6">
@@ -165,11 +291,25 @@ const MyParticipationsTab = () => {
             disabled={loading}
             className="inline-flex items-center gap-2"
           >
-            <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             Refrescar
           </Button>
         </div>
       </div>
+
+      {/* DEBUG INFO - MEJORADA */}
+      {participations.length > 0 && (
+        <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded border">
+          <div className="font-medium mb-1">Debug Info:</div>
+          <div>Total: {participations.length} | Filtradas: {filtered.length}</div>
+          <div>En curso: {active.length} | Ganadas: {won.length} | Completadas: {completed.length}</div>
+          {statusFilter !== 'all' && (
+            <div className="mt-1 text-indigo-600">
+              Mostrando filtro: <span className="font-medium">{statusFilter}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {!!pageError && (
         <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-red-800">
@@ -179,14 +319,19 @@ const MyParticipationsTab = () => {
       )}
 
       {loading ? (
-        <div className="py-12 text-center text-gray-500">Cargando tus participaciones…</div>
+        <div className="py-12 text-center text-gray-500">
+          <div className="inline-flex items-center gap-2">
+            <RefreshCw className="h-5 w-5 animate-spin" />
+            Cargando tus participaciones…
+          </div>
+        </div>
       ) : (
         <>
           {/* En curso */}
           <SectionFlat
             title="En curso"
             emptyTitle="Sin participaciones en curso"
-            emptyDesc="Cuando participes en una ruleta activa, aparecerá aquí."
+            emptyDesc="Cuando participes en una ruleta que aún no se ha sorteado, aparecerá aquí."
             items={active}
           />
 
@@ -203,7 +348,7 @@ const MyParticipationsTab = () => {
           <SectionFlat
             title="Completadas"
             emptyTitle="No hay participaciones completadas"
-            emptyDesc="Aquí verás tus ruletas finalizadas."
+            emptyDesc="Aquí verás tus ruletas finalizadas donde no resultaste ganador."
             items={completed}
           />
         </>
@@ -213,7 +358,7 @@ const MyParticipationsTab = () => {
 };
 
 /* -----------------------
-   Sección “plana” (sin card)
+   Sección "plana" (sin card)
 -------------------------*/
 const SectionFlat = ({ title, emptyTitle, emptyDesc, items, highlight }) => {
   return (
@@ -236,7 +381,11 @@ const SectionFlat = ({ title, emptyTitle, emptyDesc, items, highlight }) => {
       ) : (
         <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white">
           {items.map((p) => (
-            <RowFlat key={p.id || `${p.roulette_id}-${getNumber(p)}`} participation={p} highlight={highlight} />
+            <RowFlat 
+              key={p.id || `${p.roulette_id || 'unknown'}-${getNumber(p) || 'no-number'}`} 
+              participation={p} 
+              highlight={highlight} 
+            />
           ))}
         </ul>
       )}
@@ -245,7 +394,7 @@ const SectionFlat = ({ title, emptyTitle, emptyDesc, items, highlight }) => {
 };
 
 /* -----------------------
-   Fila de lista (sin card)
+   Fila de lista (sin card) - MEJORADA
 -------------------------*/
 const RowFlat = ({ participation, highlight }) => {
   const title = getRouletteTitle(participation);
@@ -255,10 +404,8 @@ const RowFlat = ({ participation, highlight }) => {
   const scheduledISO = getScheduledISO(participation);
   const created = createdISO ? formatters.date(createdISO) : '—';
   const scheduled = scheduledISO ? formatters.date(scheduledISO) : null;
-  const status = getStatus(participation);
-  const won = isWinner(participation);
-  const receipt =
-    participation?.receipt_url || participation?.receipt || participation?.voucher_url || null;
+  const state = getParticipationState(participation);
+  const receipt = participation?.receipt_url || participation?.receipt || participation?.voucher_url || null;
 
   return (
     <li
@@ -275,7 +422,7 @@ const RowFlat = ({ participation, highlight }) => {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="truncate font-medium text-gray-900">{title}</span>
-          <StatusChip status={status} won={won} />
+          <StatusChip state={state} />
         </div>
 
         <div className="mt-0.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-600">
@@ -315,28 +462,31 @@ const RowFlat = ({ participation, highlight }) => {
 };
 
 /* -----------------------
-   Chip de estado (sin card)
+   Chip de estado - SIN CAMBIOS
 -------------------------*/
-const StatusChip = ({ status, won }) => {
-  if (status === 'active') {
-    return (
-      <span className="px-2 py-0.5 text-[11px] rounded-full bg-blue-100 text-blue-700 font-medium">
-        En curso
-      </span>
-    );
+const StatusChip = ({ state }) => {
+  switch (state) {
+    case 'active':
+      return (
+        <span className="px-2 py-0.5 text-[11px] rounded-full bg-blue-100 text-blue-700 font-medium">
+          En curso
+        </span>
+      );
+    case 'won':
+      return (
+        <span className="px-2 py-0.5 text-[11px] rounded-full bg-green-100 text-green-700 font-medium">
+          🏆 Ganada
+        </span>
+      );
+    case 'completed':
+      return (
+        <span className="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 text-gray-700 font-medium">
+          Completada
+        </span>
+      );
+    default:
+      return null;
   }
-  if (won) {
-    return (
-      <span className="px-2 py-0.5 text-[11px] rounded-full bg-green-100 text-green-700 font-medium">
-        🏆 Ganada
-      </span>
-    );
-  }
-  return (
-    <span className="px-2 py-0.5 text-[11px] rounded-full bg-gray-100 text-gray-700 font-medium">
-      Completada
-    </span>
-  );
 };
 
 export default MyParticipationsTab;

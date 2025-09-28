@@ -77,7 +77,7 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
     - Asigna un premio disponible (stock>0, activo) y descuenta stock.
     - Notifica (si está habilitado).
     - NO cierra anticipado: el cierre se decide en reconcile_completion() según
-      meta fija o stock restante.
+      stock restante y/o meta fija (solo cierra si ya NO se puede continuar).
     """
     roulette = (
         Roulette.objects.select_for_update()
@@ -85,12 +85,14 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
         .get(pk=roulette.pk)
     )
 
+    # Estado base
     if roulette.is_drawn or roulette.status == RouletteStatus.COMPLETED:
         return {"success": False, "message": "La ruleta ya fue sorteada.", "error_code": "ALREADY_DRAWN"}
 
     if roulette.status not in (RouletteStatus.ACTIVE, RouletteStatus.SCHEDULED):
         return {"success": False, "message": "La ruleta no está disponible para sorteo.", "error_code": "NOT_AVAILABLE"}
 
+    # Participantes elegibles
     participants_qs = (
         Participation.objects.select_for_update()
         .select_related("user")
@@ -99,11 +101,19 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
     )
     participants_list = list(participants_qs)
     count = len(participants_list)
-
     if count == 0:
+        # Nada que sortear -> delega posible cierre conservador
         roulette.reconcile_completion(by_user=admin_user)
         return {"success": False, "message": "No quedan participantes elegibles para ganar.", "error_code": "NO_ELIGIBLES"}
 
+    # Premios disponibles (stock>0 en premios activos)
+    available_awards = roulette.available_awards_count()
+    if available_awards <= 0:
+        # Sin premios -> delega posible cierre conservador
+        roulette.reconcile_completion(by_user=admin_user)
+        return {"success": False, "message": "No quedan premios disponibles.", "error_code": "NO_PRIZES"}
+
+    # Semilla aleatoria determinística por evento
     now_iso = timezone.now().isoformat()
     nonce = secrets.token_hex(8)
     seed_data = f"{roulette.id}|{count}|{now_iso}|{nonce}"
@@ -112,6 +122,7 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
     rnd = random.Random(int(hash_seed[:16], 16))
     winner = rnd.choice(participants_list)
 
+    # Marcar como ganador
     winner.is_winner = True
     if hasattr(winner, "won_at"):
         winner.won_at = timezone.now()
@@ -119,9 +130,11 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
     else:
         winner.save(update_fields=["is_winner"])
 
+    # Asignar como winner principal si no existe
     if not roulette.winner_id:
         roulette.winner = winner
 
+    # Asignar premio y reducir stock (primer premio activo con stock>0 por orden)
     prize: Optional[RoulettePrize] = (
         RoulettePrize.objects.select_for_update()
         .filter(roulette=roulette, is_active=True, stock__gt=0)
@@ -135,17 +148,24 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
         if prize.stock <= 0 and prize.is_active:
             prize.is_active = False
         prize.save(update_fields=["stock", "is_active"])
+    else:
+        # Situación límite: había stock agregado, pero no se resolvió un premio concreto
+        # Por seguridad, revisa cierre conservador.
+        roulette.reconcile_completion(by_user=admin_user)
+        return {"success": False, "message": "No se encontró un premio disponible para asignar.", "error_code": "NO_PRIZE_FOUND"}
 
+    # Actualizar metadatos del sorteo (NO tocar is_drawn aquí)
     roulette.drawn_by = admin_user
     roulette.drawn_at = roulette.drawn_at or timezone.now()
 
-    # Si estaba programada, activarla mientras se pueda seguir sorteando
+    # Si estaba programada, activarla mientras aún se pueda continuar
     settings = getattr(roulette, "settings", None)
     winners_now = roulette.participations.filter(is_winner=True).count()
     if roulette.winner_id and not roulette.participations.filter(pk=roulette.winner_id, is_winner=True).exists():
         winners_now += 1
 
     if roulette.status == RouletteStatus.SCHEDULED:
+        # Activar si seguimos con margen para sortear
         should_activate = False
         if settings and settings.winners_target and settings.winners_target > 0:
             should_activate = winners_now < settings.winners_target
@@ -154,8 +174,12 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
         if should_activate:
             roulette.status = RouletteStatus.ACTIVE
 
-    roulette.save(update_fields=["winner", "drawn_at", "drawn_by", "status", "is_drawn"])
+    # IMPORTANTE: NO incluir "is_drawn" aquí
+    # ✅ CORRECTO (no tocar is_drawn aquí)
+    roulette.save(update_fields=["winner", "drawn_at", "drawn_by", "status"])
 
+
+    # Historial del sorteo
     draw_history = DrawHistory.objects.create(
         roulette=roulette,
         winner_selected=winner,
@@ -187,6 +211,7 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
         import logging
         logging.getLogger(__name__).warning("Fallo al enviar notificaciones de ganador", exc_info=True)
 
+    # Decidir posible cierre SOLO si ya no se puede continuar (lógica conservadora)
     roulette.reconcile_completion(by_user=admin_user)
 
     return {
@@ -204,13 +229,17 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
         "draw_history_id": draw_history.id,
         "participants_count": roulette.participations.count(),
         "seed": hash_seed,
-        "roulette": {"id": roulette.id, "name": roulette.name, "is_drawn": roulette.is_drawn, "status": roulette.status},
+        "roulette": {
+            "id": roulette.id,
+            "name": roulette.name,
+            "is_drawn": roulette.is_drawn,
+            "status": roulette.status,
+        },
     }
 
 
 # ============================================================
 # Permisos / Stats / Limpieza / Countdown / Auto-draw / Validación premios
-# (sin cambios funcionales relevantes a la corrección)
 # ============================================================
 
 def can_user_draw_roulette(user, roulette: Roulette) -> Tuple[bool, str]:
