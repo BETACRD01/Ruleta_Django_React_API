@@ -5,17 +5,17 @@ import {
   Bell, User, LogOut, Settings,
   Menu, X, RotateCcw, ChevronDown, Check, CheckCheck, Trash2, ShieldCheck
 } from 'lucide-react';
-import { notificationAPI, notificationManager } from '../config/api';
+import { notificationAPI, notificationManager, resolveMediaUrl } from '../config/api';
 
 // Panels
 import ProfilePanel from './profile/ProfilePanel';
 import AccountSettingsPanel from './settings/AccountSettingsPanel';
 
-// ✅ Logo (no uses rutas C:\... en web)
+// Logo
 import logo from '../assets/HAYU24_original.png';
 
 const Layout = ({ children }) => {
-  const { user, logout, isAdmin, loading } = useAuth();
+  const { user, userProfile, logout, isAdmin, loading, loadUserProfile } = useAuth();
 
   // Menús
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -31,6 +31,22 @@ const Layout = ({ children }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [notificationLoading, setNotificationLoading] = useState(false);
   const [notificationError, setNotificationError] = useState(null);
+
+  // Avatar del usuario
+  const [avatarUrl, setAvatarUrl] = useState(null);
+  const [avatarError, setAvatarError] = useState(false);
+
+  // Cargar avatar desde userProfile del contexto
+  useEffect(() => {
+    if (userProfile?.profile?.avatar) {
+      const url = resolveMediaUrl(userProfile.profile.avatar);
+      setAvatarUrl(url);
+      setAvatarError(false);
+    } else {
+      setAvatarUrl(null);
+      setAvatarError(false);
+    }
+  }, [userProfile]);
 
   // Cargar notificaciones
   const loadNotifications = useCallback(async () => {
@@ -73,7 +89,6 @@ const Layout = ({ children }) => {
     notificationManager.startPolling(30000);
     return () => {
       unsubscribe();
-      // notificationManager.stopPolling?.();
     };
   }, [user, loadNotifications]);
 
@@ -118,7 +133,6 @@ const Layout = ({ children }) => {
       roulette_started: '🎯',
       roulette_ending_soon: '⏰',
       winner_notification: '🏆',
-      admin_winner_alert: '👑',
       welcome_message: '👋',
     };
     return icons[type] || '📢';
@@ -138,6 +152,15 @@ const Layout = ({ children }) => {
     if (diffDays < 7) return `Hace ${diffDays}d`;
     return date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
   };
+
+  // Recargar perfil cuando se guarda
+  const handleProfileSaved = useCallback(async () => {
+    await loadUserProfile();
+  }, [loadUserProfile]);
+
+  const handleSettingsSaved = useCallback(() => {
+    // Configuración guardada
+  }, []);
 
   if (loading) {
     return (
@@ -160,45 +183,50 @@ const Layout = ({ children }) => {
     setUnreadCount(0);
   };
 
+  // Obtener iniciales del usuario
+  const getUserInitials = () => {
+    const firstName = user?.first_name || '';
+    const lastName = user?.last_name || '';
+    return `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase() || 'U';
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
+      <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          {/* Altura estándar */}
           <div className="flex justify-between items-center h-16">
-            {/* Izquierda: logo (usuario) o emblema admin */}
-            <div className="flex items-center">
+            {/* Izquierda: logo o emblema admin */}
+            <div className="flex items-center gap-2">
               <button
-                className="md:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
+                className="md:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 transition-colors"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 aria-label="Abrir menú"
               >
                 {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
               </button>
 
-              <div className="ml-2 md:ml-0 flex items-center gap-2">
-                {/* 👤 Usuario normal: logo como antes */}
+              <div className="flex items-center gap-2">
                 {!isAdmin && (
-                  <img
-                    key={`logo-${user?.id || 'anon'}`}
-                    src={logo}
-                    alt="HAYU24"
-                    className="h-8 sm:h-9 md:h-10 w-auto object-contain select-none pointer-events-none"
-                    loading="eager"
-                    decoding="async"
-                    draggable="false"
-                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                  />
+                  <div className="hayu-logo-container">
+                    <img
+                      key={`logo-${user?.id || 'anon'}`}
+                      src={logo}
+                      alt="HAYU24"
+                      className="h-10 w-auto object-contain select-none pointer-events-none"
+                      loading="eager"
+                      decoding="async"
+                      draggable="false"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                  </div>
                 )}
 
-                {/* 🛡️ Administrador: emblema + badge */}
                 {isAdmin && (
                   <div className="flex items-center gap-2">
-                    <div className="h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11 rounded-full bg-gradient-to-br from-indigo-600 to-blue-600 text-white shadow flex items-center justify-center">
-                      <ShieldCheck className="h-5 w-5" />
+                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-indigo-600 to-blue-600 text-white shadow-lg flex items-center justify-center">
+                      <ShieldCheck className="h-6 w-6" />
                     </div>
-                    <span className="text-[10px] sm:text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-semibold tracking-wide">
+                    <span className="hidden sm:inline-block text-xs bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full font-semibold tracking-wide">
                       ADMIN
                     </span>
                   </div>
@@ -207,7 +235,7 @@ const Layout = ({ children }) => {
             </div>
 
             {/* Derecha: Notificaciones + menú usuario */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               {/* Campana */}
               <div className="relative">
                 <button
@@ -218,16 +246,16 @@ const Layout = ({ children }) => {
                   className="relative p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors"
                   aria-label="Abrir notificaciones"
                 >
-                  <Bell className="h-6 w-6" />
+                  <Bell className="h-5 w-5 sm:h-6 sm:w-6" />
                   {unreadCount > 0 && (
-                    <span className="absolute -top-1 -right-1 inline-flex items-center justify-center text-[10px] font-semibold rounded-full bg-red-600 text-white px-1.5 py-0.5 min-w-[18px]">
+                    <span className="absolute -top-1 -right-1 inline-flex items-center justify-center text-[10px] font-bold rounded-full bg-red-600 text-white px-1.5 py-0.5 min-w-[18px] shadow-md">
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </span>
                   )}
                 </button>
 
                 {notificationsOpen && (
-                  <div className="origin-top-right absolute right-0 mt-2 w-96 rounded-lg shadow-xl bg-white ring-1 ring-black ring-opacity-5 z-50">
+                  <div className="origin-top-right absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-96 rounded-lg shadow-2xl bg-white ring-1 ring-black ring-opacity-5 z-50 max-w-md">
                     <div className="p-4 border-b border-gray-200">
                       <div className="flex justify-between items-center mb-3">
                         <h3 className="text-base font-semibold text-gray-900">Notificaciones</h3>
@@ -235,7 +263,7 @@ const Layout = ({ children }) => {
                           {unreadCount > 0 && (
                             <button
                               onClick={markAllAsRead}
-                              className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                              className="text-xs text-blue-600 hover:text-blue-800 font-medium p-1 hover:bg-blue-50 rounded transition-colors"
                               title="Marcar todas como leídas"
                             >
                               <CheckCheck className="h-4 w-4" />
@@ -244,7 +272,7 @@ const Layout = ({ children }) => {
                           <button
                             onClick={loadNotifications}
                             disabled={notificationLoading}
-                            className="text-xs text-gray-500 hover:text-gray-700"
+                            className="text-xs text-gray-500 hover:text-gray-700 p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
                             title="Actualizar"
                           >
                             <RotateCcw className={`h-4 w-4 ${notificationLoading ? 'animate-spin' : ''}`} />
@@ -253,7 +281,7 @@ const Layout = ({ children }) => {
                       </div>
                     </div>
 
-                    <div className="max-h-96 overflow-y-auto">
+                    <div className="max-h-[60vh] sm:max-h-96 overflow-y-auto">
                       {notificationLoading ? (
                         <div className="p-4 text-center text-gray-500">
                           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
@@ -264,7 +292,7 @@ const Layout = ({ children }) => {
                           <span className="text-sm">{notificationError}</span>
                           <button
                             onClick={loadNotifications}
-                            className="block mx-auto mt-2 text-xs text-blue-600 hover:text-blue-800"
+                            className="block mx-auto mt-2 text-xs text-blue-600 hover:text-blue-800 font-medium"
                           >
                             Reintentar
                           </button>
@@ -293,19 +321,28 @@ const Layout = ({ children }) => {
                 )}
               </div>
 
-              {/* Menú de usuario (solo avatar, sin nombre en header) */}
+              {/* Menú de usuario CON AVATAR */}
               <div className="relative">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  className="flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
                   aria-label="Abrir menú de usuario"
                 >
-                  <div className="h-8 w-8 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center">
-                    <span className="text-white font-medium text-sm">
-                      {user?.first_name?.[0]}{user?.last_name?.[0]}
-                    </span>
+                  <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 flex items-center justify-center shadow-md overflow-hidden ring-2 ring-white">
+                    {avatarUrl && !avatarError ? (
+                      <img
+                        src={avatarUrl}
+                        alt="Avatar"
+                        className="h-full w-full object-cover"
+                        onError={() => setAvatarError(true)}
+                      />
+                    ) : (
+                      <span className="text-white font-medium text-xs sm:text-sm">
+                        {getUserInitials()}
+                      </span>
+                    )}
                   </div>
-                  <ChevronDown className="ml-1 h-4 w-4 text-gray-400" />
+                  <ChevronDown className="ml-1 h-4 w-4 text-gray-400 hidden sm:block" />
                 </button>
 
                 {userMenuOpen && (
@@ -313,7 +350,7 @@ const Layout = ({ children }) => {
                     <div className="py-1">
                       <button
                         onClick={() => { setProfileOpen(true); setUserMenuOpen(false); }}
-                        className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
                       >
                         <User className="mr-3 h-4 w-4" />
                         Mi Perfil
@@ -321,7 +358,7 @@ const Layout = ({ children }) => {
 
                       <button
                         onClick={() => { setSettingsOpen(true); setUserMenuOpen(false); }}
-                        className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        className="flex items-center w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors"
                       >
                         <Settings className="mr-3 h-4 w-4" />
                         Configuración
@@ -330,7 +367,7 @@ const Layout = ({ children }) => {
                       <div className="border-t border-gray-200">
                         <button
                           onClick={handleLogout}
-                          className="flex items-center w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-50"
+                          className="flex items-center w-full text-left px-4 py-2 text-sm text-red-700 hover:bg-red-50 transition-colors"
                         >
                           <LogOut className="mr-3 h-4 w-4" />
                           Cerrar Sesión
@@ -357,15 +394,13 @@ const Layout = ({ children }) => {
         )}
       </header>
 
-      {/* Contenido */}
       <main className="flex-1">
         {children}
       </main>
 
-      {/* Click fuera para cerrar menús flotantes */}
       {(userMenuOpen || notificationsOpen || mobileMenuOpen) && (
         <div
-          className="fixed inset-0 z-40"
+          className="fixed inset-0 z-30"
           onClick={() => {
             setUserMenuOpen(false);
             setNotificationsOpen(false);
@@ -374,24 +409,21 @@ const Layout = ({ children }) => {
         />
       )}
 
-      {/* Paneles laterales */}
       <ProfilePanel
         open={profileOpen}
         onClose={() => setProfileOpen(false)}
-        onSaved={() => {}}
+        onSaved={handleProfileSaved}
       />
       <AccountSettingsPanel
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        onSaved={() => {}}
+        onSaved={handleSettingsSaved}
       />
     </div>
   );
 };
 
-/* =========================
-   Item de notificación
-   ========================= */
+/* Item de notificación */
 const NotificationItem = ({ notification, onMarkAsRead, onDelete, formatTime, getIcon }) => {
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -432,21 +464,21 @@ const NotificationItem = ({ notification, onMarkAsRead, onDelete, formatTime, ge
         <div className="flex-1 min-w-0">
           <div className="flex items-start space-x-2">
             <span className="text-lg flex-shrink-0">{getIcon(notification.notification_type)}</span>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
                 <p className={`text-sm font-medium truncate ${!notification.is_read ? 'text-gray-900' : 'text-gray-600'}`}>
                   {notification.title}
                 </p>
-                {!notification.is_read && <div className="w-2 h-2 bg-blue-600 rounded-full ml-2 flex-shrink-0" />}
+                {!notification.is_read && <div className="w-2 h-2 bg-blue-600 rounded-full flex-shrink-0" />}
               </div>
-              <p className="text-xs text-gray-500 mt-1 line-clamp-2">{notification.message}</p>
-              <div className="flex items-center justify-between mt-2">
-                <p className="text-xs text-gray-400">{formatTime(notification.created_at)}</p>
-                <div className="flex items-center space-x-1">
+              <p className="text-xs text-gray-500 mt-1 line-clamp-2 break-words">{notification.message}</p>
+              <div className="flex items-center justify-between mt-2 gap-2">
+                <p className="text-xs text-gray-400 flex-shrink-0">{formatTime(notification.created_at)}</p>
+                <div className="flex items-center space-x-1 flex-shrink-0">
                   {!notification.is_read && (
                     <button
                       onClick={handleMarkAsRead}
-                      className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded"
+                      className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded transition-colors"
                       title="Marcar como leída"
                     >
                       <Check className="h-3 w-3" />
@@ -455,7 +487,7 @@ const NotificationItem = ({ notification, onMarkAsRead, onDelete, formatTime, ge
                   <button
                     onClick={handleDelete}
                     disabled={isDeleting}
-                    className="p-1 text-red-600 hover:text-red-800 hover:bg-red-100 rounded"
+                    className="p-1 text-red-600 hover:text-red-800 hover:bg-red-100 rounded transition-colors disabled:opacity-50"
                     title="Eliminar"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -470,9 +502,6 @@ const NotificationItem = ({ notification, onMarkAsRead, onDelete, formatTime, ge
   );
 };
 
-/* =========================
-   Link simple de menú móvil
-   ========================= */
 const MobileNavLink = ({ text, active = false, onClick }) => (
   <button
     onClick={onClick}

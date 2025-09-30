@@ -735,3 +735,187 @@ def public_stats(request):
         'top_roulettes_by_winners': top_roulettes,
         'last_updated': timezone.now(),
     })
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def create_winner_announcement(request):
+    """
+    POST /api/notifications/winner-announcement/
+    Admin: crear anuncio completo de ganador (público + personal + admin)
+    """
+    if not request.user.is_staff:
+        return Response({'error': 'Permisos insuficientes'}, status=status.HTTP_403_FORBIDDEN)
+
+    serializer = WinnerAnnouncementSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        from django.contrib.auth import get_user_model
+        from django.conf import settings
+        User = get_user_model()
+        
+        winner_user = User.objects.get(pk=serializer.validated_data['winner_user_id'])
+        
+        logger.warning(f"🎯 [WINNER] Iniciando anuncio para: {winner_user.username} ({winner_user.email})")
+        
+        # Crear notificaciones en BD
+        public_notif, personal_notif, admin_notifs = NotificationService.create_winner_announcement(
+            winner_user=winner_user,
+            roulette_name=serializer.validated_data['roulette_name'],
+            roulette_id=serializer.validated_data['roulette_id'],
+            total_participants=serializer.validated_data['total_participants'],
+            prize_details=serializer.validated_data.get('prize_details', ''),
+        )
+        
+        logger.info(f"✅ [WINNER] Notificaciones BD creadas - Personal ID: {personal_notif.id}")
+        
+        # Intentar enviar email con Celery
+        email_scheduled = False
+        task_info = None
+        email_error = None
+        
+        try:
+            from .tasks import send_winner_notification_delayed
+            
+            # Obtener delay configurado
+            delay_seconds = getattr(settings, 'WINNER_NOTIFICATION_DELAY', 300)
+            
+            logger.warning("=" * 60)
+            logger.warning(f"⏰ CONFIGURACIÓN DE DELAY:")
+            logger.warning(f"   - Delay: {delay_seconds} segundos")
+            logger.warning(f"   - Equivalente: {delay_seconds/60:.1f} minutos")
+            logger.warning(f"   - Hora actual: {timezone.now().strftime('%H:%M:%S')}")
+            estimated_time = timezone.now() + timedelta(seconds=delay_seconds)
+            logger.warning(f"   - Email se enviará aprox: {estimated_time.strftime('%H:%M:%S')}")
+            logger.warning("=" * 60)
+            
+            # Programar tarea
+            task = send_winner_notification_delayed.apply_async(
+                kwargs={
+                    'user_id': winner_user.id,
+                    'roulette_name': serializer.validated_data['roulette_name'],
+                    'prize_name': serializer.validated_data.get('prize_details', 'Premio ganado'),
+                    'roulette_id': serializer.validated_data['roulette_id'],
+                    'notify_admins': True,
+                },
+                countdown=delay_seconds  # Este es el delay
+            )
+            
+            task_info = {
+                'task_id': str(task.id),
+                'delay_seconds': delay_seconds,
+                'delay_minutes': round(delay_seconds / 60, 1),
+                'scheduled_for': estimated_time.isoformat(),
+                'scheduled_for_readable': estimated_time.strftime('%Y-%m-%d %H:%M:%S'),
+            }
+            
+            logger.warning(f"📧 [WINNER] Tarea Celery programada:")
+            logger.warning(f"   - Task ID: {task.id}")
+            logger.warning(f"   - Estado: {task.state}")
+            logger.warning(f"   - Para: {winner_user.email}")
+            
+            # Actualizar notificación con info de programación
+            personal_notif.email_sent = False
+            personal_notif.email_error = f'Programado - se enviará en {delay_seconds/60:.1f} min'
+            personal_notif.email_recipient = winner_user.email
+            personal_notif.extra_data = personal_notif.extra_data or {}
+            personal_notif.extra_data['email_task_id'] = str(task.id)
+            personal_notif.extra_data['email_scheduled_at'] = timezone.now().isoformat()
+            personal_notif.extra_data['email_delay_seconds'] = delay_seconds
+            personal_notif.save()
+            
+            email_scheduled = True
+            logger.info(f"✅ [WINNER] Email programado exitosamente")
+            
+        except ImportError as e:
+            error_msg = 'Celery no está disponible - instalar: pip install celery'
+            logger.error(f"❌ [WINNER] {error_msg}")
+            logger.error(f"   Error: {str(e)}")
+            email_error = error_msg
+            personal_notif.email_error = error_msg
+            personal_notif.save()
+            
+        except Exception as e:
+            error_msg = f'Error programando email: {str(e)}'
+            logger.error(f"❌ [WINNER] {error_msg}")
+            logger.exception("Detalles del error:")
+            email_error = error_msg
+            personal_notif.email_error = error_msg
+            personal_notif.save()
+        
+        # Preparar respuesta
+        response_data = {
+            'success': True,
+            'public_notification': NotificationSerializer(public_notif).data,
+            'personal_notification': NotificationSerializer(personal_notif).data,
+            'admin_notifications_count': len(admin_notifs),
+            'email_scheduled': email_scheduled,
+        }
+        
+        if task_info:
+            response_data['email_delay_info'] = task_info
+            logger.warning(f"📤 [WINNER] Respuesta enviada al frontend con delay_info")
+        
+        if email_error:
+            response_data['email_error'] = email_error
+            logger.error(f"📤 [WINNER] Respuesta con error: {email_error}")
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
+        
+    except User.DoesNotExist:
+        logger.error(f"❌ [WINNER] Usuario no encontrado: {serializer.validated_data.get('winner_user_id')}")
+        return Response({'error': 'Usuario ganador no encontrado'}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as exc:
+        logger.exception('❌ [WINNER] Error crítico creando anuncio de ganador')
+        return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+# NUEVO: Endpoint para actualizar estado de email
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def update_email_status(request, notification_id):
+    """
+    POST /api/notifications/{notification_id}/email-status/
+    Actualizar estado de envío de email
+    Body: {
+        "status": "sent" | "error",
+        "error_message": "..." (opcional),
+        "recipient_email": "..." (opcional)
+    }
+    """
+    if not request.user.is_staff:
+        return Response({'error': 'Permisos insuficientes'}, status=status.HTTP_403_FORBIDDEN)
+    
+    try:
+        notification = Notification.objects.get(id=notification_id)
+    except Notification.DoesNotExist:
+        return Response({'error': 'Notificación no encontrada'}, status=status.HTTP_404_NOT_FOUND)
+    
+    email_status = request.data.get('status')
+    
+    logger.info(f"📧 [EMAIL STATUS] Actualizando notificación {notification_id} a estado: {email_status}")
+    
+    if email_status == 'sent':
+        notification.email_sent = True
+        notification.email_sent_at = timezone.now()
+        notification.email_error = ''
+        if request.data.get('recipient_email'):
+            notification.email_recipient = request.data.get('recipient_email')
+        logger.info(f"✅ [EMAIL STATUS] Marcado como enviado a {notification.email_recipient}")
+    elif email_status == 'error':
+        notification.email_sent = False
+        notification.email_error = request.data.get('error_message', 'Error desconocido')
+        if request.data.get('recipient_email'):
+            notification.email_recipient = request.data.get('recipient_email')
+        logger.error(f"❌ [EMAIL STATUS] Marcado como error: {notification.email_error}")
+    else:
+        return Response({'error': 'Estado inválido'}, status=status.HTTP_400_BAD_REQUEST)
+    
+    notification.save()
+    
+    serializer = AdminNotificationSerializer(notification)
+    return Response({
+        'success': True,
+        'notification': serializer.data
+    })

@@ -1,12 +1,12 @@
 // src/components/auth/RegisterForm.jsx
 import React from "react";
-import { UserPlus, Phone, FileCheck, ExternalLink, Eye, EyeOff } from "lucide-react";
+import { Phone, FileCheck, ExternalLink, Eye, EyeOff } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthNotifications } from "../../contexts/NotificationContext";
 import { useAuth } from "../../contexts/AuthContext";
 import { AuthAPI } from "../../config/api";
-// ⬇️ Importa el util .js (sin JSX)
 import { validatePhone } from "./utils/phoneValidation";
+import logo from "../../assets/HAYU24_original.png";
 
 const authAPI = new AuthAPI();
 
@@ -14,7 +14,6 @@ const RegisterForm = ({ onBackToLogin }) => {
   const navigate = useNavigate();
   const { login: ctxLogin } = useAuth() || {};
 
-  // Fallback seguro para volver al login
   const goBackToLogin = React.useCallback(() => {
     if (typeof onBackToLogin === "function") onBackToLogin();
     else navigate("/login");
@@ -60,7 +59,6 @@ const RegisterForm = ({ onBackToLogin }) => {
   const handleRegister = async (e) => {
     e.preventDefault();
 
-    // Validaciones básicas
     const required = ["email", "password", "username", "firstName", "lastName", "phone"];
     if (required.some((f) => !formData[f])) {
       setError("Por favor completa todos los campos requeridos");
@@ -79,9 +77,8 @@ const RegisterForm = ({ onBackToLogin }) => {
       return;
     }
 
-    // ✅ Validación + normalización LATAM (tolerante a 0/00 y +5930...)
     const phoneValidation = validatePhone(formData.phone, {
-      defaultCountry: "+593", // cambia si tu app no es Ecuador por defecto
+      defaultCountry: "+593",
     });
 
     if (!phoneValidation.valid) {
@@ -92,7 +89,7 @@ const RegisterForm = ({ onBackToLogin }) => {
       return;
     }
 
-    const normalizedPhone = phoneValidation.normalized; // E.164 limpio
+    const normalizedPhone = phoneValidation.normalized;
 
     try {
       setLoading(true);
@@ -107,17 +104,13 @@ const RegisterForm = ({ onBackToLogin }) => {
         password_confirm: formData.confirmPassword,
         first_name: formData.firstName,
         last_name: formData.lastName,
-        phone: normalizedPhone, // ← enviamos normalizado
+        phone: normalizedPhone,
         accept_terms: formData.accept_terms,
       };
 
-      // 1) Registrar
       const result = await authAPI.register(registrationData);
-
-      // 2) Notificación de éxito
       handleRegisterSuccess({ user: result });
 
-      // 3) Intentar login automático
       try {
         if (typeof ctxLogin === "function") {
           const loginRes = await ctxLogin({
@@ -137,7 +130,6 @@ const RegisterForm = ({ onBackToLogin }) => {
         goBackToLogin();
       }
 
-      // 4) Limpiar formulario
       setFormData({
         email: "",
         password: "",
@@ -149,10 +141,8 @@ const RegisterForm = ({ onBackToLogin }) => {
         accept_terms: false,
       });
     } catch (err) {
-      // —— Manejo de errores limpio (sin duplicar) ——
       let display = err?.message || "Error al registrarse";
 
-      // DRF: { phone: ["..."], detail: "...", non_field_errors: ["..."] }
       const api = err?.response?.data;
       if (api && typeof api === "object") {
         if (Array.isArray(api.phone) && api.phone.length) {
@@ -160,7 +150,7 @@ const RegisterForm = ({ onBackToLogin }) => {
           setPhoneError(first);
           const sugMatch = first.match(/Sugerencia:\s*(\+\d+)/i);
           if (sugMatch?.[1]) setSuggestedPhone(sugMatch[1]);
-          display = null; // ya se muestra junto al campo
+          display = null;
         }
         if (api?.detail) display = String(api.detail);
         if (Array.isArray(api.non_field_errors) && api.non_field_errors.length) {
@@ -187,13 +177,17 @@ const RegisterForm = ({ onBackToLogin }) => {
 
   return (
     <div className="w-full max-w-[min(420px,100%)] bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 sm:p-8 border border-white/20">
-      {/* Cabecera */}
+      {/* Cabecera con logo */}
       <div className="text-center mb-8">
-        <div
-          className="rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center shadow-lg"
-          style={{ backgroundColor: "#389fae" }}
-        >
-          <UserPlus className="h-8 w-8 text-white" />
+        <div className="mx-auto mb-4 flex items-center justify-center">
+          <img
+            src={logo}
+            alt="HAYU24"
+            className="h-16 sm:h-20 w-auto object-contain"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+          />
         </div>
         <h2 className="font-bold mb-2" style={{ color: "#0b56a7", fontSize: "clamp(1.25rem, 1vw + 1rem, 1.75rem)" }}>
           Crear Cuenta
@@ -271,7 +265,7 @@ const RegisterForm = ({ onBackToLogin }) => {
             value={formData.email}
             onChange={handleInputChange}
             placeholder="tu@email.com"
-            className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duración-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
+            className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
             disabled={loading}
             required
           />
@@ -298,7 +292,6 @@ const RegisterForm = ({ onBackToLogin }) => {
             aria-invalid={!!phoneError}
           />
 
-          {/* Error + sugerencia (si existe) */}
           {(phoneError || suggestedPhone) && (
             <div className="mt-1 flex items-start justify-between gap-2">
               {phoneError && <p className="text-xs text-red-600">{phoneError}</p>}
@@ -391,7 +384,7 @@ const RegisterForm = ({ onBackToLogin }) => {
                 </span>
               </div>
               <p className="text-xs text-blue-700 leading-relaxed">
-                Al registrarte en <span className="font-semibold text-blue-800">LuckySpin</span>, aceptas nuestros{" "}
+                Al registrarte en <span className="font-semibold text-blue-800">HAYU24</span>, aceptas nuestros{" "}
                 <Link
                   to="/terminos"
                   target="_blank"
@@ -414,12 +407,12 @@ const RegisterForm = ({ onBackToLogin }) => {
           className="w-full text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98]"
           style={{ backgroundColor: isDisabled ? "#9ca3af" : "#389fae" }}
         >
-          {loading ? "Creando cuenta..." : "Crear cuenta ✨"}
+          {loading ? "Creando cuenta..." : "Crear cuenta"}
         </button>
 
         <p className="text-center text-gray-600 text-sm">
           ¿Ya tienes cuenta?{" "}
-          <button type="button" onClick={goBackToLogin} className="font-semibold" style={{ color: "#0b56a7" }}>
+          <button type="button" onClick={goBackToLogin} className="font-semibold hover:underline" style={{ color: "#0b56a7" }}>
             Inicia sesión
           </button>
         </p>

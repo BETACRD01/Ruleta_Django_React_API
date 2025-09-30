@@ -6,9 +6,11 @@ import logging
 import unicodedata
 import warnings
 from io import BytesIO
+from typing import Optional
 
 from django.conf import settings
 from django.core.files.base import ContentFile
+from django.utils.functional import cached_property
 
 # Pillow
 from PIL import Image, ImageOps, ImageFile, UnidentifiedImageError
@@ -20,7 +22,9 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 logger = logging.getLogger(__name__)
 
 
-# ----------------------------- Helpers internos ----------------------------- #
+# ==============================
+# Helpers internos generales
+# ==============================
 
 def _get_setting(name: str, default):
     return getattr(settings, name, default)
@@ -41,7 +45,107 @@ def _has_alpha(pil_image: PILImage.Image) -> bool:
     return pil_image.mode in ("RGBA", "LA") or ("transparency" in pil_image.info)
 
 
-# ----------------------------- Validaciones ----------------------------- #
+# ==============================
+# URL helpers (NUEVOS)
+# ==============================
+
+def build_absolute_media_url(request, url_or_path: Optional[str]) -> Optional[str]:
+    """
+    Convierte una ruta/URL (p.ej. '/media/x.jpg') en URL absoluta usando el request.
+    - Si ya es absoluta (http/https), se devuelve tal cual.
+    - Si es relativa y hay request, se hace request.build_absolute_uri().
+    - Si no hay request, se intenta prefijar con settings.SITE_URL si existe.
+    """
+    if not url_or_path:
+        return None
+
+    s = str(url_or_path)
+    if s.startswith("http://") or s.startswith("https://"):
+        return s
+
+    # Normalizar: asegurar que empiece con '/'
+    if not s.startswith("/"):
+        s = "/" + s
+
+    if request is not None:
+        try:
+            return request.build_absolute_uri(s)
+        except Exception:
+            pass
+
+    base = getattr(settings, "SITE_URL", "").rstrip("/")
+    if base:
+        return f"{base}{s}"
+
+    return s  # último recurso (relativa)
+
+
+# ======================================================
+# Helpers para imágenes de ruleta/premio (NUEVOS)
+# ======================================================
+
+def get_roulette_image_url_for_participation(participation, request=None) -> Optional[str]:
+    """
+    Devuelve la URL absoluta de la imagen de la ruleta asociada a la participación.
+    Intenta usar 'roulette.cover_image.url' si existe.
+    """
+    try:
+        roulette = getattr(participation, "roulette", None)
+        if roulette and getattr(roulette, "cover_image", None):
+            return build_absolute_media_url(request, roulette.cover_image.url)
+    except Exception:
+        pass
+    return None
+
+
+def get_prize_image_url_for_participation(participation, request=None) -> Optional[str]:
+    """
+    Devuelve la URL absoluta de la imagen del PREMIO GANADO:
+      1) Si la participación es ganadora y existe 'won_prize.image', usarla.
+      2) Si no hay 'won_prize.image', buscar el primer premio activo de la ruleta con imagen.
+      3) Si nada tiene imagen, devolver None.
+    """
+    try:
+        # Sólo tiene sentido si ganó
+        if not getattr(participation, "is_winner", False):
+            return None
+
+        # Premio específico asignado a esta participación
+        won_prize = getattr(participation, "won_prize", None)
+        if won_prize and getattr(won_prize, "image", None):
+            try:
+                return build_absolute_media_url(request, won_prize.image.url)
+            except Exception:
+                pass
+
+        # Fallback: primer premio activo con imagen dentro de la ruleta
+        roulette = getattr(participation, "roulette", None)
+        if roulette and hasattr(roulette, "prizes"):
+            # La relación puede llamarse prizes (ManyToMany/ForeignKey related_name)
+            qs = getattr(roulette, "prizes", None)
+            if qs is not None:
+                try:
+                    first_with_image = (
+                        qs.filter(is_active=True)
+                        .exclude(image="")
+                        .order_by("display_order")
+                        .first()
+                    )
+                    if first_with_image and getattr(first_with_image, "image", None):
+                        return build_absolute_media_url(request, first_with_image.image.url)
+                except Exception:
+                    pass
+
+    except Exception as e:
+        logger.warning("Error obteniendo imagen de premio para participación %s: %s",
+                       getattr(participation, "id", None), e)
+
+    return None
+
+
+# ==============================
+# Validaciones (original)
+# ==============================
 
 def validate_receipt_file(file):
     """
@@ -72,17 +176,15 @@ def validate_receipt_file(file):
     # Si es imagen, validar que se pueda abrir y que no exceda límite de píxeles
     if _is_image_ext(ext):
         try:
-            # Guardar posición, abrir y verificar
             pos = file.tell() if hasattr(file, "tell") else None
             with warnings.catch_warnings():
                 warnings.simplefilter("error", PILImage.DecompressionBombWarning)
                 img = Image.open(file)
                 img.verify()  # valida estructura
-            # Volver al inicio para no romper lecturas posteriores
+
             if hasattr(file, "seek"):
                 file.seek(0 if pos is None else pos)
 
-            # Revisar dimensiones sin volver a decodificar por completo
             img = Image.open(file)
             w, h = img.size
             if (w * h) > max_pixels:
@@ -92,14 +194,15 @@ def validate_receipt_file(file):
         except (UnidentifiedImageError, Exception):
             errors.append("El archivo no es una imagen válida.")
 
-        # Reset puntero de archivo
         if hasattr(file, "seek"):
             file.seek(0)
 
     return errors
 
 
-# ----------------------------- Compresión ----------------------------- #
+# ==============================
+# Compresión (original)
+# ==============================
 
 def compress_image(file, max_width=1920, max_height=1080, quality=85):
     """
@@ -116,16 +219,13 @@ def compress_image(file, max_width=1920, max_height=1080, quality=85):
     if not _is_image_ext(ext):
         return file  # no es imagen → devolver tal cual
 
-    # Abrir imagen segura
     try:
         img = Image.open(file)
-        # Corrige orientación usando EXIF si la hay
         try:
             img = ImageOps.exif_transpose(img)
         except Exception:
             pass
 
-        # Redimensionar si excede los límites
         if img.width > max_width or img.height > max_height:
             img.thumbnail((max_width, max_height), Image.Resampling.LANCZOS)
 
@@ -133,9 +233,7 @@ def compress_image(file, max_width=1920, max_height=1080, quality=85):
         new_name = filename  # por defecto mantiene nombre
 
         if ext == ".png":
-            # Si el PNG es grande (>1MB), lo convertimos a JPEG para reducir peso
             if _safe_get_size(file) > 1024 * 1024:
-                # Manejar alpha: componer sobre fondo blanco
                 if _has_alpha(img):
                     bg = Image.new("RGB", img.size, (255, 255, 255))
                     bg.paste(img, mask=img.split()[-1])
@@ -145,11 +243,8 @@ def compress_image(file, max_width=1920, max_height=1080, quality=85):
                 img.save(output, format="JPEG", quality=int(quality), optimize=True)
                 new_name = os.path.splitext(filename)[0] + ".jpg"
             else:
-                # Guardar PNG optimizado (sin quality)
-                # Opcionalmente, se puede ajustar compress_level (0-9)
                 img.save(output, format="PNG", optimize=True, compress_level=9)
         else:
-            # JPEG/JPG
             if img.mode not in ("RGB", "L"):
                 img = img.convert("RGB")
             img.save(output, format="JPEG", quality=int(quality), optimize=True)
@@ -159,7 +254,6 @@ def compress_image(file, max_width=1920, max_height=1080, quality=85):
 
     except Exception as e:
         logger.warning("Error comprimiendo imagen '%s': %s", filename, e)
-        # Si algo falla, devolver el archivo original
         if hasattr(file, "seek"):
             try:
                 file.seek(0)
@@ -168,7 +262,9 @@ def compress_image(file, max_width=1920, max_height=1080, quality=85):
         return file
 
 
-# ----------------------------- Información ----------------------------- #
+# ==============================
+# Información (original)
+# ==============================
 
 def get_file_info(file):
     """
@@ -191,7 +287,9 @@ def get_file_info(file):
     return info
 
 
-# ----------------------------- Limpieza de nombres ----------------------------- #
+# ==============================
+# Limpieza de nombres (original)
+# ==============================
 
 def clean_filename(filename):
     """

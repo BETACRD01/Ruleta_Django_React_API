@@ -3,8 +3,7 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Users, Calendar, Upload, ArrowLeft, CheckCircle, AlertTriangle,
-  Star, Award, Gift, Clock, 
-  Calendar as  Crown, Medal, Package, Percent, X
+  Star, Award, Gift, Clock, Crown, Medal, Package, Percent, X
 } from 'lucide-react';
 import {
   roulettesAPI,
@@ -162,11 +161,11 @@ const PrizeModal = ({ open, onClose, prize }) => {
             <X className="w-5 h-5" />
           </button>
 
-          <div className="grid grid-cols-1 md:grid-cols-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 max-h-[80vh]">
             <button
               type="button"
               title="Ver imagen en grande"
-              className="bg-gray-50 md:minh-[420px] md:min-h-[420px] relative group"
+              className="bg-gray-50 md:min-h-[420px] relative group"
               onClick={() => setShowImage(true)}
             >
               {prize.image_url ? (
@@ -184,7 +183,7 @@ const PrizeModal = ({ open, onClose, prize }) => {
               )}
             </button>
 
-            <div className="p-6 md:p-8">
+            <div className="p-6 md:p-8 overflow-y-auto">
               <div className="flex items-center gap-2 mb-3">
                 <Gift className="w-5 h-5 text-purple-600" />
                 <h3 className="text-xl font-bold text-gray-900">{name}</h3>
@@ -277,7 +276,7 @@ const CountdownTimer = ({ endDate, label, type = "default", className = "" }) =>
 };
 
 /* =========================
-   Premios (más dinámicos)
+   Premios (más dinámicos) — con scroll
 ========================= */
 const CompactPrizesSection = ({ prizes = [], onOpenPrize }) => {
   const getProp = (p, ...k) => { for (const x of k) if (p?.[x] != null && p[x] !== '') return p[x]; return null; };
@@ -318,13 +317,20 @@ const CompactPrizesSection = ({ prizes = [], onOpenPrize }) => {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm">
-      <div className="px-5 py-3 border-b border-gray-200 bg-gray-50">
+      <div className="px-5 py-3 border-b border-gray-200 bg-gray-50 sticky top-0 z-10">
         <h3 className="text-base font-semibold text-gray-800 flex items-center gap-2">
           <Gift className="h-5 w-5 text-[#0b56a7]" /> Premios ({sorted.length})
         </h3>
       </div>
 
-      <div className="p-4 max-h-96 overflow-y-auto">
+      {/* Altura controlada + scroll suave + scrollbars discretos */}
+      <div
+        className="p-4 max-h-[28rem] overflow-y-auto"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#cbd5e1 transparent'
+        }}
+      >
         <ul className="space-y-3">
           {sorted.map((p, i) => {
             const name = p.name || p.title || `Premio #${i + 1}`;
@@ -335,6 +341,8 @@ const CompactPrizesSection = ({ prizes = [], onOpenPrize }) => {
             const badge = posBadge(p, i);
             const formatted = desc ? formatTextWithLinks(desc, { link: 'text-[#0b56a7] hover:text-[#207ba8] underline decoration-2 underline-offset-2' }) : null;
 
+            const Icon = badge.icon;
+
             return (
               <li
                 key={p.id || i}
@@ -343,7 +351,7 @@ const CompactPrizesSection = ({ prizes = [], onOpenPrize }) => {
                 <span className="pointer-events-none absolute inset-0 rounded-xl ring-1 ring-transparent group-hover:ring-[#4dc9b1]/40" />
                 {badge.show && (
                   <div className={`absolute -top-2 -left-2 inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold border-2 shadow bg-gradient-to-r ${badge.cls}`}>
-                    <badge.icon className="h-3 w-3" /> {badge.label}
+                    <Icon className="h-3 w-3" /> {badge.label}
                   </div>
                 )}
 
@@ -437,7 +445,7 @@ const RouletteHeroSection = ({ roulette }) => {
 };
 
 /* =========================
-   Formulario con colores de la paleta (#0b56a7, #207ba8, #389fae, #4dc9b1)
+   Formulario
 ========================= */
 const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
   const [file, setFile] = useState(null);
@@ -489,7 +497,7 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
   return (
     <div className="bg-white rounded-2xl border border-[#207ba8]/20 shadow-sm overflow-hidden" id="participar">
       {/* Header con acento suave */}
-      <div className="px-6 py-5 bg-[#0b56a7]/5 border-b border-[#207ba8]/20 text-center">
+      <div className="px-6 py-5 bg-[#0b56a7]/5 border-b border-[#207ba8]/20 text-center sticky top-0 z-10">
         <h3 className="text-lg font-semibold text-[#0b56a7]">Participar en el sorteo</h3>
         <p className="text-xs text-[#207ba8] mt-1">Adjunta tu comprobante (JPG, PNG o PDF). Máx. 5MB.</p>
       </div>
@@ -734,7 +742,7 @@ export default function RouletteParticipate() {
             </button>
           </div>
 
-          {/* Estadísticas con diseño y animaciones suaves */}
+          {/* Estadísticas */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl border border-gray-200 p-4 shadow-sm">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {/* Participantes */}
@@ -794,15 +802,19 @@ export default function RouletteParticipate() {
               <RouletteHeroSection roulette={roulette} />
             </div>
 
-            <div className="lg:col-span-1 space-y-6">
-              <CompactPrizesSection prizes={prizes} onOpenPrize={openPrize} />
-              <ParticipationForm
-                roulette={roulette}
-                onSubmit={handleSubmit}
-                loading={submitting}
-                error={pageError}
-                success={successMsg}
-              />
+            {/* Columna derecha "pegajosa" con scroll propio */}
+            <div className="lg:col-span-1">
+              <div className="space-y-6 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto"
+                   style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
+                <CompactPrizesSection prizes={prizes} onOpenPrize={openPrize} />
+                <ParticipationForm
+                  roulette={roulette}
+                  onSubmit={handleSubmit}
+                  loading={submitting}
+                  error={pageError}
+                  success={successMsg}
+                />
+              </div>
             </div>
           </div>
 

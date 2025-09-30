@@ -13,6 +13,7 @@ from django.core.validators import MinValueValidator
 from django.db import models, transaction
 from django.utils import timezone
 from django.utils.text import slugify
+from django.conf import settings
 
 from participants.models import Participation
 
@@ -21,9 +22,10 @@ logger = logging.getLogger(__name__)
 
 # Servicio de notificaciones (defensivo)
 try:
-    from notifications.services import NotificationService  # type: ignore
-except Exception:
-    NotificationService = None  # type: ignore
+    from notifications import send_winner_email  # type: ignore
+except ImportError:
+    send_winner_email = None  # type: ignore
+    logger.warning("Módulo de notificaciones no disponible")
 
 
 # ========= RichText dinámico (CKEditor si está disponible) =========
@@ -68,7 +70,7 @@ class RouletteStatus(models.TextChoices):
 class DrawType(models.TextChoices):
     MANUAL = "manual", "Manual"
     SCHEDULED = "scheduled", "Programado"
-    AUTO = "auto", "Automático"  # compat histórica
+    AUTO = "auto", "Automático"
     ADMIN = "admin", "Admin"
 
 
@@ -179,7 +181,6 @@ class Roulette(models.Model):
     def __str__(self) -> str:
         return f"{self.name} ({self.get_status_display()})"
 
-    # ----- Validaciones y guardado -----
     def clean(self):
         errors = {}
         now = timezone.now()
@@ -197,11 +198,7 @@ class Roulette(models.Model):
         if errors:
             raise ValidationError(errors)
 
-    # ===== Lógica de premios/ganadores =====
     def available_awards_count(self) -> int:
-        """
-        Unidades disponibles: suma de stock de premios activos con stock>0.
-        """
         return (
             self.prizes.filter(is_active=True, stock__gt=0)
             .aggregate(total=models.Sum("stock"))["total"]
@@ -209,9 +206,6 @@ class Roulette(models.Model):
         )
 
     def winners_target_effective(self) -> int:
-        """
-        Objetivo EFECTIVO (SOLO para UI).
-        """
         settings = getattr(self, "settings", None)
         if not settings:
             return 1
@@ -227,9 +221,6 @@ class Roulette(models.Model):
         return count
 
     def has_remaining_winners(self) -> bool:
-        """
-        Utilidad general (orientativa para UI).
-        """
         settings = getattr(self, "settings", None)
         if settings and settings.winners_target and settings.winners_target > 0:
             return self.winners_count() < max(settings.winners_target, 1)
@@ -258,37 +249,25 @@ class Roulette(models.Model):
         if changed:
             self.save(update_fields=["status", "is_drawn", "drawn_at", "drawn_by"])
 
-    # ========================================================================
-    # CORRECCIÓN 1: reconcile_completion() — más conservadora (NO reabre)
-    #   - Cierra si: (a) no hay elegibles, o (b) no hay premios.
-    #   - En meta fija: cierra si se alcanzó la meta Y no hay premios.
-    #   - En los demás casos: no modifica estado.
-    # ========================================================================
     @transaction.atomic
     def reconcile_completion(self, by_user=None):
-        # Participantes elegibles
         eligible_count = self.participations.filter(is_winner=False).count()
         if eligible_count == 0:
             self.mark_completed(by_user=by_user)
             return
 
-        # Premios disponibles
         available_awards = self.available_awards_count()
         if available_awards <= 0:
             self.mark_completed(by_user=by_user)
             return
 
-        # Meta fija (referencial): si se alcanzó la meta Y no hay premios -> cerrar
         settings = getattr(self, "settings", None)
         if settings and settings.winners_target and settings.winners_target > 0:
             if self.winners_count() >= max(settings.winners_target, 1) and available_awards <= 0:
                 self.mark_completed(by_user=by_user)
                 return
 
-        # Si llegamos aquí: AÚN se puede continuar. No tocar estado.
-
     def save(self, *args, **kwargs):
-        # Slug único si no existe
         if not self.slug:
             base_slug = slugify(self.name)
             slug = base_slug
@@ -298,12 +277,6 @@ class Roulette(models.Model):
                 counter += 1
             self.slug = slug
 
-        # ====================================================================
-        # Autocierre alineado a la lógica conservadora:
-        # - Cierra solo cuando YA NO se puede continuar sorteando:
-        #   a) sin participantes elegibles, o b) sin premios.
-        # - En meta fija, solo cierra si se alcanzó la meta Y no hay premios.
-        # ====================================================================
         if self.pk:
             try:
                 eligibles = self.participations.filter(is_winner=False).exists()
@@ -322,7 +295,6 @@ class Roulette(models.Model):
                     must_close = True
 
             if must_close:
-                # Marcar como completada / dibujada si aún no lo está
                 if not self.is_drawn:
                     self.is_drawn = True
                     self.drawn_at = self.drawn_at or timezone.now()
@@ -331,7 +303,6 @@ class Roulette(models.Model):
 
         super().save(*args, **kwargs)
 
-    # ----- Utilidades participantes/estado -----
     def get_participants_count(self) -> int:
         if "participants_count" in self.__dict__:
             try:
@@ -343,13 +314,6 @@ class Roulette(models.Model):
     def get_participants_list(self):
         return self.participations.select_related("user").order_by("participant_number")
 
-    # ========================================================================
-    # CORRECCIÓN 2: can_be_drawn_manually_method() — más permisiva
-    #   Permite sortear mientras haya:
-    #   1) participantes elegibles (no ganadores) y
-    #   2) premios disponibles (>0),
-    #   y la ruleta no esté marcada como drawn/completed.
-    # ========================================================================
     def can_be_drawn_manually_method(self) -> bool:
         if self.is_drawn or self.status == RouletteStatus.COMPLETED:
             return False
@@ -363,7 +327,6 @@ class Roulette(models.Model):
 
     @property
     def can_be_drawn_manually(self) -> bool:
-        # compat con código existente
         return self.can_be_drawn_manually_method()
 
     @property
@@ -436,14 +399,34 @@ class Roulette(models.Model):
 
         winner_participation = random.choice(candidates)
 
+        # Obtener premio disponible
+        prize = (
+            self.prizes.select_for_update()
+            .filter(is_active=True, stock__gt=0)
+            .order_by("display_order", "id")
+            .first()
+        )
+
+        # Asignar premio y marcar como ganador
         winner_participation.is_winner = True
-        winner_participation.save(update_fields=["is_winner"])
+        winner_participation.won_at = timezone.now()
+        winner_participation.won_prize = prize
+        winner_participation.prize_position = prize.display_order if prize else None
+        winner_participation.save(update_fields=["is_winner", "won_at", "won_prize", "prize_position"])
+
+        # Actualizar stock del premio
+        if prize:
+            new_stock = int(prize.stock) - 1
+            prize.stock = new_stock if new_stock >= 0 else 0
+            if prize.stock <= 0 and prize.is_active:
+                prize.is_active = False
+            prize.save(update_fields=["stock", "is_active"])
 
         if not self.winner_id:
             self.winner = winner_participation
 
         self.drawn_by = drawn_by_user
-        self.save()  # autocierre conservador (solo si ya no se puede continuar)
+        self.save()
 
         DrawHistory.objects.create(
             roulette=self,
@@ -453,6 +436,62 @@ class Roulette(models.Model):
             participants_count=self.participations.count(),
             random_seed=seed,
         )
+
+        # ============================================================
+        # NOTIFICACIÓN RETARDADA CON CELERY
+        # ============================================================
+        try:
+            notify_flag = True
+            s = getattr(self, "settings", None)
+            if s:
+                notify_flag = bool(s.notify_on_draw)
+            
+            winner_email = getattr(winner_participation.user, 'email', None)
+            
+            if not winner_email or not winner_email.strip():
+                logger.warning(
+                    f"Ganador {winner_participation.user.username} (ID: {winner_participation.user.id}) "
+                    "no tiene email configurado."
+                )
+            elif notify_flag:
+                # Importar la tarea de Celery
+                from notifications.tasks import send_winner_notification_delayed
+                
+                delay_seconds = getattr(settings, 'WINNER_NOTIFICATION_DELAY', 300)
+                
+                logger.info(
+                    f"Programando notificación retardada (+{delay_seconds}s) para: {winner_email}"
+                )
+                
+                # Preparar datos para la tarea
+                task_data = {
+                    "user_id": winner_participation.user.id,
+                    "roulette_name": self.name,
+                    "prize_name": prize.name if prize else "Premio especial",
+                    "prize_description": prize.description if prize else None,
+                    "prize_image_url": prize.image.url if prize and prize.image else None,
+                    "prize_rank": getattr(prize, 'display_order', None) if prize else None,
+                    "pickup_instructions": getattr(prize, 'pickup_instructions', None) if prize else None,
+                    "roulette_id": self.id,
+                    "prize_id": prize.id if prize else None,
+                    "notify_admins": True
+                }
+                
+                # Programar tarea con retraso
+                task = send_winner_notification_delayed.apply_async(
+                    kwargs=task_data,
+                    countdown=delay_seconds
+                )
+                
+                logger.info(f"Tarea programada: {task.id} (Envío en ~{delay_seconds/60:.1f} min)")
+            else:
+                logger.info("Notificaciones deshabilitadas en la configuración de la ruleta.")
+                
+        except Exception as e:
+            logger.error(
+                f"Excepción al programar notificación: {str(e)}", 
+                exc_info=True
+            )
 
         logger.info("Ruleta %s: ganador %s", self.name, winner_participation)
         return winner_participation
@@ -470,8 +509,6 @@ class Roulette(models.Model):
         if total_candidates == 0:
             raise ValidationError("No quedan participantes elegibles para ganar.")
 
-        # Límite por stock disponible (y candidatos).
-        # En meta fija, la UI puede contar meta, pero el bloqueo real es por stock/eligibles.
         picks = min(n, total_candidates, max(self.available_awards_count(), 0))
 
         import random
@@ -496,22 +533,25 @@ class Roulette(models.Model):
             choice = random.choice(pool)
             pool.remove(choice)
 
-            choice.is_winner = True
-            if hasattr(choice, "won_at"):
-                choice.won_at = timezone.now()
-                choice.save(update_fields=["is_winner", "won_at"])
-            else:
-                choice.save(update_fields=["is_winner"])
-
-            if not self.winner_id:
-                self.winner = choice
-
+            # Obtener premio disponible ANTES de marcar como ganador
             prize = (
                 self.prizes.select_for_update()
                 .filter(is_active=True, stock__gt=0)
                 .order_by("display_order", "id")
                 .first()
             )
+
+            # Asignar premio y datos al ganador
+            choice.is_winner = True
+            choice.won_at = timezone.now()
+            choice.won_prize = prize
+            choice.prize_position = prize.display_order if prize else None
+            choice.save(update_fields=["is_winner", "won_at", "won_prize", "prize_position"])
+
+            if not self.winner_id:
+                self.winner = choice
+
+            # Reducir stock del premio
             if prize:
                 new_stock = int(prize.stock) - 1
                 prize.stock = new_stock if new_stock >= 0 else 0
@@ -528,42 +568,79 @@ class Roulette(models.Model):
                 random_seed=seed_i,
             )
 
+            # ============================================================
+            # NOTIFICACIÓN RETARDADA CON CELERY (MÚLTIPLES GANADORES)
+            # ============================================================
             try:
-                if notify_flag and NotificationService:
-                    prize_details = ""
-                    if prize:
-                        desc = (prize.description or "").strip()
-                        prize_details = f"Premio: {prize.name}" + (f". {desc}" if desc else "")
-                    NotificationService.create_winner_announcement(
-                        winner_user=choice.user,
-                        roulette_name=self.name,
-                        roulette_id=self.id,
-                        total_participants=self.participations.count(),
-                        prize_details=prize_details,
+                winner_email = getattr(choice.user, 'email', None)
+                
+                if not winner_email or not winner_email.strip():
+                    logger.warning(
+                        f"Ganador {i+1} ({choice.user.username}, ID: {choice.user.id}) "
+                        "no tiene email configurado."
                     )
-            except Exception:
-                logger.warning("Fallo al notificar ganador múltiple", exc_info=True)
+                    winners.append(choice)
+                    continue
+                
+                if not notify_flag:
+                    logger.info(f"Notificaciones deshabilitadas. No se enviará email al ganador {i+1}.")
+                    winners.append(choice)
+                    continue
+                
+                # Importar la tarea de Celery
+                from notifications.tasks import send_winner_notification_delayed
+                
+                # Retraso escalonado: base + (i * 30 segundos)
+                base_delay = getattr(settings, 'WINNER_NOTIFICATION_DELAY', 300)
+                delay_seconds = base_delay + (i * 30)
+                
+                logger.info(
+                    f"Programando notificación ganador {i+1}/{picks} (+{delay_seconds}s): {winner_email}"
+                )
+                
+                # Preparar datos
+                task_data = {
+                    "user_id": choice.user.id,
+                    "roulette_name": self.name,
+                    "prize_name": prize.name if prize else "Premio especial",
+                    "prize_description": prize.description if prize else None,
+                    "prize_image_url": prize.image.url if prize and prize.image else None,
+                    "prize_rank": getattr(prize, 'display_order', None) if prize else None,
+                    "pickup_instructions": getattr(prize, 'pickup_instructions', None) if prize else None,
+                    "roulette_id": self.id,
+                    "prize_id": prize.id if prize else None,
+                    "notify_admins": (i == 0)  # Solo al primer ganador
+                }
+                
+                # Programar tarea
+                task = send_winner_notification_delayed.apply_async(
+                    kwargs=task_data,
+                    countdown=delay_seconds
+                )
+                
+                logger.info(f"Tarea {i+1} programada: {task.id}")
+                    
+            except Exception as e:
+                logger.error(
+                    f"Excepción al programar notificación ganador {i+1}: {str(e)}", 
+                    exc_info=True
+                )
 
             winners.append(choice)
 
         self.drawn_by = drawn_by_user
-        self.save()  # autocierre conservador tras cada tanda
+        self.save()
         logger.info("Ruleta %s: %d ganadores seleccionados", self.name, len(winners))
         return winners
 
 
 class RouletteSettings(models.Model):
     roulette = models.OneToOneField(Roulette, on_delete=models.CASCADE, related_name="settings")
-
     max_participants = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
     allow_multiple_entries = models.BooleanField(default=False)
-
     show_countdown = models.BooleanField(default=True)
-
     notify_on_participation = models.BooleanField(default=True)
     notify_on_draw = models.BooleanField(default=True)
-
-    # 0 = automático (control por stock); >0 = meta fija (solo referencial p/ UI)
     winners_target = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
 
     def __str__(self) -> str:
@@ -599,12 +676,17 @@ class RoulettePrize(models.Model):
     name = models.CharField(max_length=120, db_index=True)
     description = models.TextField(blank=True, default="")
     image = models.ImageField(upload_to=prize_image_upload_path, blank=True, null=True)
-
+    
+    pickup_instructions = models.TextField(
+        blank=True, 
+        default="",
+        verbose_name="Instrucciones de retiro",
+        help_text="Información sobre cómo y dónde retirar el premio"
+    )
+    
     stock = models.PositiveIntegerField(default=1, validators=[MinValueValidator(0)])
-
     display_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)
-
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

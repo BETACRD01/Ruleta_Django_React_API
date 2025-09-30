@@ -1,15 +1,17 @@
-// src/App.jsx - ACTUALIZADO con ruta de reset password
+// src/App.jsx - ACTUALIZADO con PreferencesProvider
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
+import { PreferencesProvider } from './contexts/PreferencesContext'; // ✅ Importar
+import './styles/darkTheme.css'; // ✅ Importar estilos del tema oscuro
 
 import Page from './pages/page';           
 import Layout from './components/Layout';  
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import TermsPage from './pages/TermsPage';
-import PasswordResetForm from './components/auth/PasswordResetForm'; // ⬅️ IMPORTAR
+import PasswordResetForm from './components/auth/PasswordResetForm';
 
 import RouletteParticipate from './components/user/Ruletas Disponibles/RouletteParticipate';
 
@@ -35,7 +37,7 @@ const AppContent = () => {
       {/* Página raíz: Page contiene Home + Login/Register */}
       <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Page />} />
 
-      {/* ⬅️ NUEVA RUTA PARA RESET PASSWORD */}
+      {/* Ruta para reset password */}
       <Route 
         path="/reset-password" 
         element={
@@ -83,7 +85,9 @@ const App = () => {
     <div className="App">
       <NotificationProvider>
         <AuthProvider>
-          <AppContent />
+          <PreferencesProvider> {/* ✅ Agregar PreferencesProvider */}
+            <AppContent />
+          </PreferencesProvider>
         </AuthProvider>
       </NotificationProvider>
     </div>

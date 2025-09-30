@@ -1,0 +1,95 @@
+═══════════════════════════════════════════════════════════════
+                                                              
+     {{ prize_rank_emoji }} ¡FELICITACIONES! HAS GANADO {{ prize_rank_emoji }}
+                                                              
+═══════════════════════════════════════════════════════════════
+
+
+Hola {% if user_first_name %}{{ user_first_name }}{% else %}{{ user_full_name }}{% endif %},
+
+🎊 ¡Tenemos EXCELENTES NOTICIAS para ti!
+
+Has sido seleccionado como GANADOR OFICIAL en el sorteo:
+
+   🎯 {{ roulette_name }}
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+🏆 TU PREMIO GANADO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   {{ prize_rank_emoji }} {{ prize_rank_label }}
+   
+   🎁 Premio: {{ prize_name }}
+   
+   {% if prize_description %}
+   📝 Descripción:
+   {{ prize_description }}
+   {% endif %}
+
+
+{% if pickup_instructions %}📦 INSTRUCCIONES PARA RETIRAR TU PREMIO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{ pickup_instructions }}
+
+───────────────────────────────────────────────────────────────
+
+{% endif %}
+
+💡 ¿QUÉ SIGUE AHORA?
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   1. ✓ Accede a tu cuenta para ver todos los detalles
+   
+   2. ✓ Revisa las instrucciones completas de entrega
+   
+   3. ✓ Sigue los pasos indicados para reclamar tu premio
+   
+   {% if prize_url %}4. ✓ Gestiona tu premio desde tu panel personal
+   {% endif %}
+
+   {% if prize_url %}
+   🔗 Ver Mis Premios:
+   {{ prize_url }}
+   
+   {% endif %}
+
+⚠️  IMPORTANTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   • Este premio es personal e intransferible
+   • Conserva este email como comprobante oficial
+   • Reclama tu premio dentro del plazo establecido
+   {% if support_email %}• Ante cualquier duda, contáctanos{% endif %}
+
+
+📞 INFORMACIÓN DE CONTACTO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   {{ brand_name }}
+   Tu plataforma de sorteos de confianza
+   
+   {% if support_email %}📧 Soporte:    {{ support_email }}
+   {% endif %}{% if site_url %}🌐 Sitio web:   {{ site_url }}
+   {% endif %}
+   
+   ¿Tienes preguntas? Estamos aquí para ayudarte.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   ¡Felicitaciones nuevamente y disfruta tu premio!
+   
+   Este correo fue enviado automáticamente el {% now "d/m/Y" %} a las {% now "H:i" %}
+   
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+═══════════════════════════════════════════════════════════════
+
+   © {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.
+   
+═══════════════════════════════════════════════════════════════

@@ -1,73 +1,48 @@
-// src/pages/Home.jsx — Home público SIN login/registro (colores sólidos + animaciones)
+// src/pages/Home.jsx – Home rediseñado con identidad corporativa
 import React from "react";
-import { Shield, Bell, Sparkles, Award, Trophy, Activity, Users, Gift, Clock, Star } from "lucide-react";
+import { Shield, Bell, Sparkles, Award, Trophy, Activity, Users, Gift, Clock, Star, TrendingUp, Zap, AlertCircle, X } from "lucide-react";
 import { publicAPI } from "../config/publicApi";
 import { useAuth } from "../contexts/AuthContext";
 import RouletteCard from "../components/public/RouletteCard";
 
-/* ---------- Paleta centralizada (sólidos) ---------- */
-const COLORS = {
-  brandDark: "#003049",
-  brandRed:  "#D62829",
-  brandMint: "#4dc9b1",
-  brandTeal: "#389fae",
-  brandBlue: "#0b56a7",
-  text:      "#0f172a",
-  muted:     "#475569",
-  card:      "rgba(255,255,255,0.90)",
-  border:    "rgba(226,232,240,0.7)",
+/* Colores Corporativos Oficiales */
+const BRAND = {
+  azul: "#0b56a7",
+  azulOscuro: "#003049",
+  celeste: "#389fae",
+  turquesa: "#4dc9b1",
+  rojo: "#D62829",
 };
 
-/* ---------- UI helpers ---------- */
-const FeatureCard = ({ color, Icon, title, sub }) => (
-  <div
-    className="flex items-center gap-4 p-5 rounded-2xl border transition-all duration-300 group will-change-transform"
-    style={{ backgroundColor: COLORS.card, borderColor: COLORS.border, transform: "translateZ(0)" }}
-    onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-4px)")}
-    onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0)")}
-  >
-    <div
-      className="rounded-xl p-3 shrink-0 shadow-sm transition-shadow duration-300"
-      style={{ backgroundColor: color, boxShadow: "0 6px 18px rgba(0,0,0,0.08)" }}
-    >
-      <Icon className="h-6 w-6 text-white" />
-    </div>
-    <div className="min-w-0">
-      <h3 className="font-bold text-lg" style={{ color: COLORS.text }}>{title}</h3>
-      <p className="text-sm leading-relaxed" style={{ color: COLORS.muted }}>{sub}</p>
+const FeatureCard = ({ Icon, title, description, gradient }) => (
+  <div className="group relative overflow-hidden rounded-2xl bg-white p-6 shadow-lg border border-gray-100 hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
+    <div className={`absolute top-0 right-0 w-32 h-32 ${gradient} opacity-10 rounded-full blur-3xl group-hover:opacity-20 transition-opacity`} />
+    <div className="relative z-10">
+      <div className={`inline-flex p-3 rounded-xl ${gradient} mb-4`}>
+        <Icon className="w-6 h-6 text-white" />
+      </div>
+      <h3 className="text-lg font-bold text-gray-900 mb-2">{title}</h3>
+      <p className="text-sm text-gray-600 leading-relaxed">{description}</p>
     </div>
   </div>
 );
 
-const Pill = ({ label, value, color = COLORS.brandDark }) => (
-  <div
-    className="rounded-2xl border-2 px-6 py-5 transition-all duration-200"
-    style={{
-      borderColor: "rgba(255,255,255,0.8)",
-      backgroundColor: "rgba(255,255,255,0.95)",
-      boxShadow: "0 10px 24px rgba(2, 8, 23, 0.05)",
-    }}
-  >
-    <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: COLORS.muted }}>{label}</p>
-    <p className="text-3xl font-black" style={{ color }}>{value}</p>
+const StatCard = ({ icon: Icon, label, value, color }) => (
+  <div className="bg-white rounded-xl p-6 shadow-md border border-gray-100 hover:shadow-xl transition-all duration-300">
+    <div className="flex items-center justify-between mb-3">
+      <Icon className="w-8 h-8" style={{ color }} />
+      <span className="text-3xl font-black" style={{ color }}>{value}</span>
+    </div>
+    <p className="text-sm font-medium text-gray-600">{label}</p>
   </div>
 );
 
-const SkeletonCard = () => (
-  <div className="rounded-2xl border p-5 animate-pulse" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-    <div className="h-36 bg-gray-200 rounded-xl mb-4"></div>
-    <div className="h-5 bg-gray-200 rounded mb-3"></div>
-    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-    <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-  </div>
-);
-
-/* ---------- Card: Actividad & Ganadores ---------- */
 function WinnersAndActivityCard() {
-  const { token } = useAuth();
+  const { token, isAuthenticated } = useAuth();
   const [tab, setTab] = React.useState("actividad");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
+  const [showAuthNotice, setShowAuthNotice] = React.useState(false);
 
   const [metrics, setMetrics] = React.useState({
     roulettes_total: 0,
@@ -98,10 +73,10 @@ function WinnersAndActivityCard() {
         if (metricsResult.status === "fulfilled") {
           const m = metricsResult.value;
           setMetrics({
-            roulettes_total:   m.roulettes_total   || 0,
-            active_roulettes:  m.active_roulettes  || 0,
-            winners_total:     m.winners_total     || 0,
-            participants_total:m.participants_total|| 0,
+            roulettes_total: m.roulettes_total || 0,
+            active_roulettes: m.active_roulettes || 0,
+            winners_total: m.winners_total || 0,
+            participants_total: m.participants_total || 0,
           });
           setServerTime(m.server_time);
         }
@@ -151,250 +126,282 @@ function WinnersAndActivityCard() {
     return () => { isCancelled = true; };
   }, [token]);
 
+  // Auto-hide notification after 5 seconds
+  React.useEffect(() => {
+    if (showAuthNotice) {
+      const timer = setTimeout(() => {
+        setShowAuthNotice(false);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [showAuthNotice]);
+
   const handleRouletteClick = (roulette) => {
-    console.log("Clicked roulette:", roulette);
+    if (!isAuthenticated) {
+      setShowAuthNotice(true);
+      return;
+    }
+    
+    // Si está autenticado, redirigir o hacer lo que necesites
+    console.log("Usuario autenticado, accediendo a:", roulette);
+    // window.location.href = `/roulette/${roulette.id}`;
   };
 
   return (
-    <div
-      className="rounded-3xl border-2 p-8 shadow-xl hover:shadow-2xl transition-all duration-300"
-      style={{ borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.92)" }}
-    >
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="rounded-2xl p-3 text-white shadow-lg" style={{ backgroundColor: COLORS.brandDark }}>
-            <Trophy size={24} />
-          </div>
-          <h3 className="text-2xl font-black" style={{ color: COLORS.text }}>Actividad & Ganadores</h3>
-        </div>
-        <span
-          className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold text-white shadow-md"
-          style={{ backgroundColor: COLORS.brandRed }}
-        >
-          <Activity size={16} />
-          En vivo
-        </span>
-      </div>
-
-      {/* KPIs */}
-      <div className="grid grid-cols-2 gap-6 mb-8">
-        {loading ? (
-          <>
-            <div className="rounded-2xl border px-6 py-5 animate-pulse" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-              <div className="h-4 bg-gray-200 rounded mb-3"></div>
-              <div className="h-8 bg-gray-200 rounded"></div>
-            </div>
-            <div className="rounded-2xl border px-6 py-5 animate-pulse" style={{ backgroundColor: COLORS.card, borderColor: COLORS.border }}>
-              <div className="h-4 bg-gray-200 rounded mb-3"></div>
-              <div className="h-8 bg-gray-200 rounded"></div>
-            </div>
-          </>
-        ) : (
-          <>
-            <Pill label="Ruletas Activas" value={metrics.active_roulettes || 0} color={COLORS.brandDark} />
-            <Pill label="Total Ganadores" value={metrics.winners_total || 0} color={COLORS.brandRed} />
-          </>
-        )}
-      </div>
-
-      {/* Tabs */}
-      <div
-        className="mb-6 inline-flex rounded-2xl p-1.5 shadow-inner border-2"
-        style={{ backgroundColor: "rgba(255,255,255,0.95)", borderColor: COLORS.border }}
-      >
-        <button
-          onClick={() => setTab("actividad")}
-          className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-200 ${
-            tab === "actividad" ? "text-white shadow-lg transform scale-105" : "hover:bg-gray-50"
-          }`}
-          style={{ backgroundColor: tab === "actividad" ? COLORS.brandDark : "transparent", color: tab === "actividad" ? "#fff" : COLORS.muted }}
-        >
-          Ruletas Activas ({roulettes.length})
-        </button>
-        <button
-          onClick={() => setTab("ganadores")}
-          className={`px-6 py-3 rounded-xl text-sm font-bold transition-all duration-200 ${
-            tab === "ganadores" ? "text-white shadow-lg transform scale-105" : "hover:bg-gray-50"
-          }`}
-          style={{ backgroundColor: tab === "ganadores" ? COLORS.brandDark : "transparent", color: tab === "ganadores" ? "#fff" : COLORS.muted }}
-        >
-          Ganadores ({winners.length})
-        </button>
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div
-          className="rounded-2xl border-2 px-6 py-4 text-sm mb-6"
-          style={{ borderColor: "rgb(254,202,202)", backgroundColor: "rgba(254,226,226,0.8)", color: "#991b1b" }}
-        >
-          <div className="font-bold mb-2">Error al cargar datos</div>
-          <div className="mb-3">{error}</div>
-          <button
-            onClick={() => window.location.reload()}
-            className="text-xs font-semibold underline hover:no-underline px-3 py-1 rounded-lg"
-            style={{ backgroundColor: "rgba(254,202,202,0.5)" }}
-          >
-            Recargar página
-          </button>
-        </div>
-      )}
-
-      {/* Actividad */}
-      {!error && tab === "actividad" && (
-        <div>
-          {loading ? (
-            <div className="grid gap-6">
-              <SkeletonCard />
-              <SkeletonCard />
-            </div>
-          ) : roulettes.length === 0 ? (
-            <div
-              className="rounded-2xl border-2 px-6 py-12 text-center"
-              style={{ borderColor: COLORS.border, backgroundColor: "rgba(248,250,252,0.9)" }}
-            >
-              <div className="text-6xl mb-4">🎰</div>
-              <p className="text-lg font-bold mb-2" style={{ color: COLORS.text }}>¡No hay ruletas activas ahora!</p>
-              <p className="text-sm" style={{ color: COLORS.muted }}>Vuelve pronto para participar en nuevos sorteos</p>
-              {metrics.roulettes_total > 0 && (
-                <p className="text-xs mt-3" style={{ color: "#64748b" }}>
-                  Total de ruletas en el sistema: {metrics.roulettes_total}
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {roulettes.slice(0, 3).map((roulette) => (
-                <div key={roulette.id} className="transform hover:scale-[1.02] transition-all duration-300 hover:shadow-lg">
-                  <RouletteCard roulette={roulette} serverTime={serverTime} onClick={handleRouletteClick} />
-                </div>
-              ))}
-              {roulettes.length > 3 && (
-                <div className="text-center pt-4">
-                  <div className="text-sm font-medium" style={{ color: COLORS.muted }}>
-                    ... y {roulettes.length - 3} ruletas más disponibles
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Ganadores */}
-      {!error && tab === "ganadores" && (
-        <div className="space-y-4">
-          {loading ? (
-            <>
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="animate-pulse">
-                  <div className="h-5 bg-gray-200 rounded w-3/4 mb-3"></div>
-                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                </div>
-              ))}
-            </>
-          ) : winners.length === 0 ? (
-            <div
-              className="rounded-2xl border-2 px-6 py-12 text-center"
-              style={{ borderColor: COLORS.border, backgroundColor: "rgba(248,250,252,0.9)" }}
-            >
-              <div className="text-6xl mb-4">🏆</div>
-              <p className="text-lg font-bold mb-2" style={{ color: COLORS.text }}>¡Sé el primero en ganar!</p>
-              <p className="text-sm" style={{ color: COLORS.muted }}>Los ganadores recientes aparecerán aquí</p>
-              {metrics.winners_total > 0 && (
-                <p className="text-xs mt-3" style={{ color: "#64748b" }}>
-                  Total histórico de ganadores: {metrics.winners_total}
-                </p>
-              )}
-            </div>
-          ) : (
-            winners.slice(0, 5).map((winner, idx) => (
-              <div
-                key={winner.id || `winner-${idx}`}
-                className="rounded-2xl border-2 transition-all duration-300 p-6"
-                style={{ borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.95)", boxShadow: "0 10px 24px rgba(2, 8, 23, 0.05)" }}
+    <>
+      {/* Notificación flotante de autenticación - z-index y posición ajustados */}
+      {showAuthNotice && (
+        <div className="fixed top-20 sm:top-24 right-4 z-50 animate-slide-in max-w-[calc(100vw-2rem)] sm:max-w-sm">
+          <div className="bg-gradient-to-r from-[#0b56a7] to-[#003049] text-white rounded-xl shadow-2xl border-2 border-white/20 p-4">
+            <div className="flex items-start gap-3">
+              <div className="bg-white/20 backdrop-blur-sm rounded-lg p-2 flex-shrink-0">
+                <AlertCircle className="w-5 h-5 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="font-bold text-white text-sm mb-1">Inicia sesión para continuar</h4>
+                <p className="text-xs text-blue-100 leading-relaxed">Regístrate o inicia sesión para participar</p>
+              </div>
+              <button
+                onClick={() => setShowAuthNotice(false)}
+                className="p-1 hover:bg-white/20 rounded-full transition-colors flex-shrink-0"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <p className="text-base font-bold truncate" style={{ color: COLORS.text }}>
-                      {winner.roulette_name}
-                    </p>
-                    <div className="flex items-center gap-3 text-sm flex-wrap">
-                      <span
-                        className="flex items-center gap-2 px-3 py-2 rounded-full font-bold text-white shadow-sm"
-                        style={{ backgroundColor: COLORS.brandRed }}
-                      >
-                        🏆 {winner.winner_name}
-                      </span>
-                      {winner.participants_count > 0 && (
-                        <span
-                          className="flex items-center gap-2 px-3 py-1 rounded-full"
-                          style={{ backgroundColor: "#f1f5f9", color: COLORS.muted }}
-                        >
-                          👥 {winner.participants_count} participantes
-                        </span>
-                      )}
-                    </div>
-                    {winner.created_at && (
-                      <p className="text-sm font-medium" style={{ color: "#64748b" }}>
-                        {new Date(winner.created_at).toLocaleDateString("es-ES", {
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </p>
-                    )}
-                  </div>
-                  <div
-                    className="shrink-0 text-xs font-bold text-white px-3 py-2 rounded-full shadow-sm"
-                    style={{ backgroundColor: COLORS.brandMint }}
+                <X size={16} className="text-white" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
+        {/* Header con gradiente corporativo */}
+        <div className="bg-gradient-to-r from-[#0b56a7] to-[#003049] p-4 sm:p-6 lg:p-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="bg-white/20 backdrop-blur-sm rounded-2xl p-2 sm:p-3">
+                <Trophy className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+              </div>
+              <div>
+                <h2 className="text-xl sm:text-2xl font-black text-white">Actividad en Tiempo Real</h2>
+                <p className="text-blue-100 text-xs sm:text-sm mt-1">Participa en sorteos activos ahora</p>
+              </div>
+            </div>
+            <span className="inline-flex items-center gap-2 bg-red-500 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold shadow-lg">
+              <Activity className="w-3 h-3 sm:w-4 sm:h-4 animate-pulse" />
+              En vivo
+            </span>
+          </div>
+
+          {/* KPIs en el header */}
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-4 sm:mt-6">
+            {loading ? (
+              <>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4 animate-pulse">
+                  <div className="h-3 sm:h-4 bg-white/20 rounded mb-2" />
+                  <div className="h-6 sm:h-8 bg-white/20 rounded" />
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4 animate-pulse">
+                  <div className="h-3 sm:h-4 bg-white/20 rounded mb-2" />
+                  <div className="h-6 sm:h-8 bg-white/20 rounded" />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4 border border-white/20">
+                  <p className="text-[10px] sm:text-xs font-semibold text-blue-100 uppercase tracking-wider mb-1">Ruletas Activas</p>
+                  <p className="text-2xl sm:text-3xl font-black text-white">{metrics.active_roulettes || 0}</p>
+                </div>
+                <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4 border border-white/20">
+                  <p className="text-[10px] sm:text-xs font-semibold text-blue-100 uppercase tracking-wider mb-1">Total Ganadores</p>
+                  <p className="text-2xl sm:text-3xl font-black text-white">{metrics.winners_total || 0}</p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Tabs mejorados */}
+        <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
+          <div className="inline-flex bg-gray-100 rounded-xl p-1 w-full sm:w-auto overflow-x-auto">
+            <button
+              onClick={() => setTab("actividad")}
+              className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 whitespace-nowrap ${
+                tab === "actividad"
+                  ? "bg-[#0b56a7] text-white shadow-md"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Ruletas Activas ({roulettes.length})
+            </button>
+            <button
+              onClick={() => setTab("ganadores")}
+              className={`px-4 sm:px-6 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-bold transition-all duration-200 whitespace-nowrap ${
+                tab === "ganadores"
+                  ? "bg-[#0b56a7] text-white shadow-md"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              Ganadores Recientes ({winners.length})
+            </button>
+          </div>
+        </div>
+
+        {/* Contenido */}
+        <div className="p-4 sm:p-6 lg:p-8">
+          {error && (
+            <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6">
+              <div className="flex items-start gap-3">
+                <div className="bg-red-100 rounded-lg p-2">
+                  <Trophy className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-red-900 mb-1 text-sm sm:text-base">Error al cargar datos</h4>
+                  <p className="text-xs sm:text-sm text-red-700">{error}</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="mt-3 text-xs sm:text-sm font-semibold text-red-600 hover:text-red-800 underline"
                   >
-                    Sorteado ✨
-                  </div>
+                    Recargar página
+                  </button>
                 </div>
               </div>
-            ))
+            </div>
+          )}
+
+          {!error && tab === "actividad" && (
+            <div>
+              {loading ? (
+                <div className="space-y-4 sm:space-y-6">
+                  {[...Array(2)].map((_, i) => (
+                    <div key={i} className="bg-gray-50 rounded-2xl p-4 sm:p-6 animate-pulse">
+                      <div className="h-24 sm:h-32 bg-gray-200 rounded-xl mb-4" />
+                      <div className="h-4 sm:h-5 bg-gray-200 rounded mb-3" />
+                      <div className="h-3 sm:h-4 bg-gray-200 rounded w-3/4" />
+                    </div>
+                  ))}
+                </div>
+              ) : roulettes.length === 0 ? (
+                <div className="text-center py-12 sm:py-16 bg-gradient-to-br from-gray-50 to-blue-50 rounded-2xl border-2 border-dashed border-gray-200">
+                  <div className="text-5xl sm:text-7xl mb-4">🎰</div>
+                  <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">No hay ruletas activas ahora</h3>
+                  <p className="text-sm sm:text-base text-gray-600">Vuelve pronto para participar en nuevos sorteos</p>
+                </div>
+              ) : (
+                <div className="space-y-4 sm:space-y-6">
+                  {roulettes.slice(0, 3).map((roulette) => (
+                    <div
+                      key={roulette.id}
+                      className="transform hover:scale-[1.02] transition-all duration-300"
+                    >
+                      <RouletteCard 
+                        roulette={roulette} 
+                        serverTime={serverTime} 
+                        onClick={handleRouletteClick}
+                      />
+                    </div>
+                  ))}
+                  {roulettes.length > 3 && (
+                    <div className="text-center py-3 sm:py-4 bg-blue-50 rounded-xl">
+                      <p className="text-xs sm:text-sm font-semibold text-[#0b56a7]">
+                        ... y {roulettes.length - 3} ruletas más disponibles
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!error && tab === "ganadores" && (
+            <div className="space-y-3 sm:space-y-4">
+              {loading ? (
+                <>
+                  {[...Array(3)].map((_, i) => (
+                    <div key={i} className="bg-gray-50 rounded-xl p-4 sm:p-6 animate-pulse">
+                      <div className="h-4 sm:h-5 bg-gray-200 rounded w-3/4 mb-3" />
+                      <div className="h-3 sm:h-4 bg-gray-200 rounded w-1/2" />
+                    </div>
+                  ))}
+                </>
+              ) : winners.length === 0 ? (
+                <div className="text-center py-12 sm:py-16 bg-gradient-to-br from-gray-50 to-yellow-50 rounded-2xl border-2 border-dashed border-gray-200">
+                  <div className="text-5xl sm:text-7xl mb-4">🏆</div>
+                  <h3 className="text-lg sm:text-xl font-bold text-gray-900 mb-2">Sé el primero en ganar</h3>
+                  <p className="text-sm sm:text-base text-gray-600">Los ganadores recientes aparecerán aquí</p>
+                </div>
+              ) : (
+                winners.slice(0, 5).map((winner, idx) => (
+                  <div
+                    key={winner.id || `winner-${idx}`}
+                    className="bg-gradient-to-r from-white to-yellow-50 rounded-xl p-4 sm:p-6 border border-yellow-200 shadow-md hover:shadow-xl transition-all"
+                  >
+                    <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
+                      <div className="flex-1 w-full">
+                        <h4 className="text-base sm:text-lg font-bold text-gray-900 mb-2">{winner.roulette_name}</h4>
+                        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                          <span className="inline-flex items-center gap-2 bg-gradient-to-r from-[#D62829] to-red-600 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-bold shadow-md">
+                            <Trophy className="w-3 h-3 sm:w-4 sm:h-4" />
+                            {winner.winner_name}
+                          </span>
+                          {winner.participants_count > 0 && (
+                            <span className="inline-flex items-center gap-2 bg-gray-100 text-gray-700 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-medium">
+                              <Users className="w-3 h-3 sm:w-4 sm:h-4" />
+                              {winner.participants_count} participantes
+                            </span>
+                          )}
+                        </div>
+                        {winner.created_at && (
+                          <p className="text-xs sm:text-sm text-gray-500 mt-2">
+                            {new Date(winner.created_at).toLocaleDateString("es-ES", {
+                              day: "2-digit",
+                              month: "long",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        )}
+                      </div>
+                      <div className="bg-[#4dc9b1] text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[10px] sm:text-xs font-bold shadow-md">
+                        Sorteado
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           )}
         </div>
-      )}
-    </div>
+      </div>
+    </>
   );
 }
 
-/* ---------- Sidebar con información ---------- */
 function InfoSidebar() {
   return (
-    <div className="space-y-8">
+    <div className="space-y-4 sm:space-y-6">
       {/* Cómo Funciona */}
-      <div
-        className="rounded-3xl border-2 p-8 shadow-xl transition-all duration-300"
-        style={{ borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.92)" }}
-      >
-        <div className="mb-6 flex items-center gap-4">
-          <div className="rounded-2xl p-3 text-white shadow-lg" style={{ backgroundColor: COLORS.brandMint }}>
-            <Star size={24} />
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+        <div className="bg-gradient-to-r from-[#4dc9b1] to-[#389fae] p-4 sm:p-6">
+          <div className="flex items-center gap-3">
+            <div className="bg-white/20 backdrop-blur-sm rounded-xl p-2">
+              <Star className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            </div>
+            <h3 className="text-lg sm:text-xl font-black text-white">¿Cómo Funciona?</h3>
           </div>
-          <h3 className="text-xl font-black" style={{ color: COLORS.text }}>¿Cómo Funciona?</h3>
         </div>
-        <div className="space-y-6">
+        <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
           {[
-            { n: 1, t: "Regístrate", s: "Crea tu cuenta gratuita en segundos" },
-            { n: 2, t: "Participa", s: "Únete a las ruletas que más te gusten" },
-            { n: 3, t: "¡Gana!",   s: "Sorteos 100% aleatorios y transparentes" },
+            { n: 1, t: "Regístrate Gratis", s: "Crea tu cuenta en menos de 30 segundos" },
+            { n: 2, t: "Elige tu Sorteo", s: "Explora y participa en las ruletas activas" },
+            { n: 3, t: "Gana Premios", s: "Sorteos 100% aleatorios y verificables" },
           ].map(step => (
-            <div key={step.n} className="flex items-start gap-4">
-              <div
-                className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-black text-white shadow-md"
-                style={{ backgroundColor: COLORS.brandMint }}
-              >
+            <div key={step.n} className="flex items-start gap-3 sm:gap-4 group">
+              <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#4dc9b1] to-[#389fae] text-white text-base sm:text-lg font-black shadow-md group-hover:scale-110 transition-transform flex-shrink-0">
                 {step.n}
               </div>
-              <div>
-                <p className="text-base font-bold" style={{ color: COLORS.text }}>{step.t}</p>
-                <p className="text-sm leading-relaxed" style={{ color: COLORS.muted }}>{step.s}</p>
+              <div className="flex-1">
+                <h4 className="font-bold text-gray-900 mb-1 text-sm sm:text-base">{step.t}</h4>
+                <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">{step.s}</p>
               </div>
             </div>
           ))}
@@ -402,199 +409,136 @@ function InfoSidebar() {
       </div>
 
       {/* Estadísticas */}
-      <div
-        className="rounded-3xl border-2 p-8 shadow-xl transition-all duration-300"
-        style={{ borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.92)" }}
-      >
-        <div className="mb-6 flex items-center gap-4">
-          <div className="rounded-2xl p-3 text-white shadow-lg" style={{ backgroundColor: COLORS.brandTeal }}>
-            <Users size={24} />
+      <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-4 sm:p-6">
+        <div className="flex items-center gap-3 mb-4 sm:mb-6">
+          <div className="bg-gradient-to-br from-[#0b56a7] to-[#003049] rounded-xl p-2">
+            <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </div>
-          <h3 className="text-xl font-black" style={{ color: COLORS.text }}>Nuestra Comunidad</h3>
+          <h3 className="text-lg sm:text-xl font-black text-gray-900">Nuestra Comunidad</h3>
         </div>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between py-2">
-            <span className="text-base font-medium" style={{ color: COLORS.muted }}>Usuarios Registrados</span>
-            <span className="text-2xl font-black" style={{ color: COLORS.brandTeal }}>15,234+</span>
-          </div>
-          <div className="flex items-center justify-between py-2">
-            <span className="text-base font-medium" style={{ color: COLORS.muted }}>Sorteos Realizados</span>
-            <span className="text-2xl font-black" style={{ color: COLORS.brandTeal }}>2,847</span>
-          </div>
-          <div className="flex items-center justify-between py-2">
-            <span className="text-base font-medium" style={{ color: COLORS.muted }}>Premios Entregados</span>
-            <span className="text-2xl font-black" style={{ color: COLORS.brandTeal }}>$125,430</span>
-          </div>
+        <div className="space-y-3 sm:space-y-4">
+          <StatCard icon={Users} label="Usuarios Activos" value="15K+" color={BRAND.azul} />
+          <StatCard icon={Trophy} label="Sorteos Completados" value="2.8K" color={BRAND.celeste} />
+          <StatCard icon={Gift} label="Premios Entregados" value="$125K" color={BRAND.turquesa} />
         </div>
       </div>
 
-      {/* Próximas Funcionalidades */}
-      <div
-        className="rounded-3xl border-2 p-8 shadow-xl transition-all duration-300"
-        style={{ borderColor: COLORS.border, backgroundColor: "rgba(255,255,255,0.92)" }}
-      >
-        <div className="mb-6 flex items-center gap-4">
-          <div className="rounded-2xl p-3 text-white shadow-lg" style={{ backgroundColor: COLORS.brandBlue }}>
-            <Gift size={24} />
+      {/* Próximamente */}
+      <div className="bg-gradient-to-br from-[#0b56a7] to-[#003049] rounded-2xl shadow-xl p-4 sm:p-6 text-white">
+        <div className="flex items-center gap-3 mb-4 sm:mb-6">
+          <div className="bg-white/20 backdrop-blur-sm rounded-xl p-2">
+            <Zap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </div>
-          <h3 className="text-xl font-black" style={{ color: COLORS.text }}>Próximamente</h3>
+          <h3 className="text-lg sm:text-xl font-black">Próximamente</h3>
         </div>
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <Clock size={18} style={{ color: COLORS.brandBlue }} />
-            <span className="text-base font-medium" style={{ color: COLORS.text }}>Sorteos automáticos programados</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Shield size={18} style={{ color: COLORS.brandBlue }} />
-            <span className="text-base font-medium" style={{ color: COLORS.text }}>Verificación blockchain</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Bell size={18} style={{ color: COLORS.brandBlue }} />
-            <span className="text-base font-medium" style={{ color: COLORS.text }}>Notificaciones push</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Trophy size={18} style={{ color: COLORS.brandBlue }} />
-            <span className="text-base font-medium" style={{ color: COLORS.text }}>Sistema de recompensas</span>
-          </div>
+        <div className="space-y-3 sm:space-y-4">
+          {[
+            { icon: Clock, text: "Sorteos automáticos programados" },
+            { icon: Shield, text: "Verificación blockchain" },
+            { icon: Bell, text: "Notificaciones push en tiempo real" },
+            { icon: Award, text: "Sistema de recompensas" },
+          ].map((item, i) => (
+            <div key={i} className="flex items-center gap-3 text-white/90">
+              <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="text-xs sm:text-sm font-medium">{item.text}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
-/* ========================= HOME COMPONENT ========================= */
 export default function Home() {
   return (
-    <div
-      className="min-h-screen"
-      style={{
-        background: "linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #f1f5f9 100%)"
-      }}
-    >
-      {/* Fondo decorativo */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[10vh] left-[8vw] w-[25vmin] h-[25vmin] rounded-full blur-3xl opacity-15" style={{ backgroundColor: COLORS.brandDark }} />
-        <div className="absolute top-[18vh] right-[10vw] w-[30vmin] h-[30vmin] rounded-full blur-3xl opacity-15" style={{ backgroundColor: COLORS.brandRed }} />
-        <div className="absolute bottom-[10vh] left-1/3 w-[28vmin] h-[28vmin] rounded-full blur-3xl opacity-15" style={{ backgroundColor: COLORS.brandMint }} />
-        <div className="absolute bottom-[18vh] right-[20vw] w-[22vmin] h-[22vmin] rounded-full blur-3xl opacity-15" style={{ backgroundColor: COLORS.brandTeal }} />
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[35vmin] h-[35vmin] rounded-full blur-3xl opacity-10" style={{ backgroundColor: COLORS.brandBlue }} />
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-gray-100">
+      {/* Animación para la notificación */}
+      <style>{`
+        @keyframes slide-in {
+          from {
+            opacity: 0;
+            transform: translateX(100%);
+          }
+          to {
+            opacity: 1;
+            transform: translateX(0);
+          }
+        }
+        .animate-slide-in {
+          animation: slide-in 0.3s ease-out;
+        }
+      `}</style>
+
+      {/* Elementos decorativos sutiles */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none opacity-30">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#0b56a7] rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#4dc9b1] rounded-full blur-3xl" />
       </div>
 
-      <main className="relative z-10 mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
-        {/* Keyframes globales para este archivo */}
-        <style>{`
-          @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(10px); }
-            to   { opacity: 1; transform: translateY(0); }
-          }
-          @keyframes popIn {
-            0%   { transform: scale(0.92); opacity: .0; }
-            60%  { transform: scale(1.06); opacity: .9; }
-            100% { transform: scale(1);    opacity: 1;  }
-          }
-          @keyframes growLine {
-            from { width: 0; opacity: .0; }
-            to   { width: 100%; opacity: 1; }
-          }
-          @keyframes softPulse {
-            0%,100% { text-shadow: 0 4px 18px rgba(0,0,0,.08); }
-            50%     { text-shadow: 0 6px 28px rgba(0,0,0,.16); }
-          }
-        `}</style>
-
-        {/* Header (animado y XL) */}
-        <div className="text-center max-w-3xl mx-auto space-y-10">
-          <h1
-            className="font-extrabold tracking-tight leading-[1.1]"
-            style={{
-              fontSize: "clamp(2.25rem, 3vw + 2rem, 4.25rem)",
-              animation: "fadeInUp .6s ease-out both",
-              color: COLORS.text,
-            }}
-          >
-         <span style={{ color: COLORS.brandBlue }}>Bienvenido a</span>
-        <span
-          style={{
-         color: COLORS.brandRed,
-          marginLeft: "0.5rem",              // ← separa del “a”
-          animation: "popIn .55s .1s ease-out both, softPulse 2.8s 1.2s ease-in-out infinite",
-          display: "inline-block",
-           }}
-          >
-       24 Hayu
-        </span>
-
+      <main className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
+        {/* Hero Section */}
+        <div className="text-center mb-8 sm:mb-12 lg:mb-16">
+          <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm px-4 sm:px-6 py-2 sm:py-3 rounded-full shadow-lg mb-4 sm:mb-6 border border-gray-200">
+            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-[#D62829]" />
+            <span className="text-xs sm:text-sm font-bold text-gray-900">Plataforma de Sorteos Confiable</span>
+          </div>
+          
+          <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black mb-4 sm:mb-6 leading-tight px-4">
+            <span className="text-[#0b56a7]">Bienvenido a </span>
+            <span className="text-[#D62829] inline-block animate-pulse">24 Hayu</span>
           </h1>
 
-          {/* Subrayado animado con margen extra */}
-          <div
-            className="mx-auto h-1.5 rounded-full my-8"
-            style={{
-              background: `linear-gradient(90deg, ${COLORS.brandBlue}, ${COLORS.brandRed})`,
-              animation: "growLine .6s .15s ease-out both",
-              width: "min(520px, 76%)",
-              boxShadow: "0 6px 18px rgba(2,8,23,.06)",
-            }}
-          />
+          <div className="w-24 sm:w-32 h-1.5 sm:h-2 bg-gradient-to-r from-[#0b56a7] to-[#D62829] rounded-full mx-auto mb-6 sm:mb-8" />
 
-          {/* Descripción con separación */}
-          <p
-            className="font-medium leading-relaxed mx-auto"
-            style={{
-              color: COLORS.muted,
-              fontSize: "clamp(1rem, .4vw + 1rem, 1.25rem)",
-              maxWidth: "52ch",
-              animation: "fadeInUp .6s .12s ease-out both",
-            }}
-          >
+          <p className="text-base sm:text-lg lg:text-xl text-gray-700 max-w-3xl mx-auto leading-relaxed px-4">
             La plataforma más confiable para participar en sorteos y rifas online.
             <br className="hidden sm:block" />
-            Transparente, segura y completamente verificable.
+            <span className="font-semibold text-[#0b56a7]">Transparente, segura y completamente verificable.</span>
           </p>
         </div>
 
-        {/* Layout con dos columnas */}
-        <section className="grid lg:grid-cols-3 gap-10">
-          {/* Columna principal (izquierda) - 2/3 del espacio */}
-          <div className="lg:col-span-2 space-y-10" id="ruletas">
+        {/* Layout Principal */}
+        <div className="grid lg:grid-cols-3 gap-6 sm:gap-8">
+          {/* Columna Principal */}
+          <div className="lg:col-span-2 space-y-6 sm:space-y-8">
             <WinnersAndActivityCard />
 
-            {/* Características principales */}
-            <div className="grid md:grid-cols-2 gap-6">
+            {/* Features Grid */}
+            <div className="grid sm:grid-cols-2 gap-4 sm:gap-6">
               <FeatureCard
-                color={COLORS.brandDark}
                 Icon={Shield}
-                title="🔒 100% Transparente"
-                sub="Verifica todos los resultados con tecnología blockchain"
+                title="100% Transparente"
+                description="Todos los resultados son verificables con tecnología blockchain"
+                gradient="bg-gradient-to-br from-[#0b56a7] to-[#003049]"
               />
               <FeatureCard
-                color={COLORS.brandRed}
                 Icon={Bell}
-                title="⚡ Notificaciones Instantáneas"
-                sub="Recibe alertas en tiempo real sobre tus sorteos"
+                title="Notificaciones Instantáneas"
+                description="Recibe alertas en tiempo real sobre tus sorteos favoritos"
+                gradient="bg-gradient-to-br from-[#D62829] to-red-700"
               />
               <FeatureCard
-                color={COLORS.brandMint}
                 Icon={Sparkles}
-                title="✨ Experiencia Premium"
-                sub="Interfaz moderna, fluida y fácil de usar"
+                title="Experiencia Premium"
+                description="Interfaz moderna, intuitiva y fácil de usar en cualquier dispositivo"
+                gradient="bg-gradient-to-br from-[#4dc9b1] to-[#389fae]"
               />
               <FeatureCard
-                color={COLORS.brandTeal}
                 Icon={Award}
-                title="🏆 Premios Garantizados"
-                sub="Todos los sorteos tienen ganadores reales verificados"
+                title="Premios Garantizados"
+                description="Todos los sorteos tienen ganadores reales y verificados"
+                gradient="bg-gradient-to-br from-[#389fae] to-[#0b56a7]"
               />
             </div>
           </div>
 
-          {/* Sidebar (derecha) - 1/3 del espacio */}
-          <div className="lg:col-span-1" id="como-funciona">
+          {/* Sidebar */}
+          <div className="lg:col-span-1">
             <div className="lg:sticky lg:top-8">
               <InfoSidebar />
             </div>
           </div>
-        </section>
+        </div>
       </main>
     </div>
   );

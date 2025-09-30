@@ -1,5 +1,4 @@
 # backend/settings.py
-# Opción 1: Agregar al inicio de settings.py (después de los imports)
 import os
 from pathlib import Path
 from django.core.management.utils import get_random_secret_key
@@ -8,9 +7,6 @@ from django.core.management.utils import get_random_secret_key
 from dotenv import load_dotenv
 load_dotenv()
 
-# También puedes especificar la ruta exacta si no funciona:
-# load_dotenv(Path(__file__).resolve().parent.parent / '.env')
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -18,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # ──────────────────────────────────────────────────────────────────────────────
 SECRET_KEY = os.getenv(
     "DJANGO_SECRET_KEY",
-    get_random_secret_key()  # Genera una clave aleatoria si no existe
+    "django-insecure-dev-key-k8x@9m#p2w$v4n5q7r&t9y*u3i6o0p-a1s2d3f4g5h6j7"
 )
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 
@@ -51,6 +47,8 @@ THIRD_PARTY_APPS = [
     "corsheaders",
     "ckeditor",
     "ckeditor_uploader",
+    "django_celery_beat",
+    "django_celery_results",
 ]
 
 LOCAL_APPS = [
@@ -108,24 +106,23 @@ DATABASES = {
     "default": {
         "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.sqlite3"),
         "NAME": os.getenv("DB_NAME", BASE_DIR / "db.sqlite3"),
-        # Configuración para PostgreSQL (descomenta si usas Postgres):
-        # "ENGINE": "django.db.backends.postgresql",
-        # "NAME": os.getenv("POSTGRES_DB", "luckyspin_db"),
-        # "USER": os.getenv("POSTGRES_USER", "postgres"),
-        # "PASSWORD": os.getenv("POSTGRES_PASSWORD", ""),
-        # "HOST": os.getenv("POSTGRES_HOST", "localhost"),
-        # "PORT": os.getenv("POSTGRES_PORT", "5432"),
     }
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Validación de contraseñas
+# Validación de contraseñas - SIMPLIFICADA
 # ──────────────────────────────────────────────────────────────────────────────
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
-    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
-    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 6,  # Mínimo 6 caracteres
+        }
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        # Solo evita contraseñas muy obvias como "123456", "password"
+    },
 ]
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -232,17 +229,15 @@ REST_FRAMEWORK = {
 # ──────────────────────────────────────────────────────────────────────────────
 CORS_ALLOW_CREDENTIALS = True
 
-# URLs permitidas para CORS
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:5173",  # Vite
+    "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
 
-# Solo para desarrollo local
 CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^http://192\.168\.\d{1,3}\.\d{1,3}:\d+$",  # Red local
+    r"^http://192\.168\.\d{1,3}\.\d{1,3}:\d+$",
     r"^http://10\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$",
 ] if DEBUG else []
 
@@ -260,62 +255,40 @@ CORS_ALLOW_HEADERS = [
     "pragma",
 ]
 
-CORS_ALLOW_METHODS = [
-    "DELETE",
-    "GET",
-    "OPTIONS", 
-    "PATCH",
-    "POST",
-    "PUT"
-]
+CORS_ALLOW_METHODS = ["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"]
 
-# CSRF Configuration
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
 ] + ([f"https://{host}" for host in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if host and host != "localhost"] if not DEBUG else [])
 
-# En desarrollo, permite configuración más permisiva si es necesario
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = False
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Configuración de Email - CORREGIDA
+# Configuración de Email
 # ──────────────────────────────────────────────────────────────────────────────
-EMAIL_BACKEND = os.getenv(
-    "EMAIL_BACKEND", 
-    "django.core.mail.backends.smtp.EmailBackend"
-)
-
-# Configuración de Gmail desde tu .env
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
 EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "1") == "1"
 EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "0") == "1"
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-
-# Emails por defecto - ACTUALIZADOS
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "williancerda0@gmail.com")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
-
-# Configuraciones adicionales para Gmail
-EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "60"))  # Aumentado para Gmail
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "60"))
 EMAIL_SSL_CERTFILE = None
 EMAIL_SSL_KEYFILE = None
 EMAIL_USE_LOCALTIME = False
 
-# Configuración específica para evitar problemas de conexión
 if DEBUG:
-    # En desarrollo, fallback a consola si falla SMTP
     EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
     if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
-        # Configuración robusta para Gmail
         EMAIL_CONNECTION_TIMEOUT = 60
         EMAIL_RETRY_DELAY = 2
         EMAIL_MAX_RETRIES = 3
 
-# Tiempo de validez del token de reset (24 horas)
 PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24)))
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -329,15 +302,14 @@ FRONTEND_BASE_URL = os.getenv(
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuración de uploads
 # ──────────────────────────────────────────────────────────────────────────────
-FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("FILE_UPLOAD_MAX_MEMORY_SIZE", str(15 * 1024 * 1024)))  # 15 MB
-DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("DATA_UPLOAD_MAX_MEMORY_SIZE", str(30 * 1024 * 1024)))  # 30 MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("FILE_UPLOAD_MAX_MEMORY_SIZE", str(15 * 1024 * 1024)))
+DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("DATA_UPLOAD_MAX_MEMORY_SIZE", str(30 * 1024 * 1024)))
 
-# Configuración específica para recibos
 ALLOWED_RECEIPT_EXTENSIONS = [".jpg", ".jpeg", ".png", ".pdf"]
-MAX_RECEIPT_SIZE = 10 * 1024 * 1024  # 10 MB
+MAX_RECEIPT_SIZE = 10 * 1024 * 1024
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Configuración de Logging - CON DEBUG DE EMAIL
+# Configuración de Logging
 # ──────────────────────────────────────────────────────────────────────────────
 LOGGING = {
     "version": 1,
@@ -381,7 +353,6 @@ LOGGING = {
             "level": "ERROR",
             "propagate": False,
         },
-        # AGREGADO: Logger específico para emails
         "django.core.mail": {
             "handlers": ["console", "file"],
             "level": "DEBUG" if DEBUG else "INFO",
@@ -404,37 +375,28 @@ LOGGING = {
     },
 }
 
-# Crear directorio de logs si no existe
 (BASE_DIR / "logs").mkdir(exist_ok=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuración de producción
 # ──────────────────────────────────────────────────────────────────────────────
 if not DEBUG:
-    # Configuraciones adicionales de seguridad para producción
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
-    SECURE_HSTS_SECONDS = 31536000  # 1 año
+    SECURE_HSTS_SECONDS = 31536000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     X_FRAME_OPTIONS = "DENY"
-    
-    # Configuración de email para producción (más estricta)
     EMAIL_TIMEOUT = 30
-    
-    # Configuración de archivos estáticos para producción
-    # STATIC_ROOT debe configurarse según tu servidor web
     STATIC_ROOT = os.getenv("STATIC_ROOT", BASE_DIR / "staticfiles")
     
-    # Configuración de base de datos para producción (PostgreSQL recomendado)
     if os.getenv("DATABASE_URL"):
         import dj_database_url
         DATABASES['default'] = dj_database_url.parse(os.getenv("DATABASE_URL"))
     
-    # Configuración de caché con Redis para producción
     if os.getenv("REDIS_URL"):
         CACHES = {
             'default': {
@@ -447,7 +409,6 @@ if not DEBUG:
             }
         }
     
-    # Logging más completo para producción
     if 'syslog' not in LOGGING['handlers']:
         LOGGING['handlers']['syslog'] = {
             'level': 'INFO',
@@ -456,29 +417,23 @@ if not DEBUG:
             'address': '/dev/log',
         }
         LOGGING['loggers']['django']['handlers'].append('syslog')
-
 else:
-    # Configuraciones de desarrollo
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
-    
-    # Para desarrollo local (sin HTTPS)
     SECURE_SSL_REDIRECT = False
     SECURE_PROXY_SSL_HEADER = None
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Configuraciones adicionales para la aplicación
+# Configuraciones adicionales
 # ──────────────────────────────────────────────────────────────────────────────
-
-# Configuración de caché (opcional)
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
         'LOCATION': 'unique-snowflake',
-        'TIMEOUT': 300,  # 5 minutos
+        'TIMEOUT': 300,
         'OPTIONS': {
             'MAX_ENTRIES': 1000,
             'CULL_FREQUENCY': 3,
@@ -492,19 +447,57 @@ CACHES = {
     }
 }
 
-# Configuración de sesiones
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 1 semana
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7
 SESSION_COOKIE_NAME = 'luckyspin_sessionid'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_SAVE_EVERY_REQUEST = True
 
-# Configuración específica para Lucky Spin
 ROULETTE_MAX_PRIZES = int(os.getenv("ROULETTE_MAX_PRIZES", "20"))
 ROULETTE_MAX_PARTICIPANTS = int(os.getenv("ROULETTE_MAX_PARTICIPANTS", "1000"))
 NOTIFICATION_BATCH_SIZE = int(os.getenv("NOTIFICATION_BATCH_SIZE", "50"))
 
-# Configuración de archivos de imagen
 IMAGE_QUALITY = int(os.getenv("IMAGE_QUALITY", "85"))
 IMAGE_MAX_WIDTH = int(os.getenv("IMAGE_MAX_WIDTH", "1200"))
 IMAGE_MAX_HEIGHT = int(os.getenv("IMAGE_MAX_HEIGHT", "1200"))
+
+# ============================================================================
+# CELERY CONFIGURATION
+# ============================================================================
+ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
+
+if ENVIRONMENT == 'production':
+    # Producción: usar Redis Cloud con SSL
+    redis_url = os.getenv('REDIS_CLOUD_URL')
+    print("Modo PRODUCCION: usando Redis Cloud")
+else:
+    # Desarrollo: usar Redis Local (Docker)
+    redis_url = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+    print(f"Modo DESARROLLO: usando {redis_url}")
+
+# Configurar URLs de Celery
+CELERY_BROKER_URL = redis_url
+CELERY_RESULT_BACKEND = redis_url
+
+# Configuración de serialización
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+
+# Configuración de reintentos
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+# Tiempo máximo de ejecución de tareas
+CELERY_TASK_TIME_LIMIT = 300  # 5 minutos
+CELERY_TASK_SOFT_TIME_LIMIT = 240  # 4 minutos
+
+# Configuración de resultados
+CELERY_RESULT_EXPIRES = 3600  # 1 hora
+CELERY_RESULT_EXTENDED = True
+
+# Configuración específica para notificaciones
+WINNER_NOTIFICATION_DELAY = int(os.getenv('WINNER_NOTIFICATION_DELAY', '300'))

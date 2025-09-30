@@ -1,8 +1,8 @@
 // src/components/admin/DrawTools.jsx
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
-  RotateCcw, Play, Users, Calendar, RefreshCcw, Award, AlertTriangle,
-  Gift, Trophy, Package, X, ZoomIn, Medal, Link2, AtSign, Timer, Crown, Image as ImageIcon
+  RotateCcw, Play, Users, Calendar, RefreshCcw, AlertTriangle,
+  Gift, Trophy, Package, X, ZoomIn, Medal, Link2, AtSign, Timer, Crown,
 } from "lucide-react";
 import { roulettesAPI } from "../../config/api";
 
@@ -185,7 +185,6 @@ const calculateMaxTextLength = (participantCount) => {
 const canContinueDraw = (detail, prizes) => {
   if (!detail) return false;
 
-  // Sumar unidades disponibles SOLO de premios activos/no deshabilitados
   const totalUnitsAvailable = (prizes || []).reduce((acc, p) => {
     if (p.is_active === false || p.is_disabled === true) return acc;
     const current = readCurrentUnits(p);
@@ -277,10 +276,6 @@ const rotationForWinnerIndex = (winnerIndex, total, pointerSide) => {
   return mod360(offset - mid);
 };
 
-/* ========================================================================== */
-/*                                UI PRINCIPAL                                */
-/* ========================================================================== */
-
 /** Lectura robusta de UNIDADES actuales */
 const readCurrentUnits = (prize) => {
   const candidates = [
@@ -291,7 +286,6 @@ const readCurrentUnits = (prize) => {
   ];
   const found = candidates.find((v) => typeof v === "number");
   if (typeof found === "number") return Math.max(0, found);
-  // Fallback si no hay números: si tenía __initial_stock y fue premiado, podría ser 0
   if (typeof prize?.__initial_stock === "number") {
     if (prize?.is_awarded && prize.__initial_stock <= 1) return 0;
     return prize.__initial_stock;
@@ -324,7 +318,6 @@ const derivePrizeState = (prize) => {
   return { initial, current, awarded, exhausted, low, status };
 };
 
-/* ---------- helper: fusionar premio mínimo devuelto por draw con lista local ---------- */
 const enrichPrize = (rawPrize, prizeList) => {
   if (!rawPrize) return null;
   const local = prizeList.find((p) => String(p.id) === String(rawPrize.id));
@@ -352,18 +345,15 @@ const DrawTools = ({ onRefresh }) => {
   const [rouletteWinner, setRouletteWinner] = useState(null);
   const [showWinnerAnimation, setShowWinnerAnimation] = useState(false);
 
-  // Resolver para esperar cada “ciclo” (fin animación + cierre manual del banner)
   const bannerResolverRef = useRef(null);
-
-  // Duración objetivo (bi-fase internamente)
   const SPIN_DURATION_MS = 4500;
 
-  // Cronómetro (para scheduled_date)
   const [nowTs, setNowTs] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNowTs(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+  
   const pad2 = (n) => String(n).padStart(2, "0");
   const countdown = useMemo(() => {
     if (!detail?.scheduled_date) return null;
@@ -380,7 +370,6 @@ const DrawTools = ({ onRefresh }) => {
     return { diffMs, days, hours, minutes, seconds };
   }, [detail?.scheduled_date, nowTs]);
 
-  /* --------------------------- Carga de datos --------------------------- */
   const stampInitialStock = useCallback((list) => {
     return (list || []).map((p) => ({
       ...p,
@@ -405,20 +394,25 @@ const DrawTools = ({ onRefresh }) => {
         .then((r) => (Array.isArray(r) ? r : r.results || []))
         .catch(() => []);
 
-      // SOLO ACTIVAS (según tu pedido)
       const activeOnly = items.filter((r) => {
         const status = (r.status || "").toLowerCase();
         return status === "active" || r.is_active === true;
       });
 
-      setList(activeOnly);
+      const sorted = activeOnly.sort((a, b) => {
+        const countA = a.participants?.length || 0;
+        const countB = b.participants?.length || 0;
+        return countB - countA;
+      });
 
-      if (!selectedId && activeOnly.length > 0) {
-        setSelectedId(String(activeOnly[0].id));
+      setList(sorted);
+
+      if (!selectedId && sorted.length > 0) {
+        setSelectedId(String(sorted[0].id));
       } else if (selectedId) {
-        const exists = activeOnly.some((x) => String(x.id) === String(selectedId));
-        if (!exists && activeOnly.length > 0) setSelectedId(String(activeOnly[0].id));
-        if (!exists && activeOnly.length === 0) {
+        const exists = sorted.some((x) => String(x.id) === String(selectedId));
+        if (!exists && sorted.length > 0) setSelectedId(String(sorted[0].id));
+        if (!exists && sorted.length === 0) {
           setSelectedId("");
           setDetail(null);
           setPrizes([]);
@@ -500,23 +494,6 @@ const DrawTools = ({ onRefresh }) => {
   const canDraw = useMemo(() => canContinueDraw(detail, prizes), [detail, prizes]);
   const centerIconKey = (detail?.center_icon || "trophy").toLowerCase();
 
-  /* --------------------------- Métricas de premios (unidades) -------------------------- */
-  const prizeUnitStats = useMemo(() => {
-    let availableUnits = 0;
-    let deliveredUnits = 0;
-    let activeTypes = 0;
-
-    prizes.forEach((p) => {
-      const { initial, current, exhausted } = derivePrizeState(p);
-      availableUnits += Math.max(0, current);
-      deliveredUnits += Math.max(0, (typeof initial === "number" ? initial : 1) - current);
-      if (!exhausted && p.is_active !== false) activeTypes += 1;
-    });
-
-    return { availableUnits, deliveredUnits, activeTypes };
-  }, [prizes]);
-
-  /* --------------------------- Giro individual (1 ganador) -------------------------- */
   const doOneSpin = useCallback(async () => {
     if (!selectedId || participants.length === 0) throw new Error("No hay participantes");
     const res = await roulettesAPI.executeRouletteDraw(Number(selectedId));
@@ -525,7 +502,6 @@ const DrawTools = ({ onRefresh }) => {
     const w = res.winner || res.winner_data || {};
     const prizeRaw = res.prize || null;
 
-    // Índice del ganador
     let idx = -1;
     if (w.participant_number != null)
       idx = participants.findIndex((p) => String(p.num) === String(w.participant_number));
@@ -555,25 +531,21 @@ const DrawTools = ({ onRefresh }) => {
     };
     setRouletteWinner(localWinner);
 
-    // ✅ Actualizar stock del premio localmente: restar 1 unidad y SÓLO marcar "sorteado" si llega a 0
     if (prize?.id != null) {
       setPrizes((prev) =>
         prev.map((p) => {
           if (String(p.id) !== String(prize.id)) return p;
 
-          // leer unidades actuales
           const before = readCurrentUnits(p);
           const next = Math.max(0, before - 1);
 
           const patched = { ...p, is_awarded: true };
 
-          // Escribir de vuelta al primer campo numérico que exista
           if (typeof p.stock === "number") patched.stock = next;
           else if (typeof p.remaining_stock === "number") patched.remaining_stock = next;
           else if (typeof p.quantity === "number") patched.quantity = next;
           else if (typeof p.units === "number") patched.units = next;
 
-          // status solo "sorteado" si ya no quedan unidades
           patched.status = next === 0 ? "sorteado" : (p.status && p.status !== "sorteado" ? p.status : "pendiente");
 
           return patched;
@@ -584,39 +556,33 @@ const DrawTools = ({ onRefresh }) => {
     setRouletteAngle(finalAngle);
     setRouletteSpinning(true);
 
-    // Esperar a que el usuario cierre el banner manualmente
     await new Promise((resolve) => {
       bannerResolverRef.current = resolve;
     });
 
-    // Sincronizar con backend tras cerrar el banner (se hace ahora también en dismissWinner)
     await Promise.all([loadDetail(selectedId), loadList().catch(() => {})]);
 
     return true;
   }, [selectedId, participants, rouletteAngle, prizes, loadDetail, loadList]);
 
-  // Fin de animación → mostrar banner (NO se cierra solo)
   const handleRouletteTransitionEnd = useCallback(() => {
     setRouletteSpinning(false);
     setShowWinnerAnimation(true);
   }, []);
 
-  // Cerrar banner (manual) — AHORA refresca backend al cerrar
   const dismissWinner = useCallback(async () => {
     setShowWinnerAnimation(false);
     setRouletteWinner(null);
     if (typeof bannerResolverRef.current === "function") {
       const r = bannerResolverRef.current;
       bannerResolverRef.current = null;
-      r(); // liberar el await de doOneSpin
+      r();
     }
-    // 🔄 Refrescar datos al cerrar el banner (segundo cambio solicitado)
     try {
       await Promise.all([loadDetail(selectedId), loadList().catch(() => {})]);
     } catch (_) {}
   }, [selectedId, loadDetail, loadList]);
 
-  // Acción manual: un giro por click
   const handleSingleDraw = useCallback(async () => {
     if (!selectedId || rouletteSpinning || executing || participants.length === 0 || !canDraw) return;
     setError("");
@@ -631,20 +597,17 @@ const DrawTools = ({ onRefresh }) => {
     }
   }, [selectedId, rouletteSpinning, executing, participants.length, canDraw, doOneSpin]);
 
-  /* --------------------------- Modal premios ---------------------------- */
   const [prizeModal, setPrizeModal] = useState({ open: false, prize: null });
   const openPrize = useCallback((prize) => setPrizeModal({ open: true, prize }), []);
   const closePrize = useCallback(() => setPrizeModal({ open: false, prize: null }), []);
   const getPrizeImage = (p) =>
     p?.image_url || p?.image || p?.photo || p?.picture || p?.thumbnail || null;
 
-  /* ------------------------------ UI Premio ----------------------------- */
   const PrizeCard = ({ prize, idx }) => {
     const img = getPrizeImage(prize);
     const pos = prize.position ?? idx + 1;
     const rank = getRankMetaShared(pos);
 
-    // ⛳ status eliminado del destructuring (no se usa)
     const { initial, current, awarded, exhausted, low } = derivePrizeState(prize);
 
     const stockBadge = (
@@ -689,8 +652,8 @@ const DrawTools = ({ onRefresh }) => {
 
         <div className="flex items-center gap-4">
           <div
-            className={`relative w-16 h-16 rounded-xl overflow-hidden border bg-slate-50 grid place-items-center shrink-0 ${
-              exhausted ? "border-slate-300" : "border-slate-200"
+            className={`relative w-20 h-20 rounded-xl overflow-hidden border bg-slate-50 grid place-items-center shrink-0 ${
+              exhausted ? "border-slate-300" : "border-slate-200 shadow-sm"
             }`}
           >
             {img ? (
@@ -698,30 +661,34 @@ const DrawTools = ({ onRefresh }) => {
                 <img
                   src={img}
                   alt={prize.name || "Premio"}
-                  className={`w-full h-full object-cover ${exhausted ? "grayscale" : ""}`}
+                  className={`w-full h-full object-cover transition-transform duration-200 ${
+                    exhausted ? "grayscale" : "group-hover:scale-105"
+                  }`}
                 />
                 {!exhausted && (
-                  <div className="absolute bottom-1 right-1 bg-black/55 text-white px-1.5 py-0.5 rounded-md text-[10px] flex items-center gap-1">
-                    <ZoomIn className="w-3 h-3" /> Ver
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                    <div className="absolute bottom-1.5 right-1.5 bg-white/95 text-slate-800 px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1 shadow-sm">
+                      <ZoomIn className="w-3 h-3" /> Ver
+                    </div>
                   </div>
                 )}
               </>
             ) : (
               <div
-                className={`w-full h-full grid place-items-center text-amber-700 ${
+                className={`w-full h-full grid place-items-center ${
                   exhausted
                     ? "bg-gradient-to-br from-slate-200 to-slate-300"
-                    : "bg-gradient-to-br from-amber-100 to-amber-200"
+                    : "bg-gradient-to-br from-amber-100 via-amber-200 to-orange-100"
                 }`}
               >
-                <Gift className="w-6 h-6" />
+                <Gift className={`w-7 h-7 ${exhausted ? "text-slate-400" : "text-amber-700"}`} />
               </div>
             )}
           </div>
 
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-3">
-              <h5 className={`font-semibold truncate ${exhausted ? "text-slate-600" : "text-slate-800"}`}>
+            <div className="flex items-center justify-between gap-3 mb-1">
+              <h5 className={`font-semibold truncate text-base ${exhausted ? "text-slate-600" : "text-slate-800"}`}>
                 {prize.name || "Premio"}
               </h5>
               <span className={rank.badgeClass} title={`Posición ${pos}`}>
@@ -731,12 +698,12 @@ const DrawTools = ({ onRefresh }) => {
             </div>
 
             {prize.description && (
-              <p className={`text-xs mt-1 line-clamp-2 break-words ${exhausted ? "text-slate-500" : "text-slate-600"}`}>
+              <p className={`text-xs mt-1.5 line-clamp-2 leading-relaxed ${exhausted ? "text-slate-500" : "text-slate-600"}`}>
                 {linkifyText(prize.description)}
               </p>
             )}
 
-            <div className="mt-2 flex items-center gap-2 flex-wrap">{stockBadge}</div>
+            <div className="mt-2.5 flex items-center gap-2 flex-wrap">{stockBadge}</div>
           </div>
         </div>
 
@@ -749,7 +716,6 @@ const DrawTools = ({ onRefresh }) => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="relative">
@@ -781,7 +747,6 @@ const DrawTools = ({ onRefresh }) => {
         </button>
       </div>
 
-      {/* Errores */}
       {error && (
         <div className="bg-gradient-to-r from-rose-50 to-red-50 border-2 border-rose-200 text-rose-800 rounded-xl p-4 flex items-start gap-3 shadow-sm">
           <AlertTriangle className="h-5 w-5 mt-0.5" />
@@ -793,49 +758,51 @@ const DrawTools = ({ onRefresh }) => {
       )}
 
       <div className="grid lg:grid-cols-5 gap-6">
-        {/* Izquierda */}
         <div className="lg:col-span-2 space-y-5">
           <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <label className="block text-sm font-semibold text-slate-700 mb-2">Ruleta a sortear</label>
+            <label className="block text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <Crown className="w-4 h-4 text-amber-600" />
+              Ruleta a sortear
+            </label>
 
-            {/* SELECT sin #ID; con icono y SOLO ACTIVAS */}
             <div className="relative">
-              <Crown className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <Users className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
               <select
                 value={selectedId}
                 onChange={(e) => setSelectedId(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 appearance-none"
+                className="w-full pl-10 pr-3 py-3 rounded-xl border-2 border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 appearance-none text-sm font-medium text-slate-800 hover:border-slate-400 transition-colors cursor-pointer"
               >
                 <option value="" disabled>
                   Selecciona una ruleta activa
                 </option>
-                {list.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name || `Ruleta ${r.id}`}
-                  </option>
-                ))}
+                {list.map((r) => {
+                  const pCount = r.participants?.length || 0;
+                  return (
+                    <option key={r.id} value={r.id}>
+                      {r.name || `Ruleta ${r.id}`} • {pCount} participante{pCount !== 1 ? 's' : ''}
+                    </option>
+                  );
+                })}
               </select>
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="flex items-center gap-2 text-slate-600 text-sm">
-                <Users className="w-4 h-4" />
-                <span>{detail?.participants?.length ?? 0} participantes</span>
+              <div className="flex items-center gap-2 text-slate-600 text-sm bg-slate-50 px-3 py-2 rounded-lg">
+                <Users className="w-4 h-4 text-blue-600" />
+                <span className="font-semibold">{detail?.participants?.length ?? 0}</span>
+                <span className="text-slate-500">participantes</span>
               </div>
               {detail?.scheduled_date && (
-                <div className="flex items-center gap-2 text-slate-600 text-sm">
-                  <Calendar className="w-4 h-4" />
-                  <span>{new Date(detail.scheduled_date).toLocaleString("es-ES")}</span>
+                <div className="flex items-center gap-2 text-slate-600 text-sm bg-slate-50 px-3 py-2 rounded-lg">
+                  <Calendar className="w-4 h-4 text-purple-600" />
+                  <span className="text-xs">{new Date(detail.scheduled_date).toLocaleDateString("es-ES")}</span>
                 </div>
               )}
-            </div>
-
-            {/* Contadores por UNIDADES */}
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <div className="flex items-center gap-2 text-slate-600 text-sm">
-                <Award className="w-4 h-4" />
-                <span>{prizeUnitStats.availableUnits} premios disponibles</span>
-              </div>
             </div>
 
             {detail?.status === "completed" && !canDraw && (
@@ -849,12 +816,12 @@ const DrawTools = ({ onRefresh }) => {
             )}
 
             {detail?.scheduled_date && (
-              <div className="mt-2 flex items-center gap-2 text-slate-600 text-sm">
-                <Timer className="w-4 h-4" />
+              <div className="mt-3 flex items-center gap-2 text-slate-600 text-sm bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                <Timer className="w-4 h-4 text-amber-600" />
                 {countdown?.diffMs > 0 ? (
-                  <span>
-                    Faltan {countdown.days > 0 && <strong>{countdown.days}d </strong>}
-                    <strong>
+                  <span className="font-mono">
+                    {countdown.days > 0 && <strong className="text-amber-700">{countdown.days}d </strong>}
+                    <strong className="text-amber-700">
                       {pad2(countdown.hours)}:{pad2(countdown.minutes)}:{pad2(countdown.seconds)}
                     </strong>
                   </span>
@@ -864,7 +831,7 @@ const DrawTools = ({ onRefresh }) => {
               </div>
             )}
 
-            <div className="mt-4">
+            <div className="mt-5">
               {!canDraw && detail?.status === "completed" ? (
                 <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-100 text-green-800 font-semibold border border-green-200">
                   <Crown className="w-5 h-5" /> Sorteo Completado
@@ -875,39 +842,42 @@ const DrawTools = ({ onRefresh }) => {
                   disabled={
                     !selectedId || rouletteSpinning || executing || participants.length === 0 || !canDraw
                   }
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200"
+                  className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-green-600 hover:from-emerald-700 hover:to-green-700 text-white font-bold shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
                 >
                   <Play className="w-5 h-5" />
-                  {rouletteSpinning || executing ? "Girando..." : "Girar una vez"}
+                  {rouletteSpinning || executing ? "Girando..." : "Girar Ruleta"}
                 </button>
               )}
             </div>
           </div>
 
-          {/* Premios */}
           <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center gap-2 mb-1">
               <Gift className="w-5 h-5 text-amber-500" />
-              <h4 className="font-bold text-slate-800">Premios</h4>
+              <h4 className="font-bold text-slate-800">Premios del Sorteo</h4>
             </div>
-            <p className="text-xs text-slate-500 mb-3">Toca un premio para ver sus detalles</p>
+            <p className="text-xs text-slate-500 mb-4">Toca un premio para ver todos sus detalles</p>
 
             {prizes.length === 0 ? (
-              <p className="text-sm text-slate-500">No hay premios.</p>
+              <div className="text-center py-8">
+                <Gift className="w-12 h-12 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">No hay premios configurados</p>
+              </div>
             ) : (
               <div className="grid gap-3">
                 {prizes.slice(0, 8).map((p, i) => (
                   <PrizeCard key={p.id ?? i} prize={p} idx={i} />
                 ))}
                 {prizes.length > 8 && (
-                  <div className="text-xs text-slate-500 px-2">y {prizes.length - 8} premios más</div>
+                  <div className="text-xs text-slate-500 px-2 py-2 bg-slate-50 rounded-lg text-center">
+                    y {prizes.length - 8} premio{prizes.length - 8 !== 1 ? 's' : ''} más
+                  </div>
                 )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Ruleta */}
         <div className="lg:col-span-3 p-0 rounded-2xl border border-slate-200 shadow-inner bg-gradient-to-br from-slate-50 to-blue-50">
           <PremiumRoulette
             participants={participants}
@@ -925,42 +895,42 @@ const DrawTools = ({ onRefresh }) => {
         </div>
       </div>
 
-      {/* Modal premio — rediseñado, con imagen y links detectados */}
       {prizeModal.open && (
         <div
-          className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-[1px] flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
           onClick={closePrize}
         >
           <div
-            className="relative w-full max-w-3xl max-h-[85vh] bg-white rounded-3xl shadow-2xl overflow-hidden"
+            className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Hero con imagen y overlay */}
-            <div className="relative h-60 sm:h-72 md:h-80 bg-slate-100">
+            <div className="relative h-72 sm:h-80 md:h-96 bg-gradient-to-br from-slate-100 to-slate-200 flex-shrink-0">
               {(() => {
                 const url = getPrizeImage(prizeModal.prize);
                 return url ? (
                   <img
                     src={url}
                     alt={prizeModal.prize?.name || "Premio"}
-                    className="absolute inset-0 w-full h-full object-cover"
+                    className="absolute inset-0 w-full h-full object-contain p-6"
                   />
                 ) : (
-                  <div className="absolute inset-0 w-full h-full grid place-items-center text-amber-600">
-                    <Gift className="w-12 h-12" />
+                  <div className="absolute inset-0 w-full h-full grid place-items-center">
+                    <div className="text-center">
+                      <Gift className="w-20 h-20 text-amber-600 mx-auto mb-3" />
+                      <p className="text-slate-500 text-sm">Sin imagen</p>
+                    </div>
                   </div>
                 );
               })()}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/25 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
-              {/* Insignia posición */}
-              <div className="absolute top-4 left-4">
+              <div className="absolute top-5 left-5">
                 {(() => {
                   const r = getRankMetaShared(prizeModal.prize?.position ?? null);
                   return (
-                    <span className={`${r.badgeClass} text-white/95 bg-black/30 border-white/30 backdrop-blur px-2 py-1`}>
+                    <span className={`${r.badgeClass} text-base px-3 py-1.5 bg-white/95 backdrop-blur-sm shadow-lg`}>
                       {r.icon}
                       {r.label}
                     </span>
@@ -968,56 +938,56 @@ const DrawTools = ({ onRefresh }) => {
                 })()}
               </div>
 
-              {/* Botón cerrar */}
               <button
-                className="absolute top-3 right-3 p-2 rounded-xl bg-white/90 hover:bg-white shadow"
+                className="absolute top-4 right-4 p-2.5 rounded-xl bg-white/95 hover:bg-white shadow-lg transition-all hover:scale-110"
                 onClick={closePrize}
                 aria-label="Cerrar"
               >
                 <X className="w-5 h-5" />
               </button>
 
-              {/* Título sobre imagen (sin descripción para evitar duplicado) */}
-              <div className="absolute bottom-4 left-4 right-4">
-                <h3 className="text-white text-2xl sm:text-3xl font-extrabold drop-shadow">
+              <div className="absolute bottom-5 left-5 right-5">
+                <h3 className="text-white text-3xl sm:text-4xl font-extrabold drop-shadow-lg">
                   {prizeModal.prize?.name || "Premio"}
                 </h3>
-                {/* Descripción eliminada aquí para que solo aparezca abajo */}
               </div>
             </div>
 
-            {/* Cuerpo scrollable */}
-            <div className="p-5 overflow-y-auto max-h-[calc(85vh-9.5rem)]">
-              <div className="flex items-center gap-2 flex-wrap mb-4">
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="flex items-center gap-3 flex-wrap mb-5">
                 {(() => {
                   const { initial, current } = derivePrizeState(prizeModal.prize || {});
                   return (
                     <span
-                      className={`inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-full border font-semibold ${
+                      className={`inline-flex items-center gap-2 text-sm px-4 py-2 rounded-xl border-2 font-bold ${
                         current > 0 && current <= 2
-                          ? "bg-rose-100 text-rose-700 border-rose-200"
-                          : "bg-purple-100 text-purple-700 border-purple-200"
+                          ? "bg-rose-50 text-rose-700 border-rose-300"
+                          : "bg-purple-50 text-purple-700 border-purple-300"
                       }`}
                       title="Stock restante"
                     >
-                      <Package className="w-4 h-4" />
-                      {current}
-                      {typeof initial === "number" ? ` / ${initial}` : ""}
+                      <Package className="w-5 h-5" />
+                      <span className="text-base">
+                        {current}
+                        {typeof initial === "number" ? ` / ${initial}` : ""} unidades
+                      </span>
                     </span>
                   );
                 })()}
               </div>
 
               {prizeModal.prize?.description && (
-                <div className="prose prose-sm max-w-none text-slate-800">
-                  {linkifyText(prizeModal.prize.description)}
+                <div className="prose prose-base max-w-none">
+                  <div className="text-slate-700 leading-relaxed text-base">
+                    {linkifyText(prizeModal.prize.description)}
+                  </div>
                 </div>
               )}
             </div>
 
-            <div className="p-4 bg-slate-50 flex justify-end">
+            <div className="p-5 bg-slate-50 flex justify-end border-t border-slate-200 flex-shrink-0">
               <button
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold shadow"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold shadow-lg hover:shadow-xl transition-all"
                 onClick={closePrize}
               >
                 Cerrar
@@ -1029,10 +999,6 @@ const DrawTools = ({ onRefresh }) => {
     </div>
   );
 };
-
-/* ========================================================================== */
-/*                                 Ruleta SVG                                 */
-/* ========================================================================== */
 
 const PREMIUM_COLORS = [
   { base: "#3b82f6", light: "#60a5fa", dark: "#2563eb" },
@@ -1152,7 +1118,6 @@ const PremiumRoulette = ({
     [truncate]
   );
 
-  // Disparar transición cuando cambia el ángulo
   useEffect(() => {
     if (isSpinning && size > 0 && !isTransitioning && angle !== lastAngle) {
       startTransition(lastAngle, angle, { twoPhase: true });
@@ -1165,7 +1130,6 @@ const PremiumRoulette = ({
       ? "h-[560px] sm:h-[660px] md:h-[720px] lg:h-[740px]"
       : "h-[500px] sm:h-[560px] md:h-[600px] lg:h-[620px]";
 
-  // Centro visual
   const centerOuterR = Math.max(mode === "focus" ? 28 : 24, radius * 0.155);
   const centerInnerR = Math.max(4, radius * 0.03);
   const iconPx = Math.max(16, Math.floor(centerOuterR * 0.88));
@@ -1238,7 +1202,6 @@ const PremiumRoulette = ({
               );
             })}
 
-            {/* Centro */}
             <defs>
               <radialGradient id="centerG" cx="50%" cy="30%" r="70%">
                 <stop offset="0%" stopColor="#334155" />
@@ -1251,7 +1214,6 @@ const PremiumRoulette = ({
           </svg>
         </div>
 
-        {/* Ícono central (no rota) */}
         <div
           className="pointer-events-none absolute z-10 text-white/95"
           style={{ left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}
@@ -1260,7 +1222,6 @@ const PremiumRoulette = ({
           <CenterIcon style={{ width: iconPx, height: iconPx }} />
         </div>
 
-        {/* Puntero derecha */}
         <div
           className="pointer-events-none absolute z-20"
           style={{ left: `${(box.w / 2) + radius + 8}px`, top: `${box.h / 2}px`, transform: "translate(-50%, -50%)" }}
@@ -1273,50 +1234,52 @@ const PremiumRoulette = ({
           </div>
         </div>
 
-        {/* Banner ganador - ahora con cierre MANUAL */}
         {showWinnerAnimation && winner && (
-          <div className="absolute inset-x-0 bottom-6 z-50 flex flex-col items-center">
-            <div className="px-5 py-3 rounded-2xl bg-amber-50 border border-amber-200 shadow-lg flex flex-col items-center gap-3 max-w-md mx-4">
+          <div className="absolute inset-x-0 bottom-6 z-50 flex flex-col items-center px-4">
+            <div className="w-full max-w-lg px-6 py-4 rounded-2xl bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 border-2 border-amber-300 shadow-2xl flex flex-col items-center gap-3">
               <div className="flex items-center gap-3">
-                <Trophy className="w-6 h-6 text-amber-600" />
-                <span className="text-amber-800 font-extrabold text-xl tracking-wide text-center">
+                <Trophy className="w-7 h-7 text-amber-600 animate-pulse" />
+                <span className="text-amber-900 font-extrabold text-xl md:text-2xl tracking-wide text-center">
                   ¡FELICIDADES {typeof winner === "string" ? winner : winner.name}!
                 </span>
+                <Trophy className="w-7 h-7 text-amber-600 animate-pulse" />
               </div>
 
               {typeof winner === "object" && winner.prize && (
-                <div className="text-center">
-                  <div className="flex items-center justify-center gap-2 mb-1">
+                <div className="text-center w-full">
+                  <div className="flex items-center justify-center gap-3 mb-2 bg-white/60 rounded-xl px-4 py-3 border border-amber-200">
                     {winner.prize.image_url ? (
                       <img
                         src={winner.prize.image_url}
                         alt={winner.prize.name || "Premio"}
-                        className="w-8 h-8 rounded object-cover border border-amber-300"
+                        className="w-12 h-12 rounded-lg object-cover border-2 border-amber-400 shadow-md"
                       />
                     ) : (
-                      <ImageIcon className="w-5 h-5 text-emerald-600" />
+                      <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-amber-200 to-orange-300 grid place-items-center">
+                        <Gift className="w-6 h-6 text-amber-800" />
+                      </div>
                     )}
-                    <span className="text-emerald-800 font-bold text-lg">{winner.prize.name}</span>
+                    <div className="text-left">
+                      <span className="text-emerald-800 font-bold text-lg block">{winner.prize.name}</span>
+                      {winner.prize.position != null && (
+                        <span className={`${getRankMetaShared(winner.prize.position).badgeClass} mt-1`}>
+                          {getRankMetaShared(winner.prize.position).icon}
+                          {getRankMetaShared(winner.prize.position).label}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {winner.prize.description && (
-                    <p className="text-slate-700 text-sm max-w-xs">{winner.prize.description}</p>
-                  )}
-                  {winner.prize.position != null && (
-                    <div className="mt-2 flex justify-center">
-                      <span className={`${getRankMetaShared(winner.prize.position).badgeClass} text-base px-3 py-1`}>
-                        {getRankMetaShared(winner.prize.position).icon}
-                        {getRankMetaShared(winner.prize.position).label}
-                      </span>
-                    </div>
+                    <p className="text-slate-700 text-sm max-w-md px-2 line-clamp-2">{winner.prize.description}</p>
                   )}
                 </div>
               )}
 
-              <div className="flex items-center justify-center gap-2 mt-1">
+              <div className="flex items-center justify-center gap-2 mt-2">
                 <button
                   type="button"
                   onClick={onDismissWinner}
-                  className="pointer-events-auto inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 hover:bg-black text-white text-sm font-semibold shadow"
+                  className="pointer-events-auto inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white text-sm font-bold shadow-lg hover:shadow-xl transition-all hover:scale-105 active:scale-95"
                   aria-label="Cerrar mensaje de ganador"
                 >
                   <X className="w-4 h-4" />

@@ -1,0 +1,341 @@
+/* src/styles/darkTheme.css */
+
+/* ====================================
+   Variables para tema oscuro
+==================================== */
+:root.dark {
+  /* Colores base */
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  
+  /* Texto */
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #94a3b8;
+  
+  /* Bordes */
+  --border-color: #334155;
+  --border-light: #475569;
+  
+  /* Estados */
+  --hover-bg: #1e293b;
+  --active-bg: #334155;
+  
+  /* Sombras */
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7);
+}
+
+/* ====================================
+   COLORES CORPORATIVOS PROTEGIDOS
+   Estos colores NO se modifican en tema oscuro
+==================================== */
+.dark .bg-blue-600,
+.dark .bg-blue-500,
+.dark .bg-purple-600,
+.dark .bg-purple-500,
+.dark .hover\:bg-blue-700:hover,
+.dark .hover\:bg-purple-700:hover,
+.dark [class*="from-blue-"],
+.dark [class*="to-purple-"],
+.dark [class*="from-purple-"],
+.dark [class*="to-blue-"] {
+  /* Mantener colores corporativos originales */
+  filter: none !important;
+  opacity: 1 !important;
+}
+
+/* Proteger gradientes corporativos */
+.dark .bg-gradient-to-r,
+.dark .bg-gradient-to-br,
+.dark .bg-gradient-to-tr {
+  /* No modificar gradientes */
+  filter: none !important;
+}
+
+/* ====================================
+   Estilos globales modo oscuro
+==================================== */
+.dark {
+  color-scheme: dark;
+}
+
+.dark body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Inputs */
+.dark input:not([type="submit"]):not([type="button"]):not([type="reset"]),
+.dark textarea,
+.dark select {
+  background-color: var(--bg-secondary);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: var(--text-tertiary);
+}
+
+.dark input:focus:not([type="submit"]):not([type="button"]),
+.dark textarea:focus,
+.dark select:focus {
+  border-color: #8b5cf6;
+  background-color: var(--bg-tertiary);
+}
+
+/* Cards y paneles - EXCEPTO los que tienen colores corporativos */
+.dark .bg-white:not(.bg-blue-500):not(.bg-blue-600):not(.bg-purple-500):not(.bg-purple-600):not([class*="gradient"]) {
+  background-color: var(--bg-secondary) !important;
+}
+
+.dark .bg-gray-50 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+.dark .bg-gray-100 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+/* Texto */
+.dark .text-gray-900 {
+  color: var(--text-primary) !important;
+}
+
+.dark .text-gray-700 {
+  color: var(--text-secondary) !important;
+}
+
+.dark .text-gray-600,
+.dark .text-gray-500 {
+  color: var(--text-tertiary) !important;
+}
+
+/* Proteger texto blanco en botones corporativos */
+.dark .text-white {
+  color: white !important;
+}
+
+/* Bordes */
+.dark .border-gray-200,
+.dark .border-gray-300 {
+  border-color: var(--border-color) !important;
+}
+
+/* Botones generales - EXCEPTO botones con colores corporativos */
+.dark button:not(.bg-blue-600):not(.bg-blue-500):not(.bg-purple-600):not(.bg-purple-500):not([class*="gradient"]):hover {
+  background-color: var(--hover-bg);
+}
+
+/* Sombras */
+.dark .shadow {
+  box-shadow: var(--shadow-md);
+}
+
+.dark .shadow-lg {
+  box-shadow: var(--shadow-lg);
+}
+
+.dark .shadow-xl,
+.dark .shadow-2xl {
+  box-shadow: var(--shadow-xl);
+}
+
+/* Hover states - proteger botones corporativos */
+.dark .hover\:bg-gray-50:hover:not([class*="blue"]):not([class*="purple"]),
+.dark .hover\:bg-gray-100:hover:not([class*="blue"]):not([class*="purple"]) {
+  background-color: var(--hover-bg) !important;
+}
+
+.dark .hover\:bg-gray-200:hover:not([class*="blue"]):not([class*="purple"]) {
+  background-color: var(--active-bg) !important;
+}
+
+/* Modales y overlays */
+.dark .bg-black {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+}
+
+/* Alerts y notificaciones */
+.dark .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.1) !important;
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+
+.dark .bg-green-50 {
+  background-color: rgba(34, 197, 94, 0.1) !important;
+  border-color: rgba(34, 197, 94, 0.3) !important;
+}
+
+.dark .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+.dark .bg-yellow-50 {
+  background-color: rgba(234, 179, 8, 0.1) !important;
+  border-color: rgba(234, 179, 8, 0.3) !important;
+}
+
+.dark .text-blue-900,
+.dark .text-blue-700 {
+  color: #93c5fd !important;
+}
+
+.dark .text-green-900,
+.dark .text-green-700 {
+  color: #86efac !important;
+}
+
+.dark .text-red-900,
+.dark .text-red-700 {
+  color: #fca5a5 !important;
+}
+
+.dark .text-yellow-900,
+.dark .text-yellow-700 {
+  color: #fde047 !important;
+}
+
+/* Tablas */
+.dark table {
+  background-color: var(--bg-secondary);
+}
+
+.dark thead {
+  background-color: var(--bg-tertiary);
+}
+
+.dark tr:hover {
+  background-color: var(--hover-bg);
+}
+
+/* Scrollbar */
+.dark ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 6px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--border-light);
+}
+
+/* ====================================
+   PROTECCIÓN ESPECÍFICA PARA TUS COLORES CORPORATIVOS
+==================================== */
+
+/* ====================================
+   LOGO HAYU24 - Estilos específicos
+==================================== */
+
+/* Contenedor del logo con fondo blanco en modo oscuro */
+.dark .hayu-logo-container {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 250, 250, 0.95) 100%);
+  padding: 8px 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(229, 231, 235, 0.1);
+}
+
+.dark .hayu-logo-container:hover {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+
+/* El logo en sí - sin filtros, colores originales */
+.dark .hayu-logo {
+  filter: none !important;
+  opacity: 1 !important;
+  display: block;
+}
+
+/* Modo claro - contenedor sin fondo */
+.hayu-logo-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+/* El logo siempre mantiene sus dimensiones */
+.hayu-logo {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Selectores generales para imágenes que puedan ser logos */
+.dark img[alt*="HAYU" i],
+.dark img[alt*="logo" i],
+.dark img[src*="logo" i],
+.dark header > div > div > div > img {
+  filter: none !important;
+}
+
+/* Azul principal (#0b56a7) */
+.dark [style*="#0b56a7"],
+.dark [style*="rgb(11, 86, 167)"] {
+  filter: none !important;
+}
+
+/* Azul secundario (#207ba8) */
+.dark [style*="#207ba8"],
+.dark [style*="rgb(32, 123, 168)"] {
+  filter: none !important;
+}
+
+/* Celeste (#389fae) */
+.dark [style*="#389fae"],
+.dark [style*="rgb(56, 159, 174)"] {
+  filter: none !important;
+}
+
+/* Turquesa (#4dc9b1) */
+.dark [style*="#4dc9b1"],
+.dark [style*="rgb(77, 201, 177)"] {
+  filter: none !important;
+}
+
+/* Rojo (#D62829) */
+.dark [style*="#D62829"],
+.dark [style*="rgb(214, 40, 41)"] {
+  filter: none !important;
+}
+
+/* Azul oscuro (#003049) */
+.dark [style*="#003049"],
+.dark [style*="rgb(0, 48, 73)"] {
+  filter: none !important;
+}
+
+/* Transiciones suaves */
+* {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Excepciones: no animar gradientes ni colores corporativos */
+[class*="gradient"],
+[class*="blue-6"],
+[class*="blue-5"],
+[class*="purple-6"],
+[class*="purple-5"] {
+  transition: none !important;
+}

@@ -207,3 +207,8 @@ class NotificationTemplate(models.Model):
     
     def __str__(self) -> str:
         return f"Template: {self.name}"
+   #gmail modelo  
+email_sent = models.BooleanField(default=False)
+email_sent_at = models.DateTimeField(null=True, blank=True)
+email_error = models.TextField(blank=True, default='')
+email_recipient = models.EmailField(blank=True, default='')

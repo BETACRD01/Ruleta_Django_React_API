@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nuevo Ganador - {{ roulette_name }}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #1f2937; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px 0;
+        }
+        .email-container { 
+            max-width: 680px; 
+            margin: 0 auto; 
+            background: white; 
+            border-radius: 16px; 
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; 
+            padding: 40px 30px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        .header::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            right: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: pulse 4s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+        .header-content { position: relative; z-index: 1; }
+        .trophy-icon { 
+            font-size: 48px; 
+            margin-bottom: 10px;
+            display: inline-block;
+            animation: bounce 2s ease infinite;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .header h1 { 
+            margin: 10px 0 5px 0; 
+            font-size: 28px; 
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .header h2 { 
+            margin: 0; 
+            font-size: 16px; 
+            font-weight: 400; 
+            opacity: 0.95;
+        }
+        .content { 
+            padding: 40px 35px; 
+        }
+        .admin-greeting { 
+            font-size: 15px; 
+            margin-bottom: 30px; 
+            padding: 20px; 
+            background: linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%);
+            border-left: 4px solid #3b82f6; 
+            border-radius: 8px;
+        }
+        .admin-greeting p { margin: 8px 0; }
+        .admin-greeting strong { color: #1e40af; }
+        .winner-card { 
+            background: linear-gradient(135deg, #fefce8 0%, #fef3c7 100%);
+            border: 3px solid #eab308; 
+            border-radius: 12px; 
+            padding: 30px; 
+            margin: 30px 0;
+            position: relative;
+            overflow: hidden;
+        }
+        .winner-card::before {
+            content: '✨';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 24px;
+            opacity: 0.3;
+        }
+        .winner-card.gold { 
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-color: #f59e0b; 
+        }
+        .winner-card.silver { 
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            border-color: #9ca3af; 
+        }
+        .winner-card.bronze { 
+            background: linear-gradient(135deg, #fed7aa 0%, #fdba74 100%);
+            border-color: #d97706; 
+        }
+        .winner-badge { 
+            display: inline-block;
+            background: white;
+            color: #eab308;
+            font-size: 22px; 
+            font-weight: 700; 
+            padding: 12px 24px;
+            border-radius: 50px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .winner-badge.gold { color: #f59e0b; }
+        .winner-badge.silver { color: #9ca3af; }
+        .winner-badge.bronze { color: #d97706; }
+        .info-grid { 
+            display: grid; 
+            grid-template-columns: repeat(2, 1fr); 
+            gap: 15px; 
+            margin: 25px 0;
+        }
+        .info-card { 
+            background: white; 
+            padding: 18px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .info-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+        .info-label { 
+            font-weight: 600; 
+            color: #6b7280; 
+            font-size: 12px; 
+            text-transform: uppercase; 
+            letter-spacing: 0.5px;
+            margin-bottom: 6px; 
+        }
+        .info-value { 
+            font-size: 16px; 
+            color: #111827;
+            font-weight: 500;
+        }
+        .prize-section { 
+            background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+            border: 2px solid #fb923c;
+            border-radius: 12px; 
+            padding: 25px; 
+            margin: 25px 0;
+        }
+        .prize-header { 
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .prize-title { 
+            color: #ea580c; 
+            font-weight: 700;
+            font-size: 18px;
+        }
+        .prize-content {
+            display: flex;
+            gap: 20px;
+            align-items: start;
+        }
+        .prize-image { 
+            max-width: 150px;
+            min-width: 150px;
+            height: 150px;
+            object-fit: cover;
+            border-radius: 10px; 
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .prize-details { flex: 1; }
+        .prize-details p { 
+            margin: 10px 0;
+            line-height: 1.7;
+        }
+        .action-section { 
+            text-align: center; 
+            margin: 35px 0;
+            padding: 25px;
+            background: #f9fafb;
+            border-radius: 12px;
+        }
+        .btn { 
+            display: inline-block; 
+            padding: 14px 28px; 
+            margin: 8px; 
+            text-decoration: none; 
+            border-radius: 8px; 
+            font-weight: 600; 
+            font-size: 15px;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .btn-primary { 
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            color: white !important; 
+        }
+        .btn-secondary { 
+            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+            color: white !important; 
+        }
+        .stats-panel { 
+            background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+            padding: 25px; 
+            border-radius: 12px; 
+            margin: 30px 0;
+            border: 2px solid #86efac;
+        }
+        .stats-header { 
+            font-weight: 700;
+            font-size: 16px;
+            margin-bottom: 20px; 
+            color: #166534;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .stats-grid { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            gap: 15px; 
+        }
+        .stat-box { 
+            text-align: center; 
+            background: white; 
+            padding: 20px 10px; 
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .stat-number { 
+            font-size: 28px; 
+            font-weight: 700; 
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .stat-label { 
+            font-size: 12px; 
+            color: #6b7280; 
+            text-transform: uppercase;
+            margin-top: 5px;
+            font-weight: 600;
+        }
+        .next-steps { 
+            margin: 30px 0; 
+            padding: 25px; 
+            background: linear-gradient(135deg, #ede9fe 0%, #ddd6fe 100%);
+            border-radius: 12px;
+            border-left: 4px solid #8b5cf6;
+        }
+        .next-steps-title {
+            font-weight: 700;
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: #5b21b6;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .next-steps ul { 
+            list-style: none;
+            padding: 0;
+        }
+        .next-steps li { 
+            padding: 8px 0 8px 28px;
+            position: relative;
+            line-height: 1.6;
+        }
+        .next-steps li::before {
+            content: '✓';
+            position: absolute;
+            left: 0;
+            color: #8b5cf6;
+            font-weight: bold;
+            font-size: 18px;
+        }
+        .next-steps a {
+            color: #5b21b6;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .next-steps a:hover {
+            text-decoration: underline;
+        }
+        .footer { 
+            background: #f9fafb;
+            padding: 30px 20px; 
+            text-align: center; 
+            border-top: 1px solid #e5e7eb; 
+        }
+        .footer-text { 
+            font-size: 14px; 
+            color: #6b7280;
+            margin: 5px 0;
+        }
+        .footer-text a {
+            color: #3b82f6;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .footer-text a:hover {
+            text-decoration: underline;
+        }
+        .divider {
+            height: 1px;
+            background: linear-gradient(to right, transparent, #e5e7eb, transparent);
+            margin: 30px 0;
+        }
+        @media (max-width: 600px) {
+            .email-container { 
+                margin: 10px; 
+                border-radius: 12px;
+            }
+            .content { padding: 30px 20px; }
+            .header { padding: 30px 20px; }
+            .header h1 { font-size: 24px; }
+            .trophy-icon { font-size: 36px; }
+            .info-grid { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .prize-content { flex-direction: column; }
+            .prize-image { 
+                max-width: 100%;
+                min-width: 100%;
+                height: 200px;
+            }
+            .btn { 
+                display: block;
+                margin: 8px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <div class="header">
+            <div class="header-content">
+                <div class="trophy-icon">🏆</div>
+                <h1>¡Nuevo Ganador Seleccionado!</h1>
+                <h2>{{ roulette_name }}</h2>
+            </div>
+        </div>
+        
+        <div class="content">
+            <div class="admin-greeting">
+                <p><strong>Hola {% if admin_name %}{{ admin_name }}{% else %}Administrador{% endif %},</strong></p>
+                <p>Excelentes noticias: se ha seleccionado un nuevo ganador en el sorteo <strong>"{{ roulette_name }}"</strong>. A continuación encontrarás toda la información relevante.</p>
+            </div>
+
+            <div class="winner-card{% if prize_rank == 1 %} gold{% elif prize_rank == 2 %} silver{% elif prize_rank == 3 %} bronze{% endif %}">
+                <div class="winner-badge{% if prize_rank == 1 %} gold{% elif prize_rank == 2 %} silver{% elif prize_rank == 3 %} bronze{% endif %}">
+                    {{ prize_rank_emoji }} {{ prize_rank_label }}
+                </div>
+                
+                <h3 style="font-size: 20px; margin: 15px 0; color: #111827;">{{ prize_name }}</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <div class="info-label">👤 Ganador</div>
+                        <div class="info-value">{{ user_full_name }}</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">📧 Email</div>
+                        <div class="info-value">{{ user_email }}</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">📅 Fecha y Hora</div>
+                        <div class="info-value">{% now "d/m/Y H:i" %}</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">🏅 Posición</div>
+                        <div class="info-value">{{ prize_rank_label }}</div>
+                    </div>
+                </div>
+            </div>
+
+            {% if prize_description or prize_image_url %}
+            <div class="prize-section">
+                <div class="prize-header">
+                    <span style="font-size: 20px;">🎁</span>
+                    <div class="prize-title">Información del Premio</div>
+                </div>
+                
+                <div class="prize-content">
+                    {% if prize_image_url %}
+                    <img src="{{ prize_image_url }}" alt="{{ prize_name }}" class="prize-image">
+                    {% endif %}
+                    
+                    <div class="prize-details">
+                        {% if prize_description %}
+                        <p><strong>Descripción:</strong><br>{{ prize_description }}</p>
+                        {% endif %}
+                        
+                        {% if pickup_instructions %}
+                        <p><strong>Instrucciones de retiro:</strong><br>{{ pickup_instructions }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="action-section">
+                <p style="margin-bottom: 20px; color: #6b7280; font-weight: 500;">Acciones rápidas</p>
+                {% if roulette_url %}
+                <a href="{{ roulette_url }}" class="btn btn-primary">🎡 Ver Ruleta</a>
+                {% endif %}
+                {% if prize_url %}
+                <a href="{{ prize_url }}" class="btn btn-secondary">⚙️ Gestionar Premios</a>
+                {% endif %}
+            </div>
+
+            <div class="stats-panel">
+                <div class="stats-header">
+                    <span>📊</span>
+                    <span>Resumen del Sorteo</span>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-number">1</div>
+                        <div class="stat-label">Ganador</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number">{% now "H:i" %}</div>
+                        <div class="stat-label">Hora</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number">✓</div>
+                        <div class="stat-label">Notificado</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="next-steps">
+                <div class="next-steps-title">
+                    <span>💡</span>
+                    <span>Próximos Pasos Recomendados</span>
+                </div>
+                <ul>
+                    <li>Verificar que el ganador recibió su email de notificación</li>
+                    <li>Confirmar que las instrucciones de entrega están claras</li>
+                    <li>Actualizar el estado del premio si es necesario</li>
+                    {% if support_email %}
+                    <li>El ganador puede contactarte en <a href="mailto:{{ support_email }}">{{ support_email }}</a></li>
+                    {% endif %}
+                    <li>Documentar la entrega del premio para tus registros</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <div class="footer-text" style="font-weight: 600; color: #111827;">
+                {{ brand_name }}
+            </div>
+            <div class="footer-text">
+                Notificación automática del sistema de sorteos
+            </div>
+            {% if site_url %}
+            <div class="footer-text">
+                <a href="{{ site_url }}">{{ site_url }}</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

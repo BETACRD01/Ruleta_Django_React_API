@@ -37,23 +37,34 @@ const toArray = (res) => {
   return res ? [res].flat().filter(Boolean) : [];
 };
 
-/** Detección robusta de ganador */
+/** Ganador: igual que en MyParticipationsTab (usa participation_state) */
 const isWinner = (p) =>
   p?.is_winner === true ||
-  p?.winner === true ||
-  String(p?.status || "").toLowerCase() === "won";
+  String(p?.participation_state || "").toLowerCase() === "won";
 
-/** Detección robusta de participación completada/sorteo realizado */
-const isCompleted = (p) => {
-  const s = String(p?.status || "").toLowerCase();
-  return (
+/** Completada: robusto (lee raíz y p.roulette) y excluye ganados */
+const isCompletedNoWin = (p) => {
+  const sPart = String(p?.participation_state || p?.status || "").toLowerCase();
+  const r = p?.roulette || {};
+  const sRoulette = String(r?.status || "").toLowerCase();
+
+  const completedLike =
+    sPart === "completed" ||
+    sPart === "closed" ||
+    sPart === "finished" ||
     p?.is_drawn === true ||
     p?.drawn === true ||
-    s === "completed" ||
-    s === "closed" ||
-    s === "finished"
-  );
+    r?.is_drawn === true ||
+    !!r?.drawn_at ||
+    sRoulette === "completed" ||
+    sRoulette === "cancelled";
+
+  return completedLike && !isWinner(p);
 };
+
+/** Ruleta activa/programada (para métrica de disponibles) */
+const isRouletteActiveLike = (r) =>
+  !(r?.is_drawn || r?.status === "completed" || r?.status === "cancelled");
 
 /* ============================================================================
    Componente principal
@@ -61,9 +72,7 @@ const isCompleted = (p) => {
 const UserDashboard = () => {
   const { user } = useAuth();
 
-  // -----------------------------
   // Estado local
-  // -----------------------------
   const [activeTab, setActiveTab] = useState("available");
   const [loading, setLoading] = useState(true);
   const [roulettes, setRoulettes] = useState([]);
@@ -80,9 +89,7 @@ const UserDashboard = () => {
     };
   }, []);
 
-  // -----------------------------
   // Carga de datos (memorizada)
-  // -----------------------------
   const loadDashboardData = useCallback(async () => {
     try {
       if (!mountedRef.current) return;
@@ -90,10 +97,9 @@ const UserDashboard = () => {
       setError(null);
 
       const [roulettesRes, participationsRes] = await Promise.all([
-        // Ruletas activas (ordenadas por creación desc)
+        // Traemos TODAS las ruletas; el tab separa activas/completadas.
         roulettesAPI.getRoulettes({
-          status: "active",
-          page_size: 50,
+          page_size: 100,
           ordering: "-created_at",
         }),
         // Mis participaciones (con resultados y estadísticas)
@@ -121,14 +127,12 @@ const UserDashboard = () => {
     loadDashboardData();
   }, [loadDashboardData]);
 
-  // -----------------------------
   // Estadísticas derivadas (memorizadas)
-  // -----------------------------
   const stats = useMemo(() => {
-    const availableRoulettes = roulettes.length;
+    const availableRoulettes = (roulettes || []).filter(isRouletteActiveLike).length;
     const myParticipations = participations.length;
     const wonParticipations = participations.filter(isWinner).length;
-    const completedParticipations = participations.filter(isCompleted).length;
+    const completedParticipations = participations.filter(isCompletedNoWin).length;
 
     return {
       availableRoulettes,
@@ -138,15 +142,13 @@ const UserDashboard = () => {
     };
   }, [roulettes, participations]);
 
-  // -----------------------------
   // Acción: participar en una ruleta
-  // -----------------------------
   const handleParticipate = useCallback(
     async (rouletteId, receiptFile = null) => {
       try {
         setError(null);
         await participantsAPI.participate(rouletteId, receiptFile);
-        // Tras participar, recargar datos y navegar a "Mis Participaciones"
+        // Tras participar, recargar y cambiar a "Mis Participaciones"
         await loadDashboardData();
         setActiveTab("my-participations");
         return { success: true };
@@ -162,9 +164,7 @@ const UserDashboard = () => {
     [loadDashboardData]
   );
 
-  // -----------------------------
   // Tabs (memorizadas)
-  // -----------------------------
   const tabs = useMemo(
     () => [
       {
@@ -209,9 +209,7 @@ const UserDashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-6">
-      {/* ------------------------------------------------------------------
-          Header: saludo + acciones
-      ------------------------------------------------------------------- */}
+      {/* Header */}
       <div className="mb-6">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -228,9 +226,7 @@ const UserDashboard = () => {
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------
-          Alert de error (cuando exista)
-      ------------------------------------------------------------------- */}
+      {/* Error */}
       {error && (
         <div
           role="alert"
@@ -272,10 +268,7 @@ const UserDashboard = () => {
         </div>
       )}
 
-      {/* ------------------------------------------------------------------
-          Resumen: tarjetas compactas
-          - Altura y tipografías contenidas para no “ocupar” de más.
-      ------------------------------------------------------------------- */}
+      {/* Resumen */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <Card className="p-4">
           <div className="flex items-center">
@@ -338,9 +331,7 @@ const UserDashboard = () => {
         </Card>
       </div>
 
-      {/* ------------------------------------------------------------------
-          Navegación por pestañas
-      ------------------------------------------------------------------- */}
+      {/* Tabs */}
       <Tabs
         tabs={tabs}
         activeTab={activeTab}
@@ -348,20 +339,20 @@ const UserDashboard = () => {
         className="mb-6"
       />
 
-      {/* ------------------------------------------------------------------
-          Contenido de cada pestaña
-      ------------------------------------------------------------------- */}
+      {/* Contenido por pestaña */}
       <div className="min-h-80">
         {activeTab === "available" && (
-          <AvailableRoulettesTab
-            roulettes={roulettes}
-            onParticipate={handleParticipate}
-            onDataChange={loadDashboardData}
-          />
+          <>
+            {/* Ahora mandamos todas las ruletas; el tab separa activas/completadas */}
+            <AvailableRoulettesTab
+              roulettes={roulettes}
+              onParticipate={handleParticipate}
+              onDataChange={loadDashboardData}
+            />
+          </>
         )}
 
         {activeTab === "my-participations" && (
-          // La key fuerza re-render si cambia lastRefresh
           <MyParticipationsTab key={lastRefresh.getTime()} />
         )}
 

@@ -18,6 +18,9 @@ urlpatterns = [
 
     # Detalle / actualización / eliminación de una notificación
     path('<int:pk>/', views.NotificationDetailView.as_view(), name='notification-detail'),
+    
+    # 📧 NUEVO: Actualizar estado de envío de email
+    path('<int:notification_id>/email-status/', views.update_email_status, name='update-email-status'),
 
     # =====================================
     # NOTIFICACIONES PÚBLICAS (para homepage/inicio)
@@ -34,9 +37,6 @@ urlpatterns = [
     
     # Estadísticas públicas del sistema
     path('public/stats/', views.public_stats, name='public-stats'),
-
-
- 
 
     # =====================================
     # ACCIONES SOBRE NOTIFICACIONES

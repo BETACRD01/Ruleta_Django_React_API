@@ -240,18 +240,19 @@ class RouletteSettingsAdminForm(forms.ModelForm):
         fields = "__all__"
         widgets = {
             "max_participants": forms.NumberInput(attrs={"min": "0", "step": "1"}),
-            "winners_target": forms.NumberInput(attrs={"min": "0", "step": "1"}),  # 0 = auto por stock
+            "winners_target": forms.NumberInput(attrs={"min": "0", "step": "1"}),
         }
 
 
 class RoulettePrizeAdminForm(forms.ModelForm):
-    """Formulario de premios con validaciones visuales (sin probabilidad)."""
+    """Formulario de premios con campo de instrucciones de retiro."""
 
     class Meta:
         model = RoulettePrize
         fields = "__all__"
         widgets = {
             "description": forms.Textarea(attrs={"rows": 4, "cols": 80}),
+            "pickup_instructions": forms.Textarea(attrs={"rows": 3, "cols": 80}),
             "stock": forms.NumberInput(attrs={"min": "0", "step": "1"}),
             "display_order": forms.NumberInput(attrs={"min": "0", "step": "1"}),
         }
@@ -265,7 +266,7 @@ class RouletteSettingsInline(admin.StackedInline):
     verbose_name = "Configuración de la Ruleta"
     verbose_name_plural = "Configuración"
     extra = 0
-    max_num = 1  # ¡Solo 1 configuración por ruleta!
+    max_num = 1
 
     fieldsets = (
         (
@@ -292,10 +293,9 @@ class RouletteSettingsInline(admin.StackedInline):
         ),
     )
 
-    # 🔒 Evita “crear” si ya existe (y además ocultamos el inline en el add)
     def has_add_permission(self, request, obj=None):
         if obj is None:
-            return False  # en “Agregar” no mostrar/permitir
+            return False
         return not hasattr(obj, "settings")
 
     def has_change_permission(self, request, obj=None):
@@ -306,7 +306,7 @@ class RoulettePrizeInline(admin.TabularInline):
     model = RoulettePrize
     form = RoulettePrizeAdminForm
     extra = 0
-    fields = ("display_order", "name", "description", "stock", "is_active", "image_preview")
+    fields = ("display_order", "name", "description", "pickup_instructions", "stock", "is_active", "image_preview")
     readonly_fields = ("image_preview",)
     ordering = ["display_order", "-created_at"]
 
@@ -396,7 +396,6 @@ class RouletteAdmin(admin.ModelAdmin):
         ("Estadísticas", {"fields": ("participants_count_detail",), "classes": ("collapse",)}),
     )
 
-    # 👉 Ocultar inline de settings en “Agregar” para evitar doble creación
     def get_inline_instances(self, request, obj=None):
         inline_instances = []
         for inline_class in self.inlines:
@@ -430,7 +429,7 @@ class RouletteAdmin(admin.ModelAdmin):
             return mark_safe(
                 f'<img src="{obj.cover_image.url}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;" />'
             )
-        return mark_safe('<span style="#999;">Sin portada</span>')
+        return mark_safe('<span style="color:#999;">Sin portada</span>')
 
     cover_image_preview.short_description = "Portada"
 
@@ -634,13 +633,15 @@ class RouletteSettingsAdmin(admin.ModelAdmin):
         "roulette",
         "max_participants",
         "allow_multiple_entries",
-        "winners_target",  # 0 = auto por stock
+        "winners_target",
         "show_countdown",
+        "notify_on_draw",
     )
     list_select_related = ("roulette",)
     list_filter = (
         "allow_multiple_entries",
         "show_countdown",
+        "notify_on_draw",
     )
     search_fields = ("roulette__name",)
     ordering = ("-roulette__created_at",)
@@ -663,17 +664,25 @@ class RoulettePrizeAdmin(admin.ModelAdmin):
         "stock",
         "display_order",
         "is_active",
+        "has_pickup_instructions",
         "updated_at",
     )
     list_select_related = ("roulette",)
     list_filter = ("roulette", "is_active", "created_at")
-    search_fields = ("name", "roulette__name", "description")
+    search_fields = ("name", "roulette__name", "description", "pickup_instructions")
     readonly_fields = ("created_at", "updated_at", "image_preview_large")
     ordering = ("roulette", "display_order", "-created_at")
 
     fieldsets = (
         ("Información del Premio", {"fields": ("roulette", "name", "description", "display_order")}),
         ("Imagen", {"fields": ("image", "image_preview_large")}),
+        (
+            "Instrucciones de Retiro",
+            {
+                "fields": ("pickup_instructions",),
+                "description": "Información sobre cómo y dónde el ganador puede retirar este premio",
+            },
+        ),
         ("Configuración", {"fields": ("stock", "is_active")}),
         ("Metadatos", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
     )
@@ -695,6 +704,13 @@ class RoulettePrizeAdmin(admin.ModelAdmin):
         return "Sin imagen"
 
     image_preview_large.short_description = "Vista previa"
+
+    def has_pickup_instructions(self, obj):
+        if obj.pickup_instructions and obj.pickup_instructions.strip():
+            return mark_safe('<span style="color:#28a745;">✓ Sí</span>')
+        return mark_safe('<span style="color:#999;">—</span>')
+
+    has_pickup_instructions.short_description = "Instrucciones"
 
 
 # ================= Admin: DrawHistory ================= #

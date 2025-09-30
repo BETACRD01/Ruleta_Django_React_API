@@ -1,9 +1,10 @@
 // src/components/auth/PasswordResetForm.jsx - VERSIÓN COMPLETA
 import React from "react";
-import { Key, CheckCircle, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { CheckCircle, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useAuthNotifications } from "../../contexts/NotificationContext";
 import { AuthAPI } from "../../config/api";
+import logo from "../../assets/HAYU24_original.png";
 
 const authAPI = new AuthAPI();
 
@@ -185,11 +186,12 @@ const PasswordResetForm = ({ onBackToLogin }) => {
   // ------------------- UI -------------------
   const Header = ({ ok }) => (
     <div className="text-center mb-8">
-      <div
-        className="rounded-full p-4 w-16 h-16 mx-auto mb-4 flex items-center justify-center shadow-lg"
-        style={{ backgroundColor: ok ? "#22c55e" : "#4dc9b1" }}
-      >
-        {ok ? <CheckCircle className="h-8 w-8 text-white" /> : <Key className="h-8 w-8 text-white" />}
+      <div className="mx-auto mb-4 w-24 h-24 flex items-center justify-center">
+        <img 
+          src={logo} 
+          alt="HAYU24 Logo" 
+          className="w-full h-full object-contain"
+        />
       </div>
       <h2 className="font-bold mb-2" style={{ color: "#0b56a7", fontSize: "clamp(1.25rem, 1vw + 1rem, 1.75rem)" }}>
         {mode === "reset" ? "Restablecer contraseña" : ok ? "Email Enviado" : "Recuperar Contraseña"}

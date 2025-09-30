@@ -4,6 +4,7 @@ from rest_framework.decorators import api_view, permission_classes, authenticati
 from rest_framework.response import Response
 from rest_framework.authtoken.models import Token
 from rest_framework.authentication import TokenAuthentication, SessionAuthentication
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 
 from django.contrib.auth import login, logout
@@ -23,6 +24,7 @@ from .serializers import (
     UserRegistrationSerializer,
     UserLoginSerializer,
     UserProfileSerializer,
+    UserProfileUpdateSerializer,
     UserProfileDetailSerializer,
     PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer,
@@ -36,13 +38,9 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
     permission_classes = [permissions.AllowAny]
-    authentication_classes = []  # público real
+    authentication_classes = []
 
     def create(self, request, *args, **kwargs):
-        """
-        Si falla: 400 con errores del serializer.
-        Si éxito: 201 con representación segura del usuario (sin contraseña).
-        """
         serializer = self.get_serializer(data=request.data)
         if not serializer.is_valid():
             logger.warning(f"Registro inválido: {serializer.errors}")
@@ -57,17 +55,12 @@ class RegisterView(generics.CreateAPIView):
                 phone = None
 
             logger.info(f"Nuevo usuario registrado: {user.email} con teléfono: {phone or ''}")
-
-            # Correo de bienvenida (no bloqueante)
             self.send_welcome_email(user)
 
-        # Re-serializamos para respuesta (sin campos write_only)
         out = self.get_serializer(instance=user)
-        # Opcional: puedes envolver como {"success": True, "user": out.data}
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def send_welcome_email(self, user):
-        """Intenta enviar HTML; si no hay template, cae a texto plano. No rompe el registro si falla."""
         try:
             subject = "¡Bienvenido al Sistema de Ruletas!"
             ctx = {"user": user, "site_name": "Sistema de Ruletas"}
@@ -89,7 +82,7 @@ class RegisterView(generics.CreateAPIView):
                 getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@ruletas.local"),
                 [user.email],
                 html_message=html_message,
-                fail_silently=True,  # no bloquear el registro si falla
+                fail_silently=True,
             )
             logger.info(f"Email de bienvenida enviado a: {user.email}")
         except Exception as e:
@@ -98,7 +91,7 @@ class RegisterView(generics.CreateAPIView):
 
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
-    authentication_classes = []  # público real
+    authentication_classes = []
 
     def post(self, request):
         serializer = UserLoginSerializer(data=request.data, context={"request": request})
@@ -113,7 +106,6 @@ class LoginView(APIView):
 
             logger.info(f"Usuario logueado: {user.email}")
 
-            # Agregamos teléfono del perfil si existe (útil para el front)
             phone = None
             try:
                 phone = getattr(user.profile, "phone", None)
@@ -182,13 +174,44 @@ class LogoutView(APIView):
 
 
 class ProfileView(generics.RetrieveUpdateAPIView):
-    serializer_class = UserProfileSerializer
+    """
+    Vista para obtener y actualizar el perfil del usuario.
+    Soporta multipart/form-data para subir avatar.
+    """
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [TokenAuthentication, SessionAuthentication]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_object(self):
         return self.request.user
 
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return UserProfileUpdateSerializer
+        return UserProfileSerializer
+    
+    def update(self, request, *args, **kwargs):
+        """Override para logging mejorado"""
+        partial = kwargs.pop('partial', True)  # Siempre usar PATCH
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        
+        if not serializer.is_valid():
+            logger.warning(f"Error validando perfil: {serializer.errors}")
+            return Response({
+                "success": False,
+                "errors": serializer.errors
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        self.perform_update(serializer)
+        logger.info(f"Perfil actualizado: {instance.email}")
+        
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+    def partial_update(self, request, *args, **kwargs):
+        """PATCH request"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
 
 class ProfileDetailView(generics.RetrieveAPIView):
     serializer_class = UserProfileDetailSerializer
@@ -201,11 +224,10 @@ class ProfileDetailView(generics.RetrieveAPIView):
 
 class PasswordResetRequestView(APIView):
     permission_classes = [permissions.AllowAny]
-    authentication_classes = []  # público real: ignora Authorization inválido
+    authentication_classes = []
 
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
-        # Para no filtrar info, devolvemos 200 aunque traiga errores
         if not serializer.is_valid():
             logger.info("Solicitud de reset con datos inválidos (respuesta genérica 200).")
             return Response(
@@ -216,7 +238,6 @@ class PasswordResetRequestView(APIView):
         email = serializer.validated_data["email"]
         user = User.objects.filter(email=email).first()
 
-        # Respuesta genérica si no existe
         if not user:
             logger.info(f"Reset solicitado para email no existente: {email}")
             return Response(
@@ -224,7 +245,6 @@ class PasswordResetRequestView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # Límite diario (doble check sin delatar info)
         if not PasswordResetRequest.can_request_reset(user):
             logger.info(f"Límite diario alcanzado para {email}")
             return Response(
@@ -232,7 +252,6 @@ class PasswordResetRequestView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # Generar token y registrar solicitud
         token = secrets.token_urlsafe(32)
         reset_request = PasswordResetRequest.objects.create(user=user, token=token)
 
@@ -243,7 +262,6 @@ class PasswordResetRequestView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        # Si falló el envío, limpiar el registro creado
         reset_request.delete()
         return Response(
             {"success": False, "message": "No pudimos enviar el correo. Inténtalo más tarde."},
@@ -251,7 +269,6 @@ class PasswordResetRequestView(APIView):
         )
 
     def send_reset_email(self, user, token):
-        """Envío con fallback: HTML si hay template, si no, texto plano."""
         try:
             subject = "Restablecimiento de Contraseña - Sistema de Ruletas"
             base = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:3000").rstrip("/")
@@ -290,7 +307,7 @@ class PasswordResetRequestView(APIView):
 
 class PasswordResetConfirmView(APIView):
     permission_classes = [permissions.AllowAny]
-    authentication_classes = []  # público real
+    authentication_classes = []
 
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
@@ -344,7 +361,6 @@ class ChangePasswordView(APIView):
 @authentication_classes([TokenAuthentication, SessionAuthentication])
 def user_info(request):
     user = request.user
-    # añadimos teléfono del perfil si existe
     phone = None
     try:
         phone = getattr(user.profile, "phone", None)
@@ -370,7 +386,7 @@ def user_info(request):
 
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
-@authentication_classes([])  # público real: evita 401 por Authorization inválido
+@authentication_classes([])
 def validate_reset_token(request):
     token = request.data.get("token")
     if not token:

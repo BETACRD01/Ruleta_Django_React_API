@@ -40,7 +40,7 @@ export const ENDPOINTS = {
     PROFILE_DETAIL: "/auth/profile/detail/",
     PASSWORD_RESET_REQUEST: "/auth/password-reset/request/",
     PASSWORD_RESET_CONFIRM: "/auth/password-reset/confirm/",
-    PASSWORD_RESET_VALIDATE: "/auth/validate-reset-token/", // Cambiado aquí
+    PASSWORD_RESET_VALIDATE: "/auth/validate-reset-token/",
     CHANGE_PASSWORD: "/auth/change-password/",
   },
   
@@ -71,8 +71,6 @@ export const ENDPOINTS = {
     MY_PARTICIPATIONS:     "/participants/participations/my-participations/",
     ROULETTE_PARTICIPANTS: (id) => `/participants/participations/roulette/${id}/`,
     CHECK_PARTICIPATION:   (id) => `/participants/participations/check-participation/${id}/`,
-
-    // ⤵️ NUEVO: detalle de una participación para leer/actualizar contacto del ganador
     PARTICIPATION_DETAIL:  (pid) => `/participants/participations/${pid}/`,
   },
 };
@@ -161,6 +159,22 @@ const safeStringify = (maybeObject) => {
   try { return JSON.stringify(maybeObject); } catch { return null; }
 };
 
+/* ============================================================
+   NUEVO: normalizador de URLs de media (imágenes, archivos)
+   - Maneja relativas y absolutas y recorta el sufijo /api del
+     API_URL para construir el host correcto de media.
+============================================================ */
+export const resolveMediaUrl = (maybeUrl) => {
+  if (!maybeUrl) return null;
+  try {
+    return new URL(maybeUrl).href; // ya es absoluta
+  } catch {
+    const base = String(API_URL || "").replace(/\/api\/?$/i, "");
+    const path = String(maybeUrl).startsWith("/") ? maybeUrl : `/${maybeUrl}`;
+    return `${base}${path}`;
+  }
+};
+
 /* ================================
    Base API (errores y auth)
 ================================ */
@@ -188,7 +202,6 @@ class BaseAPI {
     const isMultipart = Boolean(options.isMultipart);
     const headers = this.getHeaders(isMultipart);
 
-    // Permite pasar objeto o string; si es objeto y no es multipart, lo convierte a JSON.
     let body = options.body;
     if (!isMultipart && body && typeof body !== "string") {
       body = safeStringify(body);
@@ -241,53 +254,152 @@ class BaseAPI {
   }
 }
 
+/* ============================================================
+   Helpers de normalización (para que el front reciba SIEMPRE
+   los campos que usa, incluidas las imágenes de premios)
+============================================================ */
+const getParticipationState = (p) => {
+  if (p?.participation_state) return p.participation_state;
+  if (p?.is_winner) return "won";
+
+  const r = p?.roulette || {};
+  if (r.status === "cancelled" || r.status === "completed" || r.is_drawn || r.drawn_at) return "completed";
+  if (r.status === "active" || r.status === "scheduled") return "active";
+  return "completed";
+};
+
+const normalizeParticipation = (p = {}) => {
+  const roulette = p.roulette || {};
+
+  // Imagen de la ruleta
+  const rouletteImgCandidate =
+    p.roulette_image_url ||
+    roulette?.cover_image?.url ||
+    roulette?.cover_image ||
+    roulette?.image ||
+    roulette?.banner ||
+    roulette?.thumbnail ||
+    null;
+
+  // Imagen del premio (solo ganadores)
+  const prizeImgCandidate =
+    p.prize_image_url ||
+    p?.won_prize?.image ||
+    p?.wonPrize?.image ||
+    p?.prize?.image_url ||
+    p?.prize?.image ||
+    p?.prizeImage ||
+    p?.prize_image ||
+    null;
+
+  const isWinner = Boolean(p.is_winner);
+
+  return {
+    ...p,
+
+    // aplanados útiles
+    roulette_name: p.roulette_name || roulette?.name || p.rouletteName || null,
+    roulette_status: p.roulette_status || roulette?.status || null,
+    roulette_is_drawn: p.roulette_is_drawn ?? roulette?.is_drawn ?? null,
+    roulette_drawn_at: p.roulette_drawn_at || roulette?.drawn_at || null,
+    scheduled_date: p.scheduled_date || roulette?.scheduled_date || null,
+
+    // estado calculado si no llega
+    participation_state: getParticipationState(p),
+
+    // imágenes normalizadas a URL absolutas
+    roulette_image_url: resolveMediaUrl(rouletteImgCandidate),
+
+    // para ganadores intentamos todas las rutas posibles
+    prize_image_url: isWinner ? resolveMediaUrl(prizeImgCandidate) : null,
+  };
+};
+
 /* ================================
-   Auth API
+   Auth API - VERSIÓN COMPLETA CORREGIDA
 ================================ */
 export class AuthAPI extends BaseAPI {
-  constructor() { super(API_URL); }
+  constructor() { 
+    super(API_URL); 
+  }
 
   async login(credentials) {
-    const result = await this.request(ENDPOINTS.AUTH.LOGIN, { method: "POST", body: credentials });
-    if (result?.success && result?.token) this.setAuthToken(result.token);
+    const result = await this.request(ENDPOINTS.AUTH.LOGIN, { 
+      method: "POST", 
+      body: credentials 
+    });
+    if (result?.success && result?.token) {
+      this.setAuthToken(result.token);
+    }
     return result;
   }
 
   async register(data) {
-    const result = await this.request(ENDPOINTS.AUTH.REGISTER, { method: "POST", body: data });
-    if (result?.success && result?.token) this.setAuthToken(result.token);
+    const result = await this.request(ENDPOINTS.AUTH.REGISTER, { 
+      method: "POST", 
+      body: data 
+    });
+    if (result?.success && result?.token) {
+      this.setAuthToken(result.token);
+    }
     return result;
   }
 
   async logout() {
-    try { await this.request(ENDPOINTS.AUTH.LOGOUT, { method: "POST" }); }
-    finally { this.setAuthToken(null); }
+    try { 
+      await this.request(ENDPOINTS.AUTH.LOGOUT, { method: "POST" }); 
+    } finally { 
+      this.setAuthToken(null); 
+    }
   }
 
-  getUserInfo()      { return this.request(ENDPOINTS.AUTH.USER_INFO); }
-  getProfileDetail() { return this.request(ENDPOINTS.AUTH.PROFILE_DETAIL); }
+  getUserInfo() { 
+    return this.request(ENDPOINTS.AUTH.USER_INFO); 
+  }
 
+  getProfileDetail() { 
+    return this.request(ENDPOINTS.AUTH.PROFILE_DETAIL); 
+  }
+
+  // ✅ MÉTODO CORREGIDO - Maneja multipart automáticamente
   updateProfile(profile) {
-    return this.request(ENDPOINTS.AUTH.PROFILE, { method: "PUT", body: profile });
+    const isMulti = hasFileDeep(profile);
+    const body = isMulti ? buildFormData(profile) : profile;
+    return this.request(ENDPOINTS.AUTH.PROFILE, { 
+      method: "PATCH",
+      body, 
+      isMultipart: isMulti 
+    });
   }
 
   changePassword(payload) {
-    return this.request(ENDPOINTS.AUTH.CHANGE_PASSWORD, { method: "POST", body: payload });
+    return this.request(ENDPOINTS.AUTH.CHANGE_PASSWORD, { 
+      method: "POST", 
+      body: payload 
+    });
   }
 
   requestPasswordReset(email) {
-    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_REQUEST, { method: "POST", body: { email } });
+    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_REQUEST, { 
+      method: "POST", 
+      body: { email } 
+    });
   }
 
   confirmPasswordReset(payload) {
-    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_CONFIRM, { method: "POST", body: payload });
+    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_CONFIRM, { 
+      method: "POST", 
+      body: payload 
+    });
   }
 
   validateResetToken(token) {
-    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_VALIDATE, { method: "POST", body: { token } });
+    return this.request(ENDPOINTS.AUTH.PASSWORD_RESET_VALIDATE, { 
+      method: "POST", 
+      body: { token } 
+    });
   }
 }
-
 /* ================================
    Roulettes API
 ================================ */
@@ -375,9 +487,27 @@ export class ParticipantsAPI extends BaseAPI {
     return this.request(ENDPOINTS.PARTICIPANTS.PARTICIPATE, { method: "POST", body: fd, isMultipart: true });
   }
 
-  getMyParticipations(params = {}) {
+  /** 
+   * IMPORTANTE: normalizamos la respuesta para que el front
+   * tenga prize_image_url y roulette_image_url en absoluto,
+   * además de participation_state y fechas aplanadas.
+   */
+  async getMyParticipations(params = {}) {
     const ep = `${ENDPOINTS.PARTICIPANTS.MY_PARTICIPATIONS}${toQuery(params)}`;
-    return this.request(ep);
+    const raw = await this.request(ep);
+
+    const list = Array.isArray(raw?.results)
+      ? raw.results
+      : Array.isArray(raw)
+      ? raw
+      : [];
+
+    const normalized = list.map(normalizeParticipation);
+
+    if (Array.isArray(raw?.results)) {
+      return { ...raw, results: normalized };
+    }
+    return normalized;
   }
 
   getRouletteParticipants(rouletteId, params = {}) {
@@ -388,13 +518,10 @@ export class ParticipantsAPI extends BaseAPI {
   checkParticipation(rouletteId) { return this.request(ENDPOINTS.PARTICIPANTS.CHECK_PARTICIPATION(rouletteId)); }
 
   // ===== NUEVO: helpers de detalle de participación =====
-
-  /** Obtiene una participación por id (usado para GANADORES). */
   getParticipant(participationId) {
     return this.request(ENDPOINTS.PARTICIPANTS.PARTICIPATION_DETAIL(participationId));
   }
 
-  /** Actualiza parcialmente una participación (email/phone del ganador). */
   patchParticipant(participationId, data) {
     return this.request(ENDPOINTS.PARTICIPANTS.PARTICIPATION_DETAIL(participationId), {
       method: "PATCH",
@@ -402,12 +529,7 @@ export class ParticipantsAPI extends BaseAPI {
     });
   }
 
-  /**
-   * Trae contacto del ganador desde el backend.
-   * Aunque se pasa rouletteId, aquí usamos el id de participación (participantId).
-   * Si tu backend usa otra ruta, ajusta ENDPOINTS o reemplaza esta implementación.
-   */
-  async getWinnerContact(rouletteId, participantId) {
+  async getWinnerContact(_rouletteId, participantId) {
     const detail = await this.getParticipant(participantId);
     return {
       email: detail?.email ?? detail?.contact_email ?? "",
@@ -415,18 +537,8 @@ export class ParticipantsAPI extends BaseAPI {
     };
   }
 
-  /**
-   * Actualiza email y phone del ganador.
-   * Ajusta keys si tu backend espera otros nombres (contact_email/contact_phone, etc.).
-   */
-  updateWinnerContact(rouletteId, participantId, { email, phone }) {
-    // Normalizamos posibles nombres de campos
-    const payload = {
-      email,
-      phone,
-      // contact_email: email,
-      // contact_phone: phone,
-    };
+  updateWinnerContact(_rouletteId, participantId, { email, phone }) {
+    const payload = { email, phone };
     return this.patchParticipant(participantId, payload);
   }
 }
@@ -457,16 +569,13 @@ export class NotificationAPI extends BaseAPI {
     return this.request(ep);
   }
 
-  // ---- Acciones
   markAsRead(notification_ids)  { return this.request(NOTIFICATION_ENDPOINTS.MARK_READ, { method: "POST", body: { notification_ids } }); }
   markAllAsRead()               { return this.request(NOTIFICATION_ENDPOINTS.MARK_ALL_READ, { method: "POST" }); }
   deleteReadNotifications()     { return this.request(NOTIFICATION_ENDPOINTS.DELETE_READ, { method: "DELETE" }); }
 
-  // ---- CRUD por notificación (Centro Admin)
   deleteNotification(id)        { return this.request(NOTIFICATION_ENDPOINTS.DETAIL(id), { method: "DELETE" }); }
   patchNotification(id, data)   { return this.request(NOTIFICATION_ENDPOINTS.DETAIL(id), { method: "PATCH", body: data }); }
 
-  // ---- Utilidades varias
   getStats()                    { return this.request(NOTIFICATION_ENDPOINTS.STATS); }
   getDashboard()                { return this.request(NOTIFICATION_ENDPOINTS.DASHBOARD); }
   cleanup(days = 30)            { return this.request(`${NOTIFICATION_ENDPOINTS.CLEANUP}?days=${days}`, { method: "DELETE" }); }
@@ -487,7 +596,7 @@ export class NotificationAPI extends BaseAPI {
 
   async getUnreadNotifications(params = {}) {
     return this.getUserNotifications({ ...params, unread_only: true, include_stats: true });
-    }
+  }
 
   async getUnreadCount() {
     try {
@@ -771,6 +880,7 @@ const APIClient = {
 
   ENDPOINTS,
   NOTIFICATION_ENDPOINTS,
+  resolveMediaUrl,
 
   init: (config = {}) => {
     if (config.apiUrl) {

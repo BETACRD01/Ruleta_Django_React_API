@@ -14,22 +14,15 @@ from rest_framework import serializers
 from .models import User, UserProfile, PasswordResetRequest
 
 # ================== Teléfonos (con código de país) ==================
-# Requerimos E.164 (p.ej. +5939XXXXXXXX, +521XXXXXXXXXX, +349XXXXXXXX)
-# Si el usuario ingresa sin '+', se intenta adivinar con región por defecto
-# y se devuelve un error con SUGERENCIA en E.164.
 try:
     import phonenumbers
     from phonenumbers.phonenumberutil import NumberParseException
-except Exception:  # pragma: no cover
+except Exception:
     phonenumbers = None
     NumberParseException = Exception
 
 
 def _default_region_from_settings() -> str:
-    """
-    Región por defecto para adivinar el número cuando el usuario no incluye '+<código>'.
-    Puedes definir en settings.py: DEFAULT_PHONE_REGION = "EC" (o "MX", "PE", "CO", "ES", etc.)
-    """
     region = getattr(settings, "DEFAULT_PHONE_REGION", "EC")
     if not isinstance(region, str) or len(region) != 2:
         return "EC"
@@ -37,11 +30,7 @@ def _default_region_from_settings() -> str:
 
 
 def _format_e164_or_none(raw: str, region: Optional[str] = None) -> Optional[str]:
-    """
-    Devuelve el número en E.164 (+XXXXXXXXXXXX) o None si no es válido.
-    Si raw inicia con '+', se ignora region y se analiza como internacional.
-    """
-    if not phonenumbers:  # Fallback mínimo si falta la lib
+    if not phonenumbers:
         s = re.sub(r"[^\d+]", "", raw or "")
         return s if s.startswith("+") and len(s) >= 8 else None
 
@@ -61,7 +50,6 @@ def _format_e164_or_none(raw: str, region: Optional[str] = None) -> Optional[str
 # ================== SERIALIZERS ==================
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    """RF1.1: Registro de usuarios con teléfono (E.164) y términos"""
     password = serializers.CharField(
         write_only=True,
         validators=[validate_password],
@@ -74,7 +62,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     phone = serializers.CharField(
         max_length=20,
         required=True,
-        write_only=True,  # solo entrada
+        write_only=True,
         help_text="Incluye el código de país. Ej: +5939XXXXXXXX o +521234567890",
     )
     accept_terms = serializers.BooleanField(
@@ -101,8 +89,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             "last_name": {"required": True},
         }
 
-    # -------- Validaciones de campo --------
-
     def validate_email(self, value):
         email = (value or "").strip().lower()
         if User.objects.filter(email__iexact=email).exists():
@@ -120,20 +106,16 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def validate_phone(self, value):
         raw = (value or "").strip()
 
-        # Si no empieza con '+', intentamos sugerir con la región por defecto
         if not raw.startswith("+"):
             suggested = _format_e164_or_none(raw, _default_region_from_settings())
             if suggested:
-                # Sugerimos el E.164 correcto, pero exigimos que el usuario lo envíe con '+'
                 raise serializers.ValidationError(
                     f"Incluye el código de país. Sugerencia: {suggested}"
                 )
-            # No se pudo ni sugerir: inválido
             raise serializers.ValidationError(
                 "Incluye el código de país en formato internacional (E.164). Ej: +5939XXXXXXXX"
             )
 
-        # Tiene '+': validar y normalizar a E.164
         normalized = _format_e164_or_none(raw, None)
         if not normalized:
             raise serializers.ValidationError("Número de teléfono inválido. Usa formato +<código><número> en E.164.")
@@ -153,28 +135,22 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"password_confirm": "Las contraseñas no coinciden."})
         return attrs
 
-    # -------- Creación --------
     @transaction.atomic
     def create(self, validated_data):
-        # Extraer campos no pertenecientes a User
         validated_data.pop("password_confirm", None)
         phone = validated_data.pop("phone")
         accept_terms = validated_data.pop("accept_terms", False)
         password = validated_data.pop("password")
 
-        # Normalizar básicos
         email = (validated_data.get("email") or "").lower().strip()
         username = (validated_data.get("username") or "").strip()
         validated_data["email"] = email
         validated_data["username"] = username
 
-        # Crear usuario
         user = User.objects.create_user(password=password, **validated_data)
 
-        # Crear/obtener perfil (robusto ante signals)
         profile, _ = UserProfile.objects.get_or_create(user=user)
 
-        # Setear teléfono y términos
         update_fields = []
         if phone and profile.phone != phone:
             profile.phone = phone
@@ -187,12 +163,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
         return user
 
-    # -------- Representación de salida --------
     def to_representation(self, instance: User):
-        """
-        Evita leer campos inexistentes en User. Devuelve datos del User
-        y un bloque 'profile' con el teléfono, si existe.
-        """
         data = {
             "id": instance.id,
             "username": instance.username,
@@ -215,7 +186,6 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
 
 class UserLoginSerializer(serializers.Serializer):
-    """RF1.1: Inicio de sesión"""
     email = serializers.EmailField()
     password = serializers.CharField(style={"input_type": "password"})
 
@@ -226,11 +196,9 @@ class UserLoginSerializer(serializers.Serializer):
         if not (email and password):
             raise serializers.ValidationError("Debe proporcionar email y contraseña.")
 
-        # Uniformar error si el usuario no existe
         if not User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError("Credenciales inválidas.")
 
-        # Autenticar. Asumimos USERNAME_FIELD='email'
         user = authenticate(self.context.get("request"), username=email, password=password)
         if not user:
             raise serializers.ValidationError("Credenciales inválidas.")
@@ -266,6 +234,110 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return f"{obj.first_name} {obj.last_name}".strip()
 
 
+class UserProfileUpdateSerializer(serializers.Serializer):
+    """Serializer para actualizar perfil completo incluyendo avatar y datos de UserProfile"""
+    # Campos de User
+    username = serializers.CharField(required=False, max_length=150)
+    first_name = serializers.CharField(required=False, max_length=150)
+    last_name = serializers.CharField(required=False, max_length=150)
+    
+    # Campos de UserProfile
+    avatar = serializers.ImageField(required=False, allow_null=True)
+    phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    bio = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    birth_date = serializers.DateField(required=False, allow_null=True)
+
+    def validate_username(self, value):
+        user = self.context['request'].user
+        if value and User.objects.exclude(id=user.id).filter(username__iexact=value).exists():
+            raise serializers.ValidationError("Este nombre de usuario ya está en uso.")
+        return value
+
+    def validate_phone(self, value):
+        if not value:
+            return value
+        
+        user = self.context['request'].user
+        raw = value.strip()
+        
+        if not raw.startswith("+"):
+            suggested = _format_e164_or_none(raw, _default_region_from_settings())
+            if suggested:
+                raise serializers.ValidationError(
+                    f"Incluye el código de país. Sugerencia: {suggested}"
+                )
+            raise serializers.ValidationError(
+                "Incluye el código de país en formato internacional (E.164). Ej: +5939XXXXXXXX"
+            )
+        
+        normalized = _format_e164_or_none(raw, None)
+        if not normalized:
+            raise serializers.ValidationError("Número de teléfono inválido.")
+        
+        if UserProfile.objects.exclude(user=user).filter(phone=normalized).exists():
+            raise serializers.ValidationError("Este número de teléfono ya está registrado.")
+        
+        return normalized
+
+    def update(self, instance, validated_data):
+        # Actualizar campos de User
+        if 'username' in validated_data:
+            instance.username = validated_data['username']
+        if 'first_name' in validated_data:
+            instance.first_name = validated_data['first_name']
+        if 'last_name' in validated_data:
+            instance.last_name = validated_data['last_name']
+        instance.save()
+
+        # Actualizar o crear perfil
+        profile, _ = UserProfile.objects.get_or_create(user=instance)
+        
+        # Avatar
+        if 'avatar' in validated_data:
+            profile.avatar = validated_data['avatar']
+        
+        # Phone
+        if 'phone' in validated_data:
+            profile.phone = validated_data['phone']
+        
+        # Bio
+        if 'bio' in validated_data:
+            profile.bio = validated_data['bio']
+        
+        # Birth date
+        if 'birth_date' in validated_data:
+            profile.birth_date = validated_data['birth_date']
+        
+        profile.save()
+        return instance
+
+    def to_representation(self, instance):
+        data = {
+            "id": instance.id,
+            "username": instance.username,
+            "email": instance.email,
+            "first_name": instance.first_name,
+            "last_name": instance.last_name,
+            "role": instance.role,
+            "is_email_verified": instance.is_email_verified,
+            "created_at": instance.created_at,
+        }
+        
+        profile = getattr(instance, "profile", None)
+        if profile:
+            data["profile"] = {
+                "phone": profile.phone,
+                "bio": profile.bio,
+                "birth_date": profile.birth_date,
+                "avatar": instance.profile.avatar.url if profile.avatar else None,
+                "terms_accepted_at": profile.terms_accepted_at,
+            }
+        else:
+            data["profile"] = None
+        
+        return data
+
+
 class UserProfileDetailSerializer(serializers.ModelSerializer):
     profile = serializers.SerializerMethodField()
 
@@ -291,16 +363,12 @@ class UserProfileDetailSerializer(serializers.ModelSerializer):
             "phone": profile.phone,
             "bio": profile.bio,
             "birth_date": profile.birth_date,
-            "avatar": (profile.avatar.url if getattr(profile, "avatar", None) else None),
+            "avatar": profile.avatar.url if profile.avatar else None,
             "terms_accepted_at": profile.terms_accepted_at,
         }
 
 
 class PasswordResetRequestSerializer(serializers.Serializer):
-    """
-    RF1.4.1: Solicitud de restablecimiento
-    → Solo normaliza el email. No filtra existencia ni límite (para no delatar info).
-    """
     email = serializers.EmailField()
 
     def validate_email(self, value):
@@ -308,7 +376,6 @@ class PasswordResetRequestSerializer(serializers.Serializer):
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
-    """RF1.4.4: Nueva contraseña con políticas de seguridad"""
     token = serializers.CharField()
     new_password = serializers.CharField(validators=[validate_password], style={"input_type": "password"})
     confirm_password = serializers.CharField(style={"input_type": "password"})
