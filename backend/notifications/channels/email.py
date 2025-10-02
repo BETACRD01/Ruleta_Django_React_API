@@ -1,5 +1,7 @@
 # backend/notifications/channels/email.py
 import logging
+import ssl
+import smtplib
 from typing import List, Optional
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string, TemplateDoesNotExist
@@ -11,7 +13,7 @@ from .base import NotificationChannel, NotificationMessage
 logger = logging.getLogger(__name__)
 
 class EmailChannel(NotificationChannel):
-    """Canal de email con manejo de errores y fallbacks"""
+    """Canal de email con manejo de SSL mejorado"""
     
     def __init__(self, from_email: Optional[str] = None):
         self.from_email = from_email or getattr(settings, "DEFAULT_FROM_EMAIL", None)
@@ -40,24 +42,75 @@ class EmailChannel(NotificationChannel):
                 logger.error(f"No templates found for {message.template}")
                 return False
             
-            # Crear mensaje
-            email_msg = EmailMultiAlternatives(
+            # SOLUCIÓN: Enviar usando conexión personalizada
+            return self._send_with_custom_connection(
                 subject=message.subject,
-                body=txt_content or "Este mensaje requiere HTML",
-                from_email=self.from_email,
-                to=valid_recipients,
+                txt_content=txt_content,
+                html_content=html_content,
+                recipients=valid_recipients
             )
             
+        except Exception as e:
+            logger.error(f"Failed to send email: {str(e)}", exc_info=True)
+            return False
+    
+    def _send_with_custom_connection(self, subject, txt_content, html_content, recipients) -> bool:
+        """Envía email usando conexión SMTP manual con SSL personalizado"""
+        try:
+            # Crear contexto SSL sin verificación en desarrollo
+            context = ssl.create_default_context()
+            if settings.DEBUG:
+                context.check_hostname = False
+                context.verify_mode = ssl.CERT_NONE
+                logger.debug("SSL verification disabled for development")
+            
+            # Conectar manualmente al servidor SMTP
+            host = getattr(settings, 'EMAIL_HOST', 'smtp-relay.brevo.com')
+            port = getattr(settings, 'EMAIL_PORT', 587)
+            username = getattr(settings, 'EMAIL_HOST_USER', '')
+            password = getattr(settings, 'EMAIL_HOST_PASSWORD', '')
+            timeout = getattr(settings, 'EMAIL_TIMEOUT', 60)
+            
+            # Establecer conexión
+            server = smtplib.SMTP(host, port, timeout=timeout)
+            server.set_debuglevel(0)  # Cambiar a 1 para debug
+            
+            # Iniciar TLS con contexto personalizado
+            server.starttls(context=context)
+            
+            # Autenticar
+            server.login(username, password)
+            
+            # Preparar mensaje
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+            
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = self.from_email
+            msg['To'] = ', '.join(recipients)
+            
+            # Agregar contenido
+            if txt_content:
+                msg.attach(MIMEText(txt_content, 'plain', 'utf-8'))
             if html_content:
-                email_msg.attach_alternative(html_content, "text/html")
+                msg.attach(MIMEText(html_content, 'html', 'utf-8'))
             
             # Enviar
-            email_msg.send(fail_silently=False)
-            logger.info(f"Email sent successfully to {len(valid_recipients)} recipients")
+            server.send_message(msg)
+            server.quit()
+            
+            logger.info(f"Email sent successfully to {len(recipients)} recipients")
             return True
             
+        except smtplib.SMTPAuthenticationError as e:
+            logger.error(f"SMTP Authentication failed: {e}")
+            return False
+        except smtplib.SMTPException as e:
+            logger.error(f"SMTP error: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to send email: {str(e)}")
+            logger.error(f"Unexpected error sending email: {e}", exc_info=True)
             return False
     
     def is_available(self) -> bool:

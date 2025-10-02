@@ -107,6 +107,18 @@ class WinnerEmailService:
         prize_url = f"{frontend_base}/mis-premios"
         roulette_url = f"{frontend_base}/roulette/{context.roulette_id}" if context.roulette_id else None
         
+        # CORRECCIÓN: Usar BRAND_NAME de settings
+        brand_name = getattr(settings, "BRAND_NAME", "HAYU 24")
+        
+        # URL para darse de baja (opcional - solo si implementas la funcionalidad)
+        unsubscribe_url = None
+        if hasattr(context.winner, 'id'):
+            # Generar token seguro para unsubscribe
+            from django.utils.http import urlsafe_base64_encode
+            from django.utils.encoding import force_bytes
+            user_id_b64 = urlsafe_base64_encode(force_bytes(context.winner.id))
+            unsubscribe_url = f"{frontend_base}/unsubscribe/{user_id_b64}"
+        
         return {
             # Información del usuario
             "user_first_name": getattr(context.winner, "first_name", "") or None,
@@ -131,11 +143,12 @@ class WinnerEmailService:
             "pickup_instructions": context.pickup_instructions,
             "prize_url": prize_url,
             "roulette_url": roulette_url,
+            "unsubscribe_url": unsubscribe_url,  # NUEVO
             
-            # Configuración del sitio
+            # Configuración del sitio - CORREGIDO
             "support_email": getattr(settings, "DEFAULT_FROM_EMAIL", None),
             "brand_logo": f"{frontend_base}/static/email/logo.png",
-            "brand_name": "LuckySpin",
+            "brand_name": brand_name,  # USAR VARIABLE
             "site_url": frontend_base,
         }
     
@@ -151,6 +164,11 @@ class WinnerEmailService:
             logger.warning(f"Winner {context.winner.username} has no email address")
             return False
         
+        # Verificar si el usuario quiere recibir notificaciones
+        if hasattr(context.winner, 'receive_notifications') and not context.winner.receive_notifications:
+            logger.info(f"Winner {context.winner.username} has opted out of notifications")
+            return False
+        
         subject = f"🎉 ¡Has ganado {context.prize_name}!"
         
         return notification_manager.send(
@@ -160,7 +178,7 @@ class WinnerEmailService:
             template="winner_notification",
             context=email_context,
             priority=priority,
-            fallback_channels=[]  # No fallback para el ganador por ahora
+            fallback_channels=[]
         )
     
     @staticmethod
@@ -178,7 +196,7 @@ class WinnerEmailService:
             ).exclude(email="").exclude(email__isnull=True)
             
             sent_count = 0
-            subject = f"👑 Nuevo Ganador: {context.prize_name} - {context.roulette_name}"
+            subject = f"🏆 Nuevo Ganador: {context.prize_name} - {context.roulette_name}"
             
             for admin in admins:
                 try:
@@ -222,7 +240,7 @@ class WinnerEmailService:
         priority: Priority = Priority.HIGH
     ) -> dict:
         """
-        Envía notificaciones a múltiples ganadores (útil para sorteos múltiples)
+        Envía notificaciones a múltiples ganadores
         
         Returns:
             dict: Estadísticas agregadas del envío
@@ -240,7 +258,7 @@ class WinnerEmailService:
                 
                 result = WinnerEmailService.send_winner_notification(
                     context, 
-                    notify_admins=(notify_admins and i == 1),  # Solo enviar a admins en el primer ganador
+                    notify_admins=(notify_admins and i == 1),
                     priority=priority
                 )
                 
@@ -263,7 +281,6 @@ class WinnerEmailService:
         return batch_results
 
 
-# Función de conveniencia para uso simple
 def send_winner_email(
     winner: AbstractUser,
     roulette_name: str,
@@ -275,23 +292,7 @@ def send_winner_email(
     notify_admins: bool = True,
     **kwargs
 ) -> dict:
-    """
-    Función de conveniencia para enviar notificación de ganador
-    
-    Args:
-        winner: Usuario ganador
-        roulette_name: Nombre de la ruleta
-        prize_name: Nombre del premio
-        prize_description: Descripción del premio (opcional)
-        prize_image_url: URL de imagen del premio (opcional)
-        prize_rank: Posición/rango del premio (opcional)
-        pickup_instructions: Instrucciones de recogida (opcional)
-        notify_admins: Si notificar a administradores (default: True)
-        **kwargs: Argumentos adicionales para WinnerNotificationContext
-    
-    Returns:
-        dict: Resultado del envío
-    """
+    """Función de conveniencia para enviar notificación de ganador"""
     context = WinnerNotificationContext(
         winner=winner,
         roulette_name=roulette_name,

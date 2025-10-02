@@ -21,26 +21,23 @@
 
    👤 Ganador:   {{ user_full_name }}
    📧 Email:     {{ user_email }}
-   {% if user_first_name %}🆔 Nombre:    {{ user_first_name }}{% endif %}
-
+   {% if user_first_name %}🆔 Nombre:    {{ user_first_name }}
+   {% endif %}
 
 🎁 PREMIO GANADO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
    {{ prize_rank_emoji }} {{ prize_rank_label }}: {{ prize_name }}
-
-   {% if prize_description %}
+{% if prize_description %}
    📝 Descripción:
    {{ prize_description }}
-   {% endif %}
-
-   {% if pickup_instructions %}
+{% endif %}
+{% if pickup_instructions %}
    📦 INSTRUCCIONES DE RETIRO:
    ───────────────────────────────────────────────────────────
    {{ pickup_instructions }}
    ───────────────────────────────────────────────────────────
-   {% endif %}
-
+{% endif %}
 
 📊 RESUMEN DEL SORTEO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -61,35 +58,36 @@
    
    3. ✓ Actualizar estado del sorteo en el sistema
    
-   {% if support_email %}4. ✓ Soporte disponible para el ganador en:
+   4. ✓ Documentar la entrega del premio
+   
+   5. ✓ Preparar el siguiente sorteo (si aplica)
+{% if support_email %}   
+   6. ✓ Soporte disponible para el ganador en:
       → {{ support_email }}
-   
-   {% endif %}5. ✓ Documentar la entrega del premio
-   
-   6. ✓ Preparar el siguiente sorteo (si aplica)
-
+{% endif %}
 
 👨‍💼 INFORMACIÓN DE CONTACTO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
    Admin:     {% if admin_name %}{{ admin_name }}{% else %}Administrador{% endif %}
    Email:     {{ admin_email }}
-   {% if support_email %}Soporte:   {{ support_email }}{% endif %}
-
+{% if support_email %}   Soporte:   {{ support_email }}
+{% endif %}
 
 🔗 ENLACES RÁPIDOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-   {% if roulette_url %}🎡 Ver ruleta:
+{% if roulette_url %}
+   🎡 Ver ruleta:
    {{ roulette_url }}
-   
-   {% endif %}{% if prize_url %}⚙️  Gestionar premios:
+{% endif %}
+{% if prize_url %}
+   ⚙️  Gestionar premios:
    {{ prize_url }}
-   
-   {% endif %}{% if site_url %}🏠 Panel de administración:
+{% endif %}
+{% if site_url %}
+   🏠 Panel de administración:
    {{ site_url }}
-   
-   {% endif %}
+{% endif %}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    

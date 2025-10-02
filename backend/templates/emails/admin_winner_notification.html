@@ -151,6 +151,7 @@
             font-size: 16px; 
             color: #111827;
             font-weight: 500;
+            word-break: break-word;
         }
         .prize-section { 
             background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
@@ -170,24 +171,37 @@
             font-weight: 700;
             font-size: 18px;
         }
+        
+        /* LAYOUT MEJORADO PARA PREMIO */
         .prize-content {
-            display: flex;
-            gap: 20px;
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 25px;
             align-items: start;
         }
+        
         .prize-image { 
-            max-width: 150px;
-            min-width: 150px;
-            height: 150px;
+            width: 100%;
+            height: 180px;
             object-fit: cover;
             border-radius: 10px; 
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
-        .prize-details { flex: 1; }
-        .prize-details p { 
-            margin: 10px 0;
-            line-height: 1.7;
+        
+        .prize-details { 
+            min-width: 0; /* Permite que el texto se ajuste correctamente */
         }
+        
+        .prize-details p { 
+            margin: 0 0 15px 0;
+            line-height: 1.7;
+            word-wrap: break-word;
+        }
+        
+        .prize-details p:last-child {
+            margin-bottom: 0;
+        }
+        
         .action-section { 
             text-align: center; 
             margin: 35px 0;
@@ -321,12 +335,9 @@
         .footer-text a:hover {
             text-decoration: underline;
         }
-        .divider {
-            height: 1px;
-            background: linear-gradient(to right, transparent, #e5e7eb, transparent);
-            margin: 30px 0;
-        }
-        @media (max-width: 600px) {
+        
+        /* RESPONSIVE MEJORADO */
+        @media (max-width: 680px) {
             .email-container { 
                 margin: 10px; 
                 border-radius: 12px;
@@ -337,15 +348,33 @@
             .trophy-icon { font-size: 36px; }
             .info-grid { grid-template-columns: 1fr; }
             .stats-grid { grid-template-columns: 1fr; }
-            .prize-content { flex-direction: column; }
-            .prize-image { 
-                max-width: 100%;
-                min-width: 100%;
-                height: 200px;
+            
+            /* Layout de premio adaptativo */
+            .prize-content { 
+                grid-template-columns: 1fr;
+                gap: 20px;
             }
+            
+            .prize-image { 
+                width: 100%;
+                height: 200px;
+                max-width: 100%;
+            }
+            
             .btn { 
                 display: block;
                 margin: 8px 0;
+            }
+        }
+        
+        /* Breakpoint intermedio para tablets */
+        @media (max-width: 480px) {
+            .prize-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .prize-image {
+                height: 180px;
             }
         }
     </style>

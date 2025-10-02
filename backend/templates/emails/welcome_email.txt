@@ -1,0 +1,31 @@
+{{ brand_name }}
+Sistema de Rifas en Línea
+═══════════════════════════════════════════════
+
+✓ CUENTA CREADA EXITOSAMENTE
+
+Hola {{ user_first_name }},
+
+Tu cuenta en {{ brand_name }} ha sido registrada exitosamente.
+
+DETALLES DE TU CUENTA
+───────────────────────────────────────────────
+Usuario:  {{ username }}
+Email:    {{ user_email }}
+Nombre:   {{ user_full_name }}
+
+Ya puedes iniciar sesión y comenzar a participar en nuestras rifas.
+
+Iniciar sesión: {{ login_url }}
+
+Si tienes alguna pregunta, no dudes en contactarnos.
+
+───────────────────────────────────────────────
+{{ brand_name }}
+Sistema de Rifas en Línea
+{% if support_email %}Soporte: {{ support_email }}{% endif %}
+
+© {{ brand_name }} - Todos los derechos reservados
+
+Este es un correo automático de confirmación. 
+Si no creaste esta cuenta, por favor ignora este mensaje.

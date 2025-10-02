@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reactivar suscripción - HAYU 24</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f0 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            max-width: 500px;
+            width: 100%;
+            padding: 40px;
+            text-align: center;
+            border: 1px solid #e5e7eb;
+        }
+        .icon {
+            font-size: 56px;
+            margin-bottom: 20px;
+            opacity: 0.9;
+        }
+        h1 {
+            color: #1f2937;
+            font-size: 26px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+        p {
+            color: #6b7280;
+            line-height: 1.6;
+            margin-bottom: 24px;
+            font-size: 15px;
+        }
+        .email {
+            background: #f9fafb;
+            padding: 14px;
+            border-radius: 8px;
+            color: #374151;
+            font-weight: 500;
+            margin-bottom: 28px;
+            border: 1px solid #e5e7eb;
+            font-size: 14px;
+        }
+        .button {
+            background: #059669;
+            color: white;
+            border: none;
+            padding: 14px 32px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: 100%;
+            box-shadow: 0 2px 8px rgba(5, 150, 105, 0.2);
+        }
+        .button:hover {
+            background: #047857;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(5, 150, 105, 0.25);
+        }
+        .button:active {
+            transform: translateY(0);
+        }
+        .button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        .message {
+            display: none;
+            padding: 14px 16px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-weight: 500;
+            font-size: 14px;
+            text-align: left;
+        }
+        .message.success {
+            background: #ecfdf5;
+            color: #047857;
+            display: block;
+            border: 1px solid #d1fae5;
+        }
+        .message.error {
+            background: #fef2f2;
+            color: #b91c1c;
+            display: block;
+            border: 1px solid #fecaca;
+        }
+        .footer {
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid #e5e7eb;
+            color: #9ca3af;
+            font-size: 13px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">📬</div>
+        <h1>Reactivar notificaciones</h1>
+        <p>¿Quieres volver a recibir notificaciones por email cuando ganes premios?</p>
+        
+        <div class="email">{{ email }}</div>
+        
+        <button class="button" id="resubscribeBtn" onclick="resubscribe()">
+            Sí, reactivar notificaciones
+        </button>
+        
+        <div class="message" id="message"></div>
+        
+        <div class="footer">
+            <p>Recibirás notificaciones cada vez que ganes un premio en las ruletas.</p>
+        </div>
+    </div>
+
+    <script>
+        function resubscribe() {
+            const btn = document.getElementById('resubscribeBtn');
+            const msg = document.getElementById('message');
+            
+            btn.disabled = true;
+            btn.textContent = 'Procesando...';
+            
+            fetch(window.location.pathname, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    msg.className = 'message success';
+                    msg.textContent = data.message;
+                    btn.textContent = '✓ Notificaciones activadas';
+                } else {
+                    throw new Error(data.message || 'Error desconocido');
+                }
+            })
+            .catch(error => {
+                msg.className = 'message error';
+                msg.textContent = 'Error al procesar la solicitud. Inténtalo de nuevo.';
+                btn.disabled = false;
+                btn.textContent = 'Reintentar';
+            });
+        }
+    </script>
+</body>
+</html>

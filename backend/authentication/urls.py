@@ -15,7 +15,11 @@ urlpatterns = [
 
     path("password-reset/request/", views.PasswordResetRequestView.as_view(), name="password-reset-request"),
     path("password-reset/confirm/", views.PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
-    path("validate-reset-token/", views.validate_reset_token, name="validate-reset-token"),  # CAMBIADO AQUÍ
+    path("validate-reset-token/", views.validate_reset_token, name="validate-reset-token"),
 
     path("change-password/", views.ChangePasswordView.as_view(), name="change-password"),
+    
+    # NUEVAS RUTAS: Unsubscribe/Resubscribe
+    path("unsubscribe/<str:user_id_b64>/", views.unsubscribe_notifications, name="unsubscribe"),
+    path("resubscribe/<str:user_id_b64>/", views.resubscribe_notifications, name="resubscribe"),
 ]

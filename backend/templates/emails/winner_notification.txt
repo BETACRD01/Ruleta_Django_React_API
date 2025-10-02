@@ -1,4 +1,4 @@
-Sistema de rifas en línea HAYU 24
+{{ brand_name }}
 
 ¡Estimado/a, {{ user_full_name }}!
 
@@ -25,7 +25,7 @@ Nombre del ganador | Lugar del premio | Descripción
 
 
 Síguenos en nuestras redes sociales
-facebook | facebook | instagram | twitter
+Facebook | Instagram | Twitter
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -51,3 +51,6 @@ Este correo ha sido enviado de forma automática y no requiere respuesta
 {% if site_url %}{{ site_url }}{% endif %}
 
 © {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.
+
+---
+{% if unsubscribe_url %}Si no deseas recibir más correos, visita: {{ unsubscribe_url }}{% endif %}

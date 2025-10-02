@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cuenta Creada - {{ brand_name }}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 20px;">
+        <tr>
+            <td align="center">
+                <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; max-width: 100%;">
+                    
+                    <!-- Header -->
+                    <tr>
+                        <td style="background: linear-gradient(135deg, #0b56a7 0%, #389fae 100%); padding: 40px 30px; text-align: center;">
+                            <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">
+                                {{ brand_name }}
+                            </h1>
+                            <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">
+                                Sistema de Rifas en Línea
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Ícono de éxito -->
+                    <tr>
+                        <td style="padding: 40px 30px 20px 30px; text-align: center;">
+                            <div style="width: 80px; height: 80px; margin: 0 auto; background-color: #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                <span style="font-size: 48px; color: #ffffff;">✓</span>
+                            </div>
+                        </td>
+                    </tr>
+                    
+                    <!-- Contenido principal -->
+                    <tr>
+                        <td style="padding: 0 30px 40px 30px;">
+                            <h2 style="color: #0b56a7; margin: 0 0 20px 0; font-size: 24px; font-weight: 600; text-align: center;">
+                                ¡Cuenta Creada Exitosamente!
+                            </h2>
+                            
+                            <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 20px 0; text-align: center;">
+                                Hola <strong>{{ user_first_name }}</strong>,
+                            </p>
+                            
+                            <p style="color: #333333; font-size: 16px; line-height: 1.6; margin: 0 0 30px 0; text-align: center;">
+                                Tu cuenta en <strong style="color: #389fae;">{{ brand_name }}</strong> ha sido registrada exitosamente.
+                            </p>
+                            
+                            <!-- Información de la cuenta -->
+                            <div style="background-color: #f8f9fa; border-left: 4px solid #10b981; padding: 20px; margin: 0 0 30px 0; border-radius: 4px;">
+                                <h3 style="color: #0b56a7; margin: 0 0 15px 0; font-size: 16px; font-weight: 600;">
+                                    Detalles de tu cuenta
+                                </h3>
+                                <table width="100%" cellpadding="8" cellspacing="0">
+                                    <tr>
+                                        <td style="color: #666666; font-size: 14px; padding: 4px 0;"><strong>Usuario:</strong></td>
+                                        <td style="color: #333333; font-size: 14px; padding: 4px 0;">{{ username }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="color: #666666; font-size: 14px; padding: 4px 0;"><strong>Email:</strong></td>
+                                        <td style="color: #333333; font-size: 14px; padding: 4px 0;">{{ user_email }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="color: #666666; font-size: 14px; padding: 4px 0;"><strong>Nombre:</strong></td>
+                                        <td style="color: #333333; font-size: 14px; padding: 4px 0;">{{ user_full_name }}</td>
+                                    </tr>
+                                </table>
+                            </div>
+                            
+                            <p style="color: #555555; font-size: 15px; line-height: 1.6; margin: 0 0 30px 0; text-align: center;">
+                                Ya puedes iniciar sesión y comenzar a participar en nuestras rifas.
+                            </p>
+                            
+                            <!-- Botón de acción -->
+                            <table width="100%" cellpadding="0" cellspacing="0">
+                                <tr>
+                                    <td align="center" style="padding: 10px 0;">
+                                        <a href="{{ login_url }}" style="display: inline-block; background-color: #389fae; color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 6px; font-size: 16px; font-weight: 600; box-shadow: 0 2px 8px rgba(56, 159, 174, 0.3);">
+                                            Iniciar Sesión
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                            
+                            <p style="color: #666666; font-size: 13px; line-height: 1.6; margin: 30px 0 0 0; text-align: center;">
+                                Si tienes alguna pregunta, no dudes en contactarnos.
+                            </p>
+                        </td>
+                    </tr>
+                    
+                    <!-- Footer -->
+                    <tr>
+                        <td style="background-color: #f8f9fa; padding: 25px 30px; text-align: center; border-top: 1px solid #e9ecef;">
+                            <p style="color: #666666; font-size: 14px; margin: 0 0 8px 0; font-weight: 600;">
+                                {{ brand_name }}
+                            </p>
+                            <p style="color: #999999; font-size: 12px; margin: 0 0 15px 0;">
+                                Sistema de Rifas en Línea
+                            </p>
+                            {% if support_email %}
+                            <p style="color: #999999; font-size: 12px; margin: 0;">
+                                Soporte: <a href="mailto:{{ support_email }}" style="color: #389fae; text-decoration: none;">{{ support_email }}</a>
+                            </p>
+                            {% endif %}
+                            <p style="color: #cccccc; font-size: 11px; margin: 15px 0 0 0;">
+                                © {{ brand_name }} - Todos los derechos reservados
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+                
+                <!-- Nota de seguridad -->
+                <table width="600" cellpadding="0" cellspacing="0" style="margin-top: 20px; max-width: 100%;">
+                    <tr>
+                        <td style="padding: 0 20px; text-align: center;">
+                            <p style="color: #999999; font-size: 11px; line-height: 1.5; margin: 0;">
+                                Este es un correo automático de confirmación. Si no creaste esta cuenta, por favor ignora este mensaje.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -15,6 +15,12 @@ from django.template import TemplateDoesNotExist
 from django.utils.html import strip_tags
 from django.db import transaction
 from django.utils import timezone
+from django.shortcuts import render
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+from django.utils.http import urlsafe_base64_decode
+from django.utils.encoding import force_str
 
 import secrets
 import logging
@@ -30,6 +36,9 @@ from .serializers import (
     PasswordResetConfirmSerializer,
     ChangePasswordSerializer,
 )
+
+# IMPORTAR EL NUEVO SERVICIO DE EMAIL DE BIENVENIDA
+from notifications.welcome_email_service import send_welcome_email
 
 logger = logging.getLogger(__name__)
 
@@ -55,38 +64,22 @@ class RegisterView(generics.CreateAPIView):
                 phone = None
 
             logger.info(f"Nuevo usuario registrado: {user.email} con teléfono: {phone or ''}")
-            self.send_welcome_email(user)
+            
+            # ============================================================
+            # ENVIAR NOTIFICACIÓN DE CUENTA CREADA
+            # ============================================================
+            try:
+                email_sent = send_welcome_email(user)
+                if email_sent:
+                    logger.info(f"Notificación de registro enviada exitosamente a: {user.email}")
+                else:
+                    logger.warning(f"No se pudo enviar notificación de registro a: {user.email}")
+            except Exception as e:
+                # No fallar el registro si el email falla
+                logger.error(f"Error enviando notificación de registro: {e}", exc_info=True)
 
         out = self.get_serializer(instance=user)
         return Response(out.data, status=status.HTTP_201_CREATED)
-
-    def send_welcome_email(self, user):
-        try:
-            subject = "¡Bienvenido al Sistema de Ruletas!"
-            ctx = {"user": user, "site_name": "Sistema de Ruletas"}
-
-            try:
-                html_message = render_to_string("authentication/welcome_email.html", ctx)
-                plain_message = strip_tags(html_message)
-            except TemplateDoesNotExist:
-                html_message = None
-                plain_message = (
-                    f"Hola {user.first_name or user.username},\n\n"
-                    "¡Bienvenido al Sistema de Ruletas!\n\n"
-                    "— Sistema de Ruletas"
-                )
-
-            send_mail(
-                subject,
-                plain_message if not html_message else strip_tags(html_message),
-                getattr(settings, "DEFAULT_FROM_EMAIL", "no-reply@ruletas.local"),
-                [user.email],
-                html_message=html_message,
-                fail_silently=True,
-            )
-            logger.info(f"Email de bienvenida enviado a: {user.email}")
-        except Exception as e:
-            logger.error(f"Error enviando email de bienvenida: {e}")
 
 
 class LoginView(APIView):
@@ -192,7 +185,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     
     def update(self, request, *args, **kwargs):
         """Override para logging mejorado"""
-        partial = kwargs.pop('partial', True)  # Siempre usar PATCH
+        partial = kwargs.pop('partial', True)
         instance = self.get_object()
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         
@@ -212,6 +205,7 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         """PATCH request"""
         kwargs['partial'] = True
         return self.update(request, *args, **kwargs)
+
 
 class ProfileDetailView(generics.RetrieveAPIView):
     serializer_class = UserProfileDetailSerializer
@@ -400,3 +394,75 @@ def validate_reset_token(request):
         return Response({"valid": False, "message": "Token expirado o ya utilizado"})
     except PasswordResetRequest.DoesNotExist:
         return Response({"valid": False, "message": "Token inválido"})
+
+
+# ============================================================================
+# VISTAS: Unsubscribe/Resubscribe de notificaciones
+# ============================================================================
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def unsubscribe_notifications(request, user_id_b64):
+    """
+    Permite a los usuarios darse de baja de notificaciones por email
+    """
+    try:
+        user_id = force_str(urlsafe_base64_decode(user_id_b64))
+        user = User.objects.get(id=user_id)
+        
+        if request.method == "POST":
+            user.receive_notifications = False
+            user.save(update_fields=['receive_notifications'])
+            
+            logger.info(f"Usuario {user.email} se dio de baja de notificaciones")
+            
+            return JsonResponse({
+                "success": True,
+                "message": "Te has dado de baja exitosamente de las notificaciones por email"
+            })
+        
+        # GET: Mostrar página de confirmación
+        context = {
+            "user": user,
+            "email": user.email,
+            "first_name": user.first_name or user.username,
+        }
+        return render(request, "emails/unsubscribe.html", context)
+        
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist) as e:
+        logger.error(f"Link de baja inválido: {e}")
+        return HttpResponse("Link de baja inválido o expirado", status=400)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def resubscribe_notifications(request, user_id_b64):
+    """
+    Permite a los usuarios volver a suscribirse a notificaciones
+    """
+    try:
+        user_id = force_str(urlsafe_base64_decode(user_id_b64))
+        user = User.objects.get(id=user_id)
+        
+        if request.method == "POST":
+            user.receive_notifications = True
+            user.save(update_fields=['receive_notifications'])
+            
+            logger.info(f"Usuario {user.email} se volvió a suscribir a notificaciones")
+            
+            return JsonResponse({
+                "success": True,
+                "message": "Te has vuelto a suscribir exitosamente. Recibirás notificaciones de premios ganados."
+            })
+        
+        # GET: Mostrar página de confirmación
+        context = {
+            "user": user,
+            "email": user.email,
+            "first_name": user.first_name or user.username,
+        }
+        return render(request, "emails/resubscribe.html", context)
+        
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist) as e:
+        logger.error(f"Link de suscripción inválido: {e}")
+        return HttpResponse("Link de suscripción inválido o expirado", status=400)

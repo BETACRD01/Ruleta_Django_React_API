@@ -28,6 +28,13 @@ class User(AbstractUser):
     is_email_verified = models.BooleanField(default=False, verbose_name="Email verificado")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Última actualización")
+    
+    # NUEVO: Campo para preferencias de notificaciones
+    receive_notifications = models.BooleanField(
+        default=True,
+        verbose_name="Recibir notificaciones",
+        help_text="Desmarcar para no recibir emails de premios ganados"
+    )
 
     # Autenticación por email
     USERNAME_FIELD = "email"
@@ -96,10 +103,9 @@ class UserProfile(models.Model):
 
     # Validador Ecuador: +5939XXXXXXXX o 09XXXXXXXX
     phone_validator = RegexValidator(
-    regex=r"^\+?[1-9]\d{7,14}$",
-    message="Teléfono inválido. Usa formato internacional: +[código país][número], ej. +14155552671.",
-)
-
+        regex=r"^\+?[1-9]\d{7,14}$",
+        message="Teléfono inválido. Usa formato internacional: +[código país][número], ej. +14155552671.",
+    )
 
     user = models.OneToOneField(
         User,

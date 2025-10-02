@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de rifas en línea HAYU 24</title>
+    <title>{{ brand_name }}</title>
     <style>
         * {
             margin: 0;
@@ -49,11 +49,6 @@
         
         .greeting {
             margin-bottom: 20px;
-        }
-        
-        .info-text {
-            margin: 15px 0;
-            line-height: 1.8;
         }
         
         .winner-table {
@@ -116,13 +111,26 @@
             font-size: 11px;
             line-height: 1.6;
         }
+        
+        .unsubscribe {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #ddd;
+            font-size: 11px;
+            color: #999;
+        }
+        
+        .unsubscribe a {
+            color: #4a90e2;
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
     <div class="email-container">
         <!-- Header -->
         <div class="header">
-            <h1>Sistema de rifas en línea HAYU 24</h1>
+            <h1>{{ brand_name }}</h1>
             <h2>¡Estimado/a, {{ user_full_name }}!</h2>
         </div>
         
@@ -179,10 +187,9 @@
             <div style="text-align: center; margin: 20px 0;">
                 <p><strong>Síguenos en nuestras redes sociales</strong></p>
                 <div class="social-links">
-                    <a href="#">facebook</a>
-                    <a href="#">facebook</a>
-                    <a href="#">instagram</a>
-                    <a href="#">twitter</a>
+                    <a href="#">Facebook</a> | 
+                    <a href="#">Instagram</a> | 
+                    <a href="#">Twitter</a>
                 </div>
             </div>
 
@@ -202,6 +209,13 @@
             <p><a href="{{ site_url }}" style="color: #4a90e2;">{{ site_url }}</a></p>
             {% endif %}
             <p style="margin-top: 10px;">&copy; {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.</p>
+            
+            <!-- Unsubscribe Link - CORREGIDO -->
+            {% if unsubscribe_url %}
+            <div class="unsubscribe">
+                <p>Si no deseas recibir más correos de {{ brand_name }}, puedes <a href="{{ unsubscribe_url }}">darte de baja aquí</a></p>
+            </div>
+            {% endif %}
         </div>
     </div>
 </body>

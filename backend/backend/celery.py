@@ -20,14 +20,12 @@ if broker_url.startswith('rediss://'):
     app.conf.update(
         broker_url=broker_url,
         result_backend=result_backend,
-        # Configuración SSL para el broker
         broker_use_ssl={
-            'ssl_cert_reqs': ssl.CERT_NONE,  # Para desarrollo/Redis Cloud básico
+            'ssl_cert_reqs': ssl.CERT_NONE,
             'ssl_ca_certs': None,
             'ssl_certfile': None,
             'ssl_keyfile': None,
         },
-        # Configuración SSL para el backend de resultados
         redis_backend_use_ssl={
             'ssl_cert_reqs': ssl.CERT_NONE,
             'ssl_ca_certs': None,
@@ -45,28 +43,19 @@ else:
 
 # Configuración adicional de Celery
 app.conf.update(
-    # Serialización
     task_serializer='json',
     accept_content=['json'],
     result_serializer='json',
-    
-    # Zona horaria
     timezone='America/Guayaquil',
     enable_utc=True,
-    
-    # Tracking y límites
     task_track_started=True,
-    task_time_limit=30 * 60,  # 30 minutos máximo
-    task_soft_time_limit=25 * 60,  # 25 minutos aviso
-    
-    # Optimizaciones
+    task_time_limit=30 * 60,
+    task_soft_time_limit=25 * 60,
     worker_prefetch_multiplier=4,
     worker_max_tasks_per_child=1000,
     task_acks_late=True,
     task_reject_on_worker_lost=True,
-    
-    # Resultados
-    result_expires=3600,  # 1 hora
+    result_expires=3600,
     result_extended=True,
 )
 
@@ -78,9 +67,7 @@ def debug_task(self):
     print(f'Request: {self.request!r}')
     return 'Debug task executed successfully!'
 
-# Tareas programadas (opcional)
 app.conf.beat_schedule = {
-    # Ejemplo: limpiar tareas antiguas cada día a medianoche
     'cleanup-old-tasks': {
         'task': 'backend.celery.cleanup_task',
         'schedule': crontab(hour=0, minute=0),

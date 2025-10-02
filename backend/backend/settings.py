@@ -3,18 +3,31 @@ import os
 from pathlib import Path
 from django.core.management.utils import get_random_secret_key
 
-# AGREGAR ESTAS LÍNEAS PARA CARGAR .env
+# ============================================================================
+# CARGAR .env CON RUTA EXPLÍCITA
+# ============================================================================
 from dotenv import load_dotenv
-load_dotenv()
 
+# Definir BASE_DIR primero
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Cargar .env desde la carpeta backend con ruta explícita
+env_path = BASE_DIR / '.env'
+load_dotenv(dotenv_path=env_path)
+
+# Debug: verificar que se cargó
+if os.getenv('EMAIL_HOST_USER'):
+    print(f"✓ .env cargado correctamente desde: {env_path}")
+else:
+    print(f"⚠ .env NO se cargó. Buscando en: {env_path}")
+    print(f"⚠ Archivo existe: {env_path.exists()}")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Seguridad / Debug
 # ──────────────────────────────────────────────────────────────────────────────
 SECRET_KEY = os.getenv(
     "DJANGO_SECRET_KEY",
-    "django-insecure-dev-key-k8x@9m#p2w$v4n5q7r&t9y*u3i6o0p-a1s2d3f4g5h6j7"
+    "django-insecure-dev-key-k8x-9m-p2w-v4n5q7r-t9y-u3i6o0p-a1s2d3f4g5h6j7"
 )
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 
@@ -120,12 +133,11 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
         'OPTIONS': {
-            'min_length': 6,  # Mínimo 6 caracteres
+            'min_length': 6,
         }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
-        # Solo evita contraseñas muy obvias como "123456", "password"
     },
 ]
 
@@ -270,14 +282,8 @@ if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = False
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Configuración de Email - LEE TODO DESDE .env
+# Configuración de Email - BREVO
 # ──────────────────────────────────────────────────────────────────────────────
-# NOTA: 
-# - Desarrollo local: EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
-# - Producción: EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-# - Todo se controla desde el archivo .env
-# ──────────────────────────────────────────────────────────────────────────────
-
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 
 # Solo configurar SMTP si no es console backend
@@ -289,14 +295,15 @@ if EMAIL_BACKEND != "django.core.mail.backends.console.EmailBackend":
     EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
     EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
     EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "60"))
+    
     EMAIL_SSL_CERTFILE = None
     EMAIL_SSL_KEYFILE = None
-    EMAIL_USE_LOCALTIME = False
     
     if DEBUG:
         EMAIL_CONNECTION_TIMEOUT = 60
         EMAIL_RETRY_DELAY = 2
         EMAIL_MAX_RETRIES = 3
+        print("⚠️  Email SSL verification will be disabled in development")
 
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "williancerda0@gmail.com")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
@@ -478,41 +485,32 @@ IMAGE_MAX_HEIGHT = int(os.getenv("IMAGE_MAX_HEIGHT", "1200"))
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
 if ENVIRONMENT == 'production':
-    # Producción: usar Redis Cloud con SSL
     redis_url = os.getenv('REDIS_CLOUD_URL')
     print("Modo PRODUCCION: usando Redis Cloud")
 else:
-    # Desarrollo: usar Redis Local (Docker)
     redis_url = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
     print(f"Modo DESARROLLO: usando {redis_url}")
 
-# Configurar URLs de Celery
 CELERY_BROKER_URL = redis_url
 CELERY_RESULT_BACKEND = redis_url
 
-# Configuración de serialización
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = True
 
-# Configuración de reintentos
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 
-# Tiempo máximo de ejecución de tareas
-CELERY_TASK_TIME_LIMIT = 300  # 5 minutos
-CELERY_TASK_SOFT_TIME_LIMIT = 240  # 4 minutos
+CELERY_TASK_TIME_LIMIT = 300
+CELERY_TASK_SOFT_TIME_LIMIT = 240
 
-# Configuración de resultados
-CELERY_RESULT_EXPIRES = 3600  # 1 hora
+CELERY_RESULT_EXPIRES = 3600
 CELERY_RESULT_EXTENDED = True
 
-# Configuración específica para notificaciones
 WINNER_NOTIFICATION_DELAY = int(os.getenv('WINNER_NOTIFICATION_DELAY', '300'))
 
-# Configuración de la marca
-BRAND_NAME = os.getenv("BRAND_NAME", "LuckySpin")
+BRAND_NAME = os.getenv("BRAND_NAME", "HAYU 24")
 MEDIA_URL_BASE = os.getenv("MEDIA_URL_BASE", "http://localhost:8000")
