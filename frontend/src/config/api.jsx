@@ -49,7 +49,7 @@ export const ENDPOINTS = {
     CREATE: "/roulettes/create/",
     DETAIL: (id) => `/roulettes/${id}/`,
     UPDATE: (id) => `/roulettes/${id}/update/`,
-    DELETE: (id) => `/roulettes/${id}/delete/`, // soporta ?force=1
+    DELETE: (id) => `/roulettes/${id}/delete/`,
     STATS:  (id) => `/roulettes/${id}/stats/`,
     DRAW_EXECUTE: "/roulettes/draw/execute/",
     DRAW_HISTORY: "/roulettes/draw/history/",
@@ -167,7 +167,7 @@ const safeStringify = (maybeObject) => {
 export const resolveMediaUrl = (maybeUrl) => {
   if (!maybeUrl) return null;
   try {
-    return new URL(maybeUrl).href; // ya es absoluta
+    return new URL(maybeUrl).href;
   } catch {
     const base = String(API_URL || "").replace(/\/api\/?$/i, "");
     const path = String(maybeUrl).startsWith("/") ? maybeUrl : `/${maybeUrl}`;
@@ -182,6 +182,11 @@ class BaseAPI {
   constructor(baseURL = API_URL, authToken = null) {
     this.baseURL = baseURL;
     this.authToken = authToken || readAnyToken();
+    
+    // Sincronizar token al crear instancia
+    if (this.authToken) {
+      writeAllTokens(this.authToken);
+    }
   }
 
   setAuthToken(token) {
@@ -190,10 +195,15 @@ class BaseAPI {
   }
 
   getHeaders(isMultipart = false) {
+    // Intentar obtener el token de múltiples fuentes
     const token = this.authToken || readAnyToken();
     const headers = { Accept: "application/json" };
-    if (token) headers.Authorization = `Token ${token}`;
-    if (!isMultipart) headers["Content-Type"] = "application/json";
+    if (token) {
+      headers.Authorization = `Token ${token}`;
+    }
+    if (!isMultipart) {
+      headers["Content-Type"] = "application/json";
+    }
     return headers;
   }
 
@@ -316,7 +326,7 @@ const normalizeParticipation = (p = {}) => {
 };
 
 /* ================================
-   Auth API - VERSIÓN COMPLETA CORREGIDA
+   Auth API - VERSIÓN CORREGIDA
 ================================ */
 export class AuthAPI extends BaseAPI {
   constructor() { 
@@ -330,6 +340,10 @@ export class AuthAPI extends BaseAPI {
     });
     if (result?.success && result?.token) {
       this.setAuthToken(result.token);
+      this.authToken = result.token; // Actualizar instancia inmediatamente
+      
+      // Sincronizar con otras instancias globales
+      syncGlobalTokens(result.token);
     }
     return result;
   }
@@ -341,6 +355,10 @@ export class AuthAPI extends BaseAPI {
     });
     if (result?.success && result?.token) {
       this.setAuthToken(result.token);
+      this.authToken = result.token;
+      
+      // Sincronizar con otras instancias globales
+      syncGlobalTokens(result.token);
     }
     return result;
   }
@@ -349,7 +367,8 @@ export class AuthAPI extends BaseAPI {
     try { 
       await this.request(ENDPOINTS.AUTH.LOGOUT, { method: "POST" }); 
     } finally { 
-      this.setAuthToken(null); 
+      this.setAuthToken(null);
+      syncGlobalTokens(null);
     }
   }
 
@@ -361,7 +380,6 @@ export class AuthAPI extends BaseAPI {
     return this.request(ENDPOINTS.AUTH.PROFILE_DETAIL); 
   }
 
-  // ✅ MÉTODO CORREGIDO - Maneja multipart automáticamente
   updateProfile(profile) {
     const isMulti = hasFileDeep(profile);
     const body = isMulti ? buildFormData(profile) : profile;
@@ -400,6 +418,7 @@ export class AuthAPI extends BaseAPI {
     });
   }
 }
+
 /* ================================
    Roulettes API
 ================================ */
@@ -487,11 +506,6 @@ export class ParticipantsAPI extends BaseAPI {
     return this.request(ENDPOINTS.PARTICIPANTS.PARTICIPATE, { method: "POST", body: fd, isMultipart: true });
   }
 
-  /** 
-   * IMPORTANTE: normalizamos la respuesta para que el front
-   * tenga prize_image_url y roulette_image_url en absoluto,
-   * además de participation_state y fechas aplanadas.
-   */
   async getMyParticipations(params = {}) {
     const ep = `${ENDPOINTS.PARTICIPANTS.MY_PARTICIPATIONS}${toQuery(params)}`;
     const raw = await this.request(ep);
@@ -517,7 +531,6 @@ export class ParticipantsAPI extends BaseAPI {
 
   checkParticipation(rouletteId) { return this.request(ENDPOINTS.PARTICIPANTS.CHECK_PARTICIPATION(rouletteId)); }
 
-  // ===== NUEVO: helpers de detalle de participación =====
   getParticipant(participationId) {
     return this.request(ENDPOINTS.PARTICIPANTS.PARTICIPATION_DETAIL(participationId));
   }
@@ -840,13 +853,37 @@ export const formUtils = {
 };
 
 /* ================================
-   Instancias listas
+   Función de sincronización global
+================================ */
+const syncGlobalTokens = (token) => {
+  if (typeof authAPI !== 'undefined') authAPI.authToken = token;
+  if (typeof roulettesAPI !== 'undefined') roulettesAPI.authToken = token;
+  if (typeof participantsAPI !== 'undefined') participantsAPI.authToken = token;
+  if (typeof notificationAPI !== 'undefined') notificationAPI.authToken = token;
+};
+
+/* ================================
+   Instancias globales
 ================================ */
 export const authAPI             = new AuthAPI();
 export const roulettesAPI        = new RoulettesAPI();
 export const participantsAPI     = new ParticipantsAPI();
 export const notificationAPI     = new NotificationAPI();
 export const notificationManager = new NotificationManager(notificationAPI);
+
+/* ================================
+   Re-sincronizar tokens al cargar
+================================ */
+const initializeGlobalAPIs = () => {
+  const token = readAnyToken();
+  if (token) {
+    console.log('Token encontrado en localStorage, sincronizando APIs...');
+    syncGlobalTokens(token);
+  }
+};
+
+// Ejecutar al cargar el módulo
+initializeGlobalAPIs();
 
 /* ================================
    Export agrupado (compat)
@@ -889,7 +926,10 @@ const APIClient = {
       participantsAPI.baseURL = config.apiUrl;
       notificationAPI.baseURL = config.apiUrl;
     }
-    if (config.token) setGlobalAuthToken(config.token);
+    if (config.token) {
+      setGlobalAuthToken(config.token);
+      syncGlobalTokens(config.token);
+    }
     if (config.enableNotificationPolling !== false && isAuthenticated()) {
       notificationManager.startPolling(config.notificationPollInterval || 30000);
     }
@@ -904,4 +944,4 @@ const APIClient = {
   }
 };
 
-export default APIClient;
+export default APIClient
