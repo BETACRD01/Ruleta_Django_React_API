@@ -1,95 +1,53 @@
-═══════════════════════════════════════════════════════════════
-                                                              
-     {{ prize_rank_emoji }} ¡FELICITACIONES! HAS GANADO {{ prize_rank_emoji }}
-                                                              
-═══════════════════════════════════════════════════════════════
+Sistema de rifas en línea HAYU 24
+
+¡Estimado/a, {{ user_full_name }}!
 
 
-Hola {% if user_first_name %}{{ user_first_name }}{% else %}{{ user_full_name }}{% endif %},
+Queremos informarte que se ha culminado la rifa {{ roulette_name }} con el sorteo realizado en la fecha: {% now "Y-m-d H:i:s" %}
 
-🎊 ¡Tenemos EXCELENTES NOTICIAS para ti!
-
-Has sido seleccionado como GANADOR OFICIAL en el sorteo:
-
-   🎯 {{ roulette_name }}
+A continuación describimos los detalles:
 
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Nombre del ganador | Lugar del premio | Descripción
+-------------------|------------------|-------------
+{{ user_full_name }} | {{ prize_rank_label }} | {{ prize_name }}
 
 
-🏆 TU PREMIO GANADO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{% if prize_description %}DETALLES DEL PREMIO
+{{ prize_description }}
 
-   {{ prize_rank_emoji }} {{ prize_rank_label }}
-   
-   🎁 Premio: {{ prize_name }}
-   
-   {% if prize_description %}
-   📝 Descripción:
-   {{ prize_description }}
-   {% endif %}
-
-
-{% if pickup_instructions %}📦 INSTRUCCIONES PARA RETIRAR TU PREMIO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
+{% endif %}{% if pickup_instructions %}INSTRUCCIONES PARA RETIRAR TU PREMIO
 {{ pickup_instructions }}
 
-───────────────────────────────────────────────────────────────
-
 {% endif %}
-
-💡 ¿QUÉ SIGUE AHORA?
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-   1. ✓ Accede a tu cuenta para ver todos los detalles
-   
-   2. ✓ Revisa las instrucciones completas de entrega
-   
-   3. ✓ Sigue los pasos indicados para reclamar tu premio
-   
-   {% if prize_url %}4. ✓ Gestiona tu premio desde tu panel personal
-   {% endif %}
-
-   {% if prize_url %}
-   🔗 Ver Mis Premios:
-   {{ prize_url }}
-   
-   {% endif %}
-
-⚠️  IMPORTANTE
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-   • Este premio es personal e intransferible
-   • Conserva este email como comprobante oficial
-   • Reclama tu premio dentro del plazo establecido
-   {% if support_email %}• Ante cualquier duda, contáctanos{% endif %}
+¡Gracias por ser parte de nuestra rifa y les deseamos mucha suerte para la próxima vez!
+{% if prize_url %}Ingresar al sistema: {{ prize_url }}{% endif %}
 
 
-📞 INFORMACIÓN DE CONTACTO
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-   {{ brand_name }}
-   Tu plataforma de sorteos de confianza
-   
-   {% if support_email %}📧 Soporte:    {{ support_email }}
-   {% endif %}{% if site_url %}🌐 Sitio web:   {{ site_url }}
-   {% endif %}
-   
-   ¿Tienes preguntas? Estamos aquí para ayudarte.
+Síguenos en nuestras redes sociales
+facebook | facebook | instagram | twitter
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   ¡Felicitaciones nuevamente y disfruta tu premio!
-   
-   Este correo fue enviado automáticamente el {% now "d/m/Y" %} a las {% now "H:i" %}
-   
+La información enviada desde este correo electrónico cumple con todas las 
+normas legales establecidas en LA LEY DE COMERCIO ELECTRÓNICO, FIRMAS 
+ELECTRÓNICAS, MENSAJES DE DATOS y su Reglamento General, vigente en el 
+Ecuador.
+
+Nota de descargo: La información contenida en este correo es confidencial 
+y solo puede ser utilizada por el individuo o la compañía a las cuales 
+está dirigido. Esta información no debe ser distribuida en copia total o 
+parcialmente por ningún medio sin la autorización de {{ brand_name }}. La 
+organización no asume responsabilidad sobre información u opiniones, 
+criterios u opiniones que estén relacionadas con este asunto o propiedad 
+de {{ brand_name }}.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-═══════════════════════════════════════════════════════════════
+{{ brand_name }}
+Este correo ha sido enviado de forma automática y no requiere respuesta
+{% if site_url %}{{ site_url }}{% endif %}
 
-   © {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.
-   
-═══════════════════════════════════════════════════════════════
+© {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.

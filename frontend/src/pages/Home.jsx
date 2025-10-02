@@ -485,7 +485,7 @@ export default function Home() {
           
           <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black mb-4 sm:mb-6 leading-tight px-4">
             <span className="text-[#0b56a7]">Bienvenido a </span>
-            <span className="text-[#D62829] inline-block animate-pulse">24 Hayu</span>
+            <span className="text-[#D62829] inline-block animate-pulse">Hayu 24</span>
           </h1>
 
           <div className="w-24 sm:w-32 h-1.5 sm:h-2 bg-gradient-to-r from-[#0b56a7] to-[#D62829] rounded-full mx-auto mb-6 sm:mb-8" />

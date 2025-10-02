@@ -118,12 +118,12 @@ export default function Page() {
               <Link to="/terminos" className="text-gray-600 hover:text-red-600 font-medium transition-colors duration-200">
                 Términos y Condiciones
               </Link>
-              <Link to="/privacidad" className="text-gray-600 hover:text-red-600 font-medium transition-colors duration-200">
-                Privacidad
+              <Link to="/mision-vision" className="text-gray-600 hover:text-red-600 font-medium transition-colors duration-200">
+                Misión y Visión
               </Link>
-              <a href="mailto:soporte@hayu24.com" className="text-gray-600 hover:text-red-600 font-medium transition-colors duration-200">
+              <Link to="/soporte" className="text-gray-600 hover:text-red-600 font-medium transition-colors duration-200">
                 Soporte
-              </a>
+              </Link>
             </div>
           </div>
         </div>

@@ -106,6 +106,10 @@ DATABASES = {
     "default": {
         "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.sqlite3"),
         "NAME": os.getenv("DB_NAME", BASE_DIR / "db.sqlite3"),
+        "USER": os.getenv("DB_USER", ""),
+        "PASSWORD": os.getenv("DB_PASSWORD", ""),
+        "HOST": os.getenv("DB_HOST", "localhost"),
+        "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
 
@@ -266,29 +270,36 @@ if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = False
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Configuración de Email
+# Configuración de Email - LEE TODO DESDE .env
 # ──────────────────────────────────────────────────────────────────────────────
-EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
-EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
-EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "1") == "1"
-EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "0") == "1"
-EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "williancerda0@gmail.com")
-SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
-EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "60"))
-EMAIL_SSL_CERTFILE = None
-EMAIL_SSL_KEYFILE = None
-EMAIL_USE_LOCALTIME = False
+# NOTA: 
+# - Desarrollo local: EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
+# - Producción: EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
+# - Todo se controla desde el archivo .env
+# ──────────────────────────────────────────────────────────────────────────────
 
-if DEBUG:
-    EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
-    if EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend":
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+
+# Solo configurar SMTP si no es console backend
+if EMAIL_BACKEND != "django.core.mail.backends.console.EmailBackend":
+    EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
+    EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+    EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "1") == "1"
+    EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "0") == "1"
+    EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+    EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+    EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "60"))
+    EMAIL_SSL_CERTFILE = None
+    EMAIL_SSL_KEYFILE = None
+    EMAIL_USE_LOCALTIME = False
+    
+    if DEBUG:
         EMAIL_CONNECTION_TIMEOUT = 60
         EMAIL_RETRY_DELAY = 2
         EMAIL_MAX_RETRIES = 3
 
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "williancerda0@gmail.com")
+SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24)))
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -501,3 +512,7 @@ CELERY_RESULT_EXTENDED = True
 
 # Configuración específica para notificaciones
 WINNER_NOTIFICATION_DELAY = int(os.getenv('WINNER_NOTIFICATION_DELAY', '300'))
+
+# Configuración de la marca
+BRAND_NAME = os.getenv("BRAND_NAME", "LuckySpin")
+MEDIA_URL_BASE = os.getenv("MEDIA_URL_BASE", "http://localhost:8000")

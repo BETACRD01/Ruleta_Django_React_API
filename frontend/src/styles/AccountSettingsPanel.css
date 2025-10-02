@@ -93,9 +93,9 @@
 }
 
 .account-settings-error {
-  border-color: #fca5a5;
+  border-color: #f29999;
   background-color: #fef2f2;
-  color: #b91c1c;
+  color: #cb1b1b;
 }
 
 .account-settings-success {

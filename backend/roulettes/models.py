@@ -4,7 +4,7 @@ import hashlib
 import importlib
 import logging
 import uuid
-from typing import List, Tuple, Type
+from typing import List, Tuple, Type, Optional
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractUser
@@ -26,6 +26,32 @@ try:
 except ImportError:
     send_winner_email = None  # type: ignore
     logger.warning("Módulo de notificaciones no disponible")
+
+
+# ============================================================
+# Helper para construir URLs absolutas de imágenes
+# ============================================================
+
+def _build_absolute_image_url(image_field) -> Optional[str]:
+    """Construye URL absoluta para imágenes de premios"""
+    if not image_field:
+        return None
+    
+    try:
+        relative_url = image_field.url
+        
+        # Si ya es absoluta, retornarla
+        if relative_url.startswith(('http://', 'https://')):
+            return relative_url
+        
+        # Construir URL absoluta
+        base_url = getattr(settings, 'MEDIA_URL_BASE', 'http://localhost:8000')
+        base_url = base_url.rstrip('/')
+        
+        return f"{base_url}{relative_url}"
+    except Exception as e:
+        logger.warning(f"Error construyendo URL de imagen: {e}")
+        return None
 
 
 # ========= RichText dinámico (CKEditor si está disponible) =========
@@ -206,12 +232,12 @@ class Roulette(models.Model):
         )
 
     def winners_target_effective(self) -> int:
-        settings = getattr(self, "settings", None)
-        if not settings:
+        settings_obj = getattr(self, "settings", None)
+        if not settings_obj:
             return 1
-        if settings.winners_target == 0:
+        if settings_obj.winners_target == 0:
             return max(self.available_awards_count(), 1)
-        return max(settings.winners_target, 1)
+        return max(settings_obj.winners_target, 1)
 
     def winners_count(self) -> int:
         qs = self.participations.filter(is_winner=True)
@@ -221,9 +247,9 @@ class Roulette(models.Model):
         return count
 
     def has_remaining_winners(self) -> bool:
-        settings = getattr(self, "settings", None)
-        if settings and settings.winners_target and settings.winners_target > 0:
-            return self.winners_count() < max(settings.winners_target, 1)
+        settings_obj = getattr(self, "settings", None)
+        if settings_obj and settings_obj.winners_target and settings_obj.winners_target > 0:
+            return self.winners_count() < max(settings_obj.winners_target, 1)
         return self.available_awards_count() > 0
 
     def can_still_draw(self) -> bool:
@@ -261,9 +287,9 @@ class Roulette(models.Model):
             self.mark_completed(by_user=by_user)
             return
 
-        settings = getattr(self, "settings", None)
-        if settings and settings.winners_target and settings.winners_target > 0:
-            if self.winners_count() >= max(settings.winners_target, 1) and available_awards <= 0:
+        settings_obj = getattr(self, "settings", None)
+        if settings_obj and settings_obj.winners_target and settings_obj.winners_target > 0:
+            if self.winners_count() >= max(settings_obj.winners_target, 1) and available_awards <= 0:
                 self.mark_completed(by_user=by_user)
                 return
 
@@ -289,8 +315,8 @@ class Roulette(models.Model):
             if not eligibles or available <= 0:
                 must_close = True
             else:
-                settings = getattr(self, "settings", None)
-                target = int(getattr(settings, "winners_target", 0) or 0)
+                settings_obj = getattr(self, "settings", None)
+                target = int(getattr(settings_obj, "winners_target", 0) or 0)
                 if target > 0 and self.winners_count() >= max(target, 1) and available <= 0:
                     must_close = True
 
@@ -368,15 +394,15 @@ class Roulette(models.Model):
             if self.participation_end and now > self.participation_end:
                 return False, "El período de participación ha terminado"
 
-        settings = getattr(self, "settings", None)
-        if not settings:
+        settings_obj = getattr(self, "settings", None)
+        if not settings_obj:
             return False, "Configuración faltante"
 
         current_count = self.participations.count()
-        if settings.max_participants > 0 and current_count >= settings.max_participants:
+        if settings_obj.max_participants > 0 and current_count >= settings_obj.max_participants:
             return False, "Se alcanzó el límite de participantes"
 
-        if not settings.allow_multiple_entries and self.participations.filter(user=user).exists():
+        if not settings_obj.allow_multiple_entries and self.participations.filter(user=user).exists():
             return False, "Ya estás participando en esta ruleta"
 
         return True, "OK"
@@ -469,7 +495,7 @@ class Roulette(models.Model):
                     "roulette_name": self.name,
                     "prize_name": prize.name if prize else "Premio especial",
                     "prize_description": prize.description if prize else None,
-                    "prize_image_url": prize.image.url if prize and prize.image else None,
+                    "prize_image_url": _build_absolute_image_url(prize.image) if prize and prize.image else None,
                     "prize_rank": getattr(prize, 'display_order', None) if prize else None,
                     "pickup_instructions": getattr(prize, 'pickup_instructions', None) if prize else None,
                     "roulette_id": self.id,
@@ -604,7 +630,7 @@ class Roulette(models.Model):
                     "roulette_name": self.name,
                     "prize_name": prize.name if prize else "Premio especial",
                     "prize_description": prize.description if prize else None,
-                    "prize_image_url": prize.image.url if prize and prize.image else None,
+                    "prize_image_url": _build_absolute_image_url(prize.image) if prize and prize.image else None,
                     "prize_rank": getattr(prize, 'display_order', None) if prize else None,
                     "pickup_instructions": getattr(prize, 'pickup_instructions', None) if prize else None,
                     "roulette_id": self.id,

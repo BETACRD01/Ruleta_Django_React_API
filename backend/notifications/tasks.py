@@ -55,7 +55,7 @@ def send_winner_notification_delayed(
         
         # Validar email
         if not winner.email or not winner.email.strip():
-            logger.warning(f"⚠️  [CELERY] Usuario {user_id} sin email configurado")
+            logger.warning(f"⚠️ [CELERY] Usuario {user_id} sin email configurado")
             return {"success": False, "error": "Usuario sin email"}
         
         logger.info(f"📧 [CELERY] Preparando email para: {winner.email}")
@@ -107,7 +107,7 @@ def send_winner_notification_delayed(
                     notification.save()
                     logger.info(f"✅ [CELERY] Estado actualizado en BD - Notificación ID: {notification.id}")
                 else:
-                    logger.warning(f"⚠️  [CELERY] No se encontró notificación para actualizar")
+                    logger.warning(f"⚠️ [CELERY] No se encontró notificación para actualizar")
             except Exception as e:
                 logger.error(f"❌ [CELERY] Error actualizando BD: {str(e)}")
             
@@ -119,7 +119,13 @@ def send_winner_notification_delayed(
                 "sent_at": timezone.now().isoformat()
             }
         else:
-            error_msg = result.get("errors", ["Error desconocido"])[0]
+            # FIX: Manejar correctamente cuando errors está vacío
+            errors = result.get("errors", [])
+            if errors and len(errors) > 0:
+                error_msg = errors[0]
+            else:
+                error_msg = "Error desconocido al enviar notificación"
+            
             logger.error(f"❌ [CELERY] Fallo al enviar: {error_msg}")
             
             # Actualizar BD con error

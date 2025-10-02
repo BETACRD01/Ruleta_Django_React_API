@@ -1,18 +1,18 @@
-// src/App.jsx - ACTUALIZADO con PreferencesProvider
+// src/App.jsx - ACTUALIZADO con PreferencesProvider y nuevas rutas
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
-import { PreferencesProvider } from './contexts/PreferencesContext'; // ✅ Importar
-import './styles/darkTheme.css'; // ✅ Importar estilos del tema oscuro
-
+import { PreferencesProvider } from './contexts/PreferencesContext';
+import './styles/darkTheme.css';
 import Page from './pages/page';           
 import Layout from './components/Layout';  
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import TermsPage from './pages/TermsPage';
+import MissionVisionPage from './pages/MissionVisionPage';
+import SupportPage from './pages/SupportPage';
 import PasswordResetForm from './components/auth/PasswordResetForm';
-
 import RouletteParticipate from './components/user/Ruletas Disponibles/RouletteParticipate';
 
 // --- Guards simples ---
@@ -31,12 +31,12 @@ const RequireAuth = ({ children }) => {
 
 const AppContent = () => {
   const { user, isAdmin } = useAuth();
-
+  
   return (
     <Routes>
       {/* Página raíz: Page contiene Home + Login/Register */}
       <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Page />} />
-
+      
       {/* Ruta para reset password */}
       <Route 
         path="/reset-password" 
@@ -46,10 +46,12 @@ const AppContent = () => {
           </div>
         } 
       />
-
-      {/* Página pública de términos y condiciones */}
+      
+      {/* Páginas públicas */}
       <Route path="/terminos" element={<TermsPage />} />
-
+      <Route path="/mision-vision" element={<MissionVisionPage />} />
+      <Route path="/soporte" element={<SupportPage />} />
+      
       {/* Dashboard por rol */}
       <Route
         path="/dashboard"
@@ -61,7 +63,7 @@ const AppContent = () => {
           </RequireAuth>
         }
       />
-
+      
       {/* Pantalla de participación */}
       <Route
         path="/ruletas/:id/participar"
@@ -73,7 +75,7 @@ const AppContent = () => {
           </RequireAuth>
         }
       />
-
+      
       {/* Fallback */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
@@ -85,7 +87,7 @@ const App = () => {
     <div className="App">
       <NotificationProvider>
         <AuthProvider>
-          <PreferencesProvider> {/* ✅ Agregar PreferencesProvider */}
+          <PreferencesProvider>
             <AppContent />
           </PreferencesProvider>
         </AuthProvider>

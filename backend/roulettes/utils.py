@@ -32,6 +32,32 @@ except ImportError:
 
 
 # ============================================================
+# Helper para construir URLs absolutas de imágenes
+# ============================================================
+
+def _build_absolute_image_url(image_field) -> Optional[str]:
+    """Construye URL absoluta para imágenes de premios"""
+    if not image_field:
+        return None
+    
+    try:
+        relative_url = image_field.url
+        
+        # Si ya es absoluta, retornarla
+        if relative_url.startswith(('http://', 'https://')):
+            return relative_url
+        
+        # Construir URL absoluta
+        base_url = getattr(settings, 'MEDIA_URL_BASE', 'http://localhost:8000')
+        base_url = base_url.rstrip('/')
+        
+        return f"{base_url}{relative_url}"
+    except Exception as e:
+        logger.warning(f"Error construyendo URL de imagen: {e}")
+        return None
+
+
+# ============================================================
 # Validaciones de participación
 # ============================================================
 
@@ -41,21 +67,21 @@ def validate_roulette_participation(roulette: Roulette, user) -> None:
     if roulette.status != RouletteStatus.ACTIVE:
         raise ValidationError("La ruleta no está activa.")
 
-    settings = getattr(roulette, "settings", None)
-    if settings is None:
+    settings_obj = getattr(roulette, "settings", None)
+    if settings_obj is None:
         raise ValidationError("Configuración de ruleta faltante.")
 
-    if settings.max_participants and settings.max_participants > 0:
+    if settings_obj.max_participants and settings_obj.max_participants > 0:
         try:
             current_count = roulette.get_participants_count()
         except AttributeError:
             current_count = Participation.objects.filter(
                 roulette_id=roulette.id
             ).only("id").count()
-        if current_count >= settings.max_participants:
+        if current_count >= settings_obj.max_participants:
             raise ValidationError("Se alcanzó el límite de participantes.")
 
-    if not settings.allow_multiple_entries:
+    if not settings_obj.allow_multiple_entries:
         if Participation.objects.filter(
             roulette_id=roulette.id, user_id=user.id
         ).only("id").exists():
@@ -231,7 +257,7 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
                 "roulette_name": roulette.name,
                 "prize_name": prize.name if prize else "Premio especial",
                 "prize_description": prize.description if prize else None,
-                "prize_image_url": prize.image.url if prize and prize.image else None,
+                "prize_image_url": _build_absolute_image_url(prize.image) if prize and prize.image else None,
                 "prize_rank": getattr(prize, 'display_order', None) if prize else None,
                 "pickup_instructions": getattr(prize, 'pickup_instructions', None) if prize else None,
                 "roulette_id": roulette.id,
