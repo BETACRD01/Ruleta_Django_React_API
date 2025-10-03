@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cancelar suscripción - HAYU 24</title>
+    <title>Gestionar suscripción - HAYU 24</title>
     <style>
         * {
             margin: 0;
@@ -56,6 +56,24 @@
             border: 1px solid #e5e7eb;
             font-size: 14px;
         }
+        .status-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 24px;
+        }
+        .status-badge.subscribed {
+            background: #d1fae5;
+            color: #047857;
+            border: 1px solid #a7f3d0;
+        }
+        .status-badge.unsubscribed {
+            background: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+        }
         .button {
             background: #dc2626;
             color: white;
@@ -104,6 +122,36 @@
             display: block;
             border: 1px solid #fecaca;
         }
+        .message.info {
+            background: #eff6ff;
+            color: #1e40af;
+            display: block;
+            border: 1px solid #dbeafe;
+        }
+        .resubscribe-link {
+            display: none;
+            margin-top: 24px;
+            padding: 20px;
+            background: #f0fdf4;
+            border-radius: 8px;
+            border: 1px solid #bbf7d0;
+        }
+        .resubscribe-link.show {
+            display: block;
+        }
+        .resubscribe-link a {
+            color: #059669;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .resubscribe-link a:hover {
+            color: #047857;
+            text-decoration: underline;
+        }
         .footer {
             margin-top: 32px;
             padding-top: 24px;
@@ -116,27 +164,66 @@
 </head>
 <body>
     <div class="container">
-        <div class="icon">📭</div>
-        <h1>Cancelar suscripción</h1>
-        <p>¿Estás seguro que deseas dejar de recibir notificaciones por email de premios ganados?</p>
-        
-        <div class="email">{{ email }}</div>
-        
-        <button class="button" id="unsubscribeBtn" onclick="unsubscribe()">
-            Sí, cancelar suscripción
-        </button>
+        {% if is_subscribed %}
+            <!-- Usuario ESTÁ suscrito -->
+            <div class="icon">🔕</div>
+            <h1>Cancelar suscripción</h1>
+            <span class="status-badge subscribed">✓ Notificaciones activadas</span>
+            <p>¿Estás seguro que deseas dejar de recibir notificaciones por email de premios ganados?</p>
+            
+            <div class="email">{{ email }}</div>
+            
+            <button class="button" id="unsubscribeBtn" onclick="unsubscribe()">
+                Sí, cancelar suscripción
+            </button>
+        {% else %}
+            <!-- Usuario NO está suscrito -->
+            <div class="icon">ℹ️</div>
+            <h1>Ya no estás suscrito</h1>
+            <span class="status-badge unsubscribed">✗ Notificaciones desactivadas</span>
+            <p>Actualmente no estás recibiendo notificaciones por email.</p>
+            
+            <div class="email">{{ email }}</div>
+            
+            <div class="message info">
+                Ya te diste de baja anteriormente. Si deseas volver a recibir notificaciones, usa el botón de abajo.
+            </div>
+            
+            <!-- Mostrar directamente el link para reactivar -->
+            <div class="resubscribe-link show">
+                <p style="color: #047857; margin-bottom: 12px;">¿Quieres volver a activarlas?</p>
+                <a href="{{ resubscribe_url }}">
+                    🔔 Reactivar notificaciones
+                </a>
+            </div>
+        {% endif %}
         
         <div class="message" id="message"></div>
         
+        <!-- Link para reactivar después de desuscribirse (solo si estaba suscrito) -->
+        {% if is_subscribed %}
+        <div class="resubscribe-link" id="resubscribeLink">
+            <p style="color: #047857; margin-bottom: 12px;">¿Cambiaste de opinión?</p>
+            <a href="{{ resubscribe_url }}" id="resubscribeUrl">
+                🔔 Volver a activar notificaciones
+            </a>
+        </div>
+        {% endif %}
+        
         <div class="footer">
-            <p>Si cambias de opinión, podrás volver a suscribirte en cualquier momento desde tu perfil.</p>
+            <p>Si cambias de opinión, podrás volver a suscribirte en cualquier momento.</p>
         </div>
     </div>
 
     <script>
+        const isSubscribed = {{ is_subscribed|lower }};
+        
         function unsubscribe() {
             const btn = document.getElementById('unsubscribeBtn');
             const msg = document.getElementById('message');
+            const resubLink = document.getElementById('resubscribeLink');
+            
+            if (!btn) return; // Si no hay botón (ya desuscrito), no hacer nada
             
             btn.disabled = true;
             btn.textContent = 'Procesando...';
@@ -153,6 +240,11 @@
                     msg.className = 'message success';
                     msg.textContent = data.message;
                     btn.textContent = '✓ Suscripción cancelada';
+                    
+                    // Mostrar link de reactivación
+                    if (resubLink) {
+                        resubLink.classList.add('show');
+                    }
                 } else {
                     throw new Error(data.message || 'Error desconocido');
                 }

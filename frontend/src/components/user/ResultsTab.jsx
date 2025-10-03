@@ -1,10 +1,10 @@
 // src/components/user/ResultsTab.jsx
 import React, { useMemo, useEffect, useState, useCallback } from 'react';
-import { Trophy, Award, RefreshCcw, AlertTriangle } from 'lucide-react';
+import { Trophy, Award, RefreshCcw, AlertTriangle, Gift } from 'lucide-react';
 import { Card, Badge, EmptyState, Button } from '../UI';
 import { participantsAPI, handleAPIError, formatters } from '../../config/api';
 
-/** Helpers defensivos */
+/** Helpers defensivos mejorados */
 const toArray = (res) => {
   if (Array.isArray(res)) return res;
   if (Array.isArray(res?.results)) return res.results;
@@ -12,9 +12,19 @@ const toArray = (res) => {
   return [];
 };
 
-const getStatus = (p) => p?.roulette_status || p?.status;
-const isWinner = (p) =>
-  Boolean(p?.is_winner ?? p?.winner ?? p?.result?.is_winner ?? p?.prize_won);
+const getStatus = (p) => p?.roulette_status || p?.status || 'unknown';
+
+const isWinner = (p) => {
+  // Verifica múltiples campos posibles para determinar si ganó
+  return Boolean(
+    p?.is_winner || 
+    p?.winner || 
+    p?.result?.is_winner || 
+    p?.prize_won ||
+    p?.won_prize ||
+    p?.prize
+  );
+};
 
 const getTitle = (p) =>
   p?.roulette_title ||
@@ -24,18 +34,63 @@ const getTitle = (p) =>
   'Ruleta';
 
 const getDrawDateISO = (p) =>
-  p?.draw_date || p?.drawn_at || p?.result?.draw_date || p?.roulette?.scheduled_date || null;
+  p?.draw_date || 
+  p?.drawn_at || 
+  p?.result?.draw_date || 
+  p?.roulette?.scheduled_date || 
+  p?.roulette?.drawn_at ||
+  null;
 
-const getPrizeText = (p) => {
-  // Acepta varias formas de premio
-  const direct = p?.prize_won || p?.prize || p?.result?.prize;
-  if (!direct) return null;
-  if (typeof direct === 'string') return direct;
-  // objetos comunes: { name, title, label, value }
-  const name = direct.name || direct.title || direct.label;
-  const value = direct.value || direct.amount || direct.price;
-  if (name && value) return `${name} (${value})`;
-  return name || value || null;
+/**
+ * Extrae información completa del premio ganado
+ * Retorna: { name, description, image, rank }
+ */
+const getPrizeInfo = (p) => {
+  if (!isWinner(p)) return null;
+
+  // Intentar obtener el premio de múltiples ubicaciones posibles
+  const prizeObj = 
+    p?.won_prize ||
+    p?.prize_won || 
+    p?.prize || 
+    p?.result?.prize ||
+    null;
+
+  if (!prizeObj) return null;
+
+  // Si es string, retornar solo el nombre
+  if (typeof prizeObj === 'string') {
+    return { 
+      name: prizeObj, 
+      description: null, 
+      image: null,
+      rank: null 
+    };
+  }
+
+  // Extraer campos del objeto premio
+  return {
+    name: prizeObj.name || prizeObj.title || prizeObj.label || 'Premio',
+    description: prizeObj.description || null,
+    image: p?.prize_image_url || prizeObj.image_url || prizeObj.image || null,
+    rank: prizeObj.rank || prizeObj.position || null,
+    value: prizeObj.value || prizeObj.amount || prizeObj.price || null,
+  };
+};
+
+/**
+ * Genera un label visual para el ranking del premio
+ */
+const getRankLabel = (rank) => {
+  if (!rank) return null;
+  
+  const labels = {
+    1: '🥇 Primer Lugar',
+    2: '🥈 Segundo Lugar',
+    3: '🥉 Tercer Lugar',
+  };
+  
+  return labels[rank] || `🏅 ${rank}° Lugar`;
 };
 
 const ResultsTab = () => {
@@ -48,8 +103,14 @@ const ResultsTab = () => {
       setLoading(true);
       setPageError('');
       const res = await participantsAPI.getMyParticipations({ page_size: 300 });
-      setParticipations(toArray(res));
+      const data = toArray(res);
+      
+      console.log('📊 Participaciones cargadas:', data.length);
+      console.log('🎯 Primera participación:', data[0]);
+      
+      setParticipations(data);
     } catch (err) {
+      console.error('❌ Error cargando participaciones:', err);
       setPageError(handleAPIError(err, 'No se pudieron cargar tus resultados.'));
     } finally {
       setLoading(false);
@@ -64,8 +125,11 @@ const ResultsTab = () => {
     [participations]
   );
 
-  const wins = useMemo(() => completed.filter((p) => isWinner(p)), [completed]);
-  // Removed unused 'losses' variable
+  const wins = useMemo(() => {
+    const winners = completed.filter((p) => isWinner(p));
+    console.log('🏆 Victorias encontradas:', winners.length);
+    return winners;
+  }, [completed]);
 
   const successRate = useMemo(() => {
     if (completed.length === 0) return 0;
@@ -131,25 +195,75 @@ const ResultsTab = () => {
                   const title = getTitle(win);
                   const drawISO = getDrawDateISO(win);
                   const draw = drawISO ? formatters.date(drawISO) : '—';
-                  const prize = getPrizeText(win);
+                  const prizeInfo = getPrizeInfo(win);
+                  const rankLabel = prizeInfo?.rank ? getRankLabel(prizeInfo.rank) : null;
 
                   return (
-                    <Card key={win.id || `${title}-${drawISO || ''}`} className="p-4 border-l-4 border-l-green-500">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-medium text-gray-900 flex items-center">
-                            🏆 {title}
-                          </h4>
-                          <p className="text-sm text-gray-600">
-                            Ganaste el {draw}
-                          </p>
-                          {prize && (
-                            <p className="text-sm text-green-700 font-medium">
-                              Premio: {prize}
-                            </p>
-                          )}
+                    <Card 
+                      key={win.id || `${title}-${drawISO || ''}`} 
+                      className="p-4 border-l-4 border-l-green-500"
+                    >
+                      <div className="flex gap-4">
+                        {/* Imagen del premio si existe */}
+                        {prizeInfo?.image && (
+                          <div className="flex-shrink-0">
+                            <img 
+                              src={prizeInfo.image} 
+                              alt={prizeInfo.name}
+                              className="w-20 h-20 object-cover rounded-lg border-2 border-green-500"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                              }}
+                            />
+                          </div>
+                        )}
+                        
+                        {/* Información del premio */}
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                                <Trophy className="h-5 w-5 text-yellow-500" />
+                                {title}
+                              </h4>
+                              
+                              <p className="text-sm text-gray-600 mt-1">
+                                Ganaste el {draw}
+                              </p>
+                              
+                              {/* Información del premio */}
+                              {prizeInfo && (
+                                <div className="mt-2 space-y-1">
+                                  {rankLabel && (
+                                    <p className="text-sm font-semibold text-green-700">
+                                      {rankLabel}
+                                    </p>
+                                  )}
+                                  
+                                  <p className="text-sm font-medium text-green-700 flex items-center gap-1">
+                                    <Gift className="h-4 w-4" />
+                                    {prizeInfo.name}
+                                    {prizeInfo.value && (
+                                      <span className="text-gray-600">
+                                        ({prizeInfo.value})
+                                      </span>
+                                    )}
+                                  </p>
+                                  
+                                  {prizeInfo.description && (
+                                    <p className="text-sm text-gray-600">
+                                      {prizeInfo.description}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            
+                            <Badge variant="success" className="ml-2">
+                              Ganador
+                            </Badge>
+                          </div>
                         </div>
-                        <Badge variant="success">Ganador</Badge>
                       </div>
                     </Card>
                   );

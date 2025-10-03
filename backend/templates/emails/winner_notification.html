@@ -36,6 +36,7 @@
         .header h1 {
             font-size: 24px;
             margin-bottom: 10px;
+            color: #D62829;
         }
         
         .header h2 {
@@ -95,13 +96,8 @@
         }
         
         .social-links {
-            margin: 15px 0;
-        }
-        
-        .social-links a {
-            color: #4a90e2;
-            text-decoration: none;
-            margin: 0 10px;
+            margin: 20px 0;
+            text-align: center;
         }
         
         .legal-text {
@@ -122,6 +118,17 @@
         
         .unsubscribe a {
             color: #4a90e2;
+            text-decoration: underline;
+        }
+        
+        .preferences-link {
+            margin-top: 10px;
+            font-size: 11px;
+            color: #666;
+        }
+        
+        .preferences-link a {
+            color: #059669;
             text-decoration: underline;
         }
     </style>
@@ -184,12 +191,21 @@
             </div>
 
             <!-- Social Links -->
-            <div style="text-align: center; margin: 20px 0;">
-                <p><strong>Síguenos en nuestras redes sociales</strong></p>
+            <div style="text-align: center; margin: 30px 0;">
+                <p style="margin-bottom: 15px;"><strong>Síguenos en nuestras redes sociales</strong></p>
                 <div class="social-links">
-                    <a href="#">Facebook</a> | 
-                    <a href="#">Instagram</a> | 
-                    <a href="#">Twitter</a>
+                    <a href="https://facebook.com/tupagina" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/color/48/facebook-new.png" alt="Facebook" style="width: 40px; height: 40px; border-radius: 50%;">
+                    </a>
+                    <a href="https://instagram.com/tupagina" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/fluency/48/instagram-new.png" alt="Instagram" style="width: 40px; height: 40px; border-radius: 50%;">
+                    </a>
+                    <a href="https://twitter.com/tupagina" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/ios-filled/50/twitterx--v1.png" alt="Twitter" style="width: 40px; height: 40px; border-radius: 50%;">
+                    </a>
+                    <a href="https://tiktok.com/@tupagina" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/fluency/48/tiktok.png" alt="TikTok" style="width: 40px; height: 40px; border-radius: 50%;">
+                    </a>
                 </div>
             </div>
 
@@ -210,8 +226,15 @@
             {% endif %}
             <p style="margin-top: 10px;">&copy; {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.</p>
             
-            <!-- Unsubscribe Link - CORREGIDO -->
-            {% if unsubscribe_url %}
+            <!-- Unsubscribe/Resubscribe Links -->
+            {% if unsubscribe_url and resubscribe_url %}
+            <div class="unsubscribe">
+                <p>Si no deseas recibir más correos de {{ brand_name }}, puedes <a href="{{ unsubscribe_url }}">darte de baja aquí</a></p>
+            </div>
+            <div class="preferences-link">
+                <p>¿Ya te diste de baja pero cambiaste de opinión? <a href="{{ resubscribe_url }}">Reactivar notificaciones</a></p>
+            </div>
+            {% elif unsubscribe_url %}
             <div class="unsubscribe">
                 <p>Si no deseas recibir más correos de {{ brand_name }}, puedes <a href="{{ unsubscribe_url }}">darte de baja aquí</a></p>
             </div>

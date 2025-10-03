@@ -1,107 +1,94 @@
-╔══════════════════════════════════════════════════════════════╗
-║                                                              ║
-║          👑 NUEVO GANADOR - NOTIFICACIÓN ADMINISTRATIVA       ║
-║                                                              ║
-╚══════════════════════════════════════════════════════════════╝
+Sistema de rifas en línea {{ brand_name }}
 
-📅 INFORMACIÓN DEL SORTEO
+¡Estimado/a, {% if admin_name %}{{ admin_name }}{% else %}Administrador{% endif %}!
+
+
+Queremos informarte que se ha culminado la rifa {{ roulette_name }} con el sorteo realizado en la fecha: {% now "Y-m-d H:i:s" %}
+
+A continuación describimos los detalles:
+
+
+INFORMACIÓN DEL GANADOR
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   Ruleta:    {{ roulette_name }}
-   Fecha:     {% now "d/m/Y H:i" %}
-   Estado:    ✅ Completado
+Nombre del ganador:  {{ user_full_name }}
+Email del ganador:   {{ user_email }}
+Lugar del premio:    {{ prize_rank_label }}
+Descripción:         {{ prize_name }}
 
 
-🏆 INFORMACIÓN DEL GANADOR
+{% if prize_description %}DETALLES DEL PREMIO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{ prize_description }}
 
-   Hola {% if admin_name %}{{ admin_name }}{% else %}Administrador{% endif %},
-
-   Se ha seleccionado un nuevo ganador en tu sorteo:
-
-   👤 Ganador:   {{ user_full_name }}
-   📧 Email:     {{ user_email }}
-   {% if user_first_name %}🆔 Nombre:    {{ user_first_name }}
-   {% endif %}
-
-🎁 PREMIO GANADO
+{% endif %}{% if pickup_instructions %}INSTRUCCIONES PARA ENTREGAR EL PREMIO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{{ pickup_instructions }}
 
-   {{ prize_rank_emoji }} {{ prize_rank_label }}: {{ prize_name }}
-{% if prize_description %}
-   📝 Descripción:
-   {{ prize_description }}
 {% endif %}
-{% if pickup_instructions %}
-   📦 INSTRUCCIONES DE RETIRO:
-   ───────────────────────────────────────────────────────────
-   {{ pickup_instructions }}
-   ───────────────────────────────────────────────────────────
-{% endif %}
-
-📊 RESUMEN DEL SORTEO
+RESUMEN DEL SORTEO
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   ✓ Ganador seleccionado:    {{ user_full_name }}
-   ⏰ Hora del sorteo:         {% now "H:i" %}
-   📬 Notificación enviada:    SÍ
-   🏅 Ranking del premio:      {{ prize_rank_label }}
-   🎯 Estado:                  Pendiente de entrega
+✓ Ganador seleccionado:    {{ user_full_name }}
+⏰ Hora del sorteo:         {% now "H:i" %}
+📬 Notificación enviada:    SÍ (al email del ganador)
+🏅 Ranking del premio:      {{ prize_rank_label }}
+🎯 Estado:                  Pendiente de entrega
 
 
-💡 PRÓXIMOS PASOS RECOMENDADOS
+PRÓXIMOS PASOS RECOMENDADOS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   1. ✓ Verificar recepción del email por parte del ganador
-   
-   2. ✓ Confirmar instrucciones de entrega del premio
-   
-   3. ✓ Actualizar estado del sorteo en el sistema
-   
-   4. ✓ Documentar la entrega del premio
-   
-   5. ✓ Preparar el siguiente sorteo (si aplica)
-{% if support_email %}   
-   6. ✓ Soporte disponible para el ganador en:
-      → {{ support_email }}
+1. ✓ Verificar recepción del email por parte del ganador
+
+2. ✓ Confirmar instrucciones de entrega del premio
+
+3. ✓ Actualizar estado del sorteo en el sistema
+
+4. ✓ Documentar la entrega del premio
+
+5. ✓ Preparar el siguiente sorteo (si aplica)
+{% if support_email %}
+6. ✓ Soporte disponible para el ganador en:
+   → {{ support_email }}
 {% endif %}
 
-👨‍💼 INFORMACIÓN DE CONTACTO
+{% if roulette_url %}ACCIONES RÁPIDAS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-   Admin:     {% if admin_name %}{{ admin_name }}{% else %}Administrador{% endif %}
-   Email:     {{ admin_email }}
-{% if support_email %}   Soporte:   {{ support_email }}
-{% endif %}
-
-🔗 ENLACES RÁPIDOS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-{% if roulette_url %}
-   🎡 Ver ruleta:
-   {{ roulette_url }}
-{% endif %}
-{% if prize_url %}
-   ⚙️  Gestionar premios:
-   {{ prize_url }}
-{% endif %}
-{% if site_url %}
-   🏠 Panel de administración:
-   {{ site_url }}
+🎡 Ver ruleta completa:
+{{ roulette_url }}
+{% endif %}{% if prize_url %}
+⚙️  Gestionar premios:
+{{ prize_url }}
+{% endif %}{% if site_url %}
+🏠 Panel de administración:
+{{ site_url }}/admin
 {% endif %}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   
-   {{ brand_name }} | Sistema de Administración de Sorteos
-   
-   Notificación automática generada el {% now "d/m/Y" %} a las {% now "H:i:s" %}
-   
-   ⚡ Este es un email generado automáticamente, no responder.
-   
+
+La información enviada desde este correo electrónico cumple con todas las 
+normas legales establecidas en LA LEY DE COMERCIO ELECTRÓNICO, FIRMAS 
+ELECTRÓNICAS, MENSAJES DE DATOS y su Reglamento General, vigente en el 
+Ecuador.
+
+Nota de descargo: La información contenida en este correo es confidencial 
+y solo puede ser utilizada por el individuo o la compañía a las cuales 
+está dirigido. Esta información no debe ser distribuida en copia total o 
+parcialmente por ningún medio sin la autorización de {{ brand_name }}. La 
+organización no asume responsabilidad sobre información u opiniones, 
+criterios u opiniones que estén relacionadas con este asunto o propiedad 
+de {{ brand_name }}.
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 
-═══════════════════════════════════════════════════════════════
+{{ brand_name }}
+Este correo ha sido enviado de forma automática y no requiere respuesta
+{% if site_url %}{{ site_url }}{% endif %}
 
-                    ¡Gracias por usar {{ brand_name }}!
-                    
-═══════════════════════════════════════════════════════════════
+© {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.
+
+¡Gracias por gestionar el sorteo con {{ brand_name }}!
+Ingresar al sistema: {% if site_url %}{{ site_url }}/admin{% endif %}

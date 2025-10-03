@@ -92,6 +92,26 @@ class Notification(models.Model):
         help_text="Fecha de expiración de la notificación"
     )
     
+    email_sent = models.BooleanField(
+        default=False,
+        help_text="Indica si se envió email de esta notificación"
+    )
+    email_sent_at = models.DateTimeField(
+        null=True, 
+        blank=True,
+        help_text="Fecha y hora de envío del email"
+    )
+    email_error = models.TextField(
+        blank=True, 
+        default='',
+        help_text="Mensaje de error si el envío falló"
+    )
+    email_recipient = models.EmailField(
+        blank=True, 
+        default='',
+        help_text="Email del destinatario"
+    )
+    
     class Meta:
         db_table = 'notifications'
         ordering = ['-created_at']
@@ -102,6 +122,7 @@ class Notification(models.Model):
             models.Index(fields=['is_admin_only', 'created_at']),
             models.Index(fields=['roulette_id']),
             models.Index(fields=['priority', 'is_read']),
+            models.Index(fields=['email_sent', 'created_at']),
         ]
     
     def __str__(self) -> str:
@@ -207,8 +228,3 @@ class NotificationTemplate(models.Model):
     
     def __str__(self) -> str:
         return f"Template: {self.name}"
-   #gmail modelo  
-email_sent = models.BooleanField(default=False)
-email_sent_at = models.DateTimeField(null=True, blank=True)
-email_error = models.TextField(blank=True, default='')
-email_recipient = models.EmailField(blank=True, default='')

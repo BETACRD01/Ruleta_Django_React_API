@@ -39,7 +39,7 @@ class WelcomeEmailService:
             
             # URL base del frontend
             frontend_base = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:3000")
-            brand_name = getattr(settings, "BRAND_NAME", "HAYU 24")
+            brand_name = getattr(settings, "BRAND_NAME", "HAYU24")
             
             # Contexto para el template
             context = {

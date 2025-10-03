@@ -1,0 +1,82 @@
+{{ brand_name }}
+
+¡Nueva Ruleta Disponible!
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎉 ¡NUEVA OPORTUNIDAD DE GANAR!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+¡Hola!
+
+Tenemos excelentes noticias para ti. Se acaba de crear una nueva ruleta 
+con premios increíbles y queremos que seas de los primeros en participar.
+
+
+📌 DETALLES DE LA RULETA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Nombre: {{ roulette_name }}
+
+Descripción:
+{{ roulette_description }}
+
+{% if participation_end %}
+📅 Participación hasta: {{ participation_end }}
+{% endif %}
+{% if scheduled_date %}
+🎯 Sorteo programado: {{ scheduled_date }}
+{% endif %}
+
+
+🎲 PARTICIPAR AHORA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Accede a la ruleta aquí:
+{{ roulette_url }}
+
+O visita todas las ruletas disponibles:
+{{ all_roulettes_url }}
+
+
+💡 CONSEJO IMPORTANTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+¡No esperes demasiado! Las plazas son limitadas y los mejores premios 
+se agotan rápido.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Síguenos en nuestras redes sociales
+Facebook | Instagram | Twitter
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+La información enviada desde este correo electrónico cumple con todas las 
+normas legales establecidas en LA LEY DE COMERCIO ELECTRÓNICO, FIRMAS 
+ELECTRÓNICAS, MENSAJES DE DATOS y su Reglamento General, vigente en el 
+Ecuador.
+
+Nota de descargo: La información contenida en este correo es confidencial 
+y solo puede ser utilizada por el individuo o la compañía a las cuales 
+está dirigido. Esta información no debe ser distribuida en copia total o 
+parcialmente por ningún medio sin la autorización de {{ brand_name }}.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+{{ brand_name }}
+Este correo ha sido enviado de forma automática y no requiere respuesta
+{% if site_url %}{{ site_url }}{% endif %}
+{% if support_email %}
+¿Necesitas ayuda? Contáctanos: {{ support_email }}
+{% endif %}
+
+© {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.
+
+Recibiste este correo porque estás registrado en {{ brand_name }}.

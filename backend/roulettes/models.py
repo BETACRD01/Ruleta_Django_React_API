@@ -20,13 +20,6 @@ from participants.models import Participation
 User = get_user_model()
 logger = logging.getLogger(__name__)
 
-# Servicio de notificaciones (defensivo)
-try:
-    from notifications import send_winner_email  # type: ignore
-except ImportError:
-    send_winner_email = None  # type: ignore
-    logger.warning("Módulo de notificaciones no disponible")
-
 
 # ============================================================
 # Helper para construir URLs absolutas de imágenes
@@ -40,11 +33,9 @@ def _build_absolute_image_url(image_field) -> Optional[str]:
     try:
         relative_url = image_field.url
         
-        # Si ya es absoluta, retornarla
         if relative_url.startswith(('http://', 'https://')):
             return relative_url
         
-        # Construir URL absoluta
         base_url = getattr(settings, 'MEDIA_URL_BASE', 'http://localhost:8000')
         base_url = base_url.rstrip('/')
         
@@ -56,13 +47,6 @@ def _build_absolute_image_url(image_field) -> Optional[str]:
 
 # ========= RichText dinámico (CKEditor si está disponible) =========
 def get_rich_text_field() -> Tuple[Type[models.Field], bool]:
-    """
-    Intenta importar un campo rich-text compatible con Django.
-    1) django-ckeditor-5 (CKEditor5Field)
-    2) ckeditor clásico (RichTextUploadingField)
-    3) Fallback: TextField (con misma firma básica)
-    Devuelve: (FieldClass, ckeditor_disponible)
-    """
     try:
         ck5 = importlib.import_module("django_ckeditor_5.fields")
         return ck5.CKEditor5Field, True
@@ -73,7 +57,7 @@ def get_rich_text_field() -> Tuple[Type[models.Field], bool]:
         except ImportError:
             logger.warning("CKEditor no encontrado: usando TextField como fallback.")
 
-            class RichTextUploadingField(models.TextField):  # type: ignore
+            class RichTextUploadingField(models.TextField):
                 def __init__(self, config_name=None, **kwargs):
                     kwargs.pop("config_name", None)
                     super().__init__(**kwargs)
@@ -146,11 +130,8 @@ class RouletteManager(models.Manager):
 
 # ========= Modelos =========
 class Roulette(models.Model):
-    """
-    Modelo principal de ruleta.
-    """
+    """Modelo principal de ruleta"""
 
-    # Básico
     name = models.CharField(max_length=150, db_index=True, verbose_name="Título de la Ruleta")
     slug = models.SlugField(max_length=160, unique=True, blank=True)
 
@@ -177,12 +158,10 @@ class Roulette(models.Model):
         User, on_delete=models.SET_NULL, null=True, related_name="roulettes_created", db_index=True
     )
 
-    # Fechas / planificación
     participation_start = models.DateTimeField(null=True, blank=True)
     participation_end = models.DateTimeField(null=True, blank=True)
     scheduled_date = models.DateTimeField(null=True, blank=True, db_index=True)
 
-    # Resultado
     drawn_at = models.DateTimeField(null=True, blank=True, db_index=True)
     drawn_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="roulettes_drawn")
     winner = models.ForeignKey(
@@ -190,7 +169,6 @@ class Roulette(models.Model):
     )
     is_drawn = models.BooleanField(default=False, db_index=True)
 
-    # Metadatos
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -425,7 +403,6 @@ class Roulette(models.Model):
 
         winner_participation = random.choice(candidates)
 
-        # Obtener premio disponible
         prize = (
             self.prizes.select_for_update()
             .filter(is_active=True, stock__gt=0)
@@ -433,14 +410,12 @@ class Roulette(models.Model):
             .first()
         )
 
-        # Asignar premio y marcar como ganador
         winner_participation.is_winner = True
         winner_participation.won_at = timezone.now()
         winner_participation.won_prize = prize
         winner_participation.prize_position = prize.display_order if prize else None
         winner_participation.save(update_fields=["is_winner", "won_at", "won_prize", "prize_position"])
 
-        # Actualizar stock del premio
         if prize:
             new_stock = int(prize.stock) - 1
             prize.stock = new_stock if new_stock >= 0 else 0
@@ -464,6 +439,30 @@ class Roulette(models.Model):
         )
 
         # ============================================================
+        # CREAR NOTIFICACIONES EN BASE DE DATOS
+        # ============================================================
+        try:
+            from notifications.services import NotificationService
+            
+            logger.info(f"Creando notificaciones para ganador: {winner_participation.user.username}")
+            
+            public_notif, personal_notif, admin_notifs = NotificationService.create_winner_announcement(
+                winner_user=winner_participation.user,
+                roulette_name=self.name,
+                roulette_id=self.id,
+                total_participants=self.participations.count(),
+                prize_details=prize.name if prize else "Premio especial"
+            )
+            
+            logger.info(f"Notificaciones creadas:")
+            logger.info(f"   - Publica: ID {public_notif.id}")
+            logger.info(f"   - Personal: ID {personal_notif.id}")
+            logger.info(f"   - Admins: {len(admin_notifs)} notificaciones")
+            
+        except Exception as e:
+            logger.error(f"Error creando notificaciones: {e}", exc_info=True)
+
+        # ============================================================
         # NOTIFICACIÓN RETARDADA CON CELERY
         # ============================================================
         try:
@@ -480,16 +479,14 @@ class Roulette(models.Model):
                     "no tiene email configurado."
                 )
             elif notify_flag:
-                # Importar la tarea de Celery
                 from notifications.tasks import send_winner_notification_delayed
                 
                 delay_seconds = getattr(settings, 'WINNER_NOTIFICATION_DELAY', 300)
                 
                 logger.info(
-                    f"Programando notificación retardada (+{delay_seconds}s) para: {winner_email}"
+                    f"Programando notificacion retardada (+{delay_seconds}s) para: {winner_email}"
                 )
                 
-                # Preparar datos para la tarea
                 task_data = {
                     "user_id": winner_participation.user.id,
                     "roulette_name": self.name,
@@ -503,23 +500,22 @@ class Roulette(models.Model):
                     "notify_admins": True
                 }
                 
-                # Programar tarea con retraso
                 task = send_winner_notification_delayed.apply_async(
                     kwargs=task_data,
                     countdown=delay_seconds
                 )
                 
-                logger.info(f"Tarea programada: {task.id} (Envío en ~{delay_seconds/60:.1f} min)")
+                logger.info(f"Tarea programada: {task.id} (Envio en ~{delay_seconds/60:.1f} min)")
             else:
-                logger.info("Notificaciones deshabilitadas en la configuración de la ruleta.")
+                logger.info("Notificaciones deshabilitadas en la configuracion de la ruleta.")
                 
         except Exception as e:
             logger.error(
-                f"Excepción al programar notificación: {str(e)}", 
+                f"Excepcion al programar notificacion: {str(e)}", 
                 exc_info=True
             )
 
-        logger.info("Ruleta %s: ganador %s", self.name, winner_participation)
+        logger.info("Ruleta %s: ganador seleccionado", self.name)
         return winner_participation
 
     @transaction.atomic
@@ -559,7 +555,6 @@ class Roulette(models.Model):
             choice = random.choice(pool)
             pool.remove(choice)
 
-            # Obtener premio disponible ANTES de marcar como ganador
             prize = (
                 self.prizes.select_for_update()
                 .filter(is_active=True, stock__gt=0)
@@ -567,7 +562,6 @@ class Roulette(models.Model):
                 .first()
             )
 
-            # Asignar premio y datos al ganador
             choice.is_winner = True
             choice.won_at = timezone.now()
             choice.won_prize = prize
@@ -577,7 +571,6 @@ class Roulette(models.Model):
             if not self.winner_id:
                 self.winner = choice
 
-            # Reducir stock del premio
             if prize:
                 new_stock = int(prize.stock) - 1
                 prize.stock = new_stock if new_stock >= 0 else 0
@@ -595,6 +588,27 @@ class Roulette(models.Model):
             )
 
             # ============================================================
+            # CREAR NOTIFICACIONES EN BASE DE DATOS (MÚLTIPLES GANADORES)
+            # ============================================================
+            try:
+                from notifications.services import NotificationService
+                
+                logger.info(f"Creando notificaciones para ganador {i+1}/{picks}: {choice.user.username}")
+                
+                public_notif, personal_notif, admin_notifs = NotificationService.create_winner_announcement(
+                    winner_user=choice.user,
+                    roulette_name=self.name,
+                    roulette_id=self.id,
+                    total_participants=self.participations.count(),
+                    prize_details=prize.name if prize else "Premio especial"
+                )
+                
+                logger.info(f"Notificaciones ganador {i+1} creadas: publica={public_notif.id}, personal={personal_notif.id}, admins={len(admin_notifs)}")
+                
+            except Exception as e:
+                logger.error(f"Error creando notificaciones ganador {i+1}: {e}", exc_info=True)
+
+            # ============================================================
             # NOTIFICACIÓN RETARDADA CON CELERY (MÚLTIPLES GANADORES)
             # ============================================================
             try:
@@ -609,22 +623,19 @@ class Roulette(models.Model):
                     continue
                 
                 if not notify_flag:
-                    logger.info(f"Notificaciones deshabilitadas. No se enviará email al ganador {i+1}.")
+                    logger.info(f"Notificaciones deshabilitadas. No se enviara email al ganador {i+1}.")
                     winners.append(choice)
                     continue
                 
-                # Importar la tarea de Celery
                 from notifications.tasks import send_winner_notification_delayed
                 
-                # Retraso escalonado: base + (i * 30 segundos)
                 base_delay = getattr(settings, 'WINNER_NOTIFICATION_DELAY', 300)
                 delay_seconds = base_delay + (i * 30)
                 
                 logger.info(
-                    f"Programando notificación ganador {i+1}/{picks} (+{delay_seconds}s): {winner_email}"
+                    f"Programando notificacion ganador {i+1}/{picks} (+{delay_seconds}s): {winner_email}"
                 )
                 
-                # Preparar datos
                 task_data = {
                     "user_id": choice.user.id,
                     "roulette_name": self.name,
@@ -635,10 +646,9 @@ class Roulette(models.Model):
                     "pickup_instructions": getattr(prize, 'pickup_instructions', None) if prize else None,
                     "roulette_id": self.id,
                     "prize_id": prize.id if prize else None,
-                    "notify_admins": (i == 0)  # Solo al primer ganador
+                    "notify_admins": (i == 0)
                 }
                 
-                # Programar tarea
                 task = send_winner_notification_delayed.apply_async(
                     kwargs=task_data,
                     countdown=delay_seconds
@@ -648,7 +658,7 @@ class Roulette(models.Model):
                     
             except Exception as e:
                 logger.error(
-                    f"Excepción al programar notificación ganador {i+1}: {str(e)}", 
+                    f"Excepcion al programar notificacion ganador {i+1}: {str(e)}", 
                     exc_info=True
                 )
 

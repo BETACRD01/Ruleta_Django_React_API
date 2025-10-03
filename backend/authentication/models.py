@@ -29,11 +29,17 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Última actualización")
     
-    # NUEVO: Campo para preferencias de notificaciones
+    # Preferencias de notificaciones
     receive_notifications = models.BooleanField(
         default=True,
         verbose_name="Recibir notificaciones",
         help_text="Desmarcar para no recibir emails de premios ganados"
+    )
+    
+    notify_new_roulettes = models.BooleanField(
+        default=True,
+        verbose_name="Notificar nuevas ruletas",
+        help_text="Recibir emails cuando se crean nuevas ruletas disponibles"
     )
 
     # Autenticación por email
@@ -53,6 +59,11 @@ class User(AbstractUser):
 
     def is_regular_user(self) -> bool:
         return self.role == "user"
+    
+    @property
+    def has_any_notification_enabled(self) -> bool:
+        """Verifica si el usuario tiene al menos una notificación activa"""
+        return self.receive_notifications or self.notify_new_roulettes
 
 
 class PasswordResetRequest(models.Model):
@@ -132,7 +143,6 @@ class UserProfile(models.Model):
     birth_date = models.DateField(blank=True, null=True, verbose_name="Fecha de nacimiento")
 
     # Campo opcional para registrar aceptación de TyC.
-    # Mantener null/blank para no bloquear logins antiguos.
     terms_accepted_at = models.DateTimeField(
         null=True,
         blank=True,

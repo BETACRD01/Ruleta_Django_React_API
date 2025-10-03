@@ -134,6 +134,8 @@ class RouletteCreateView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         instance = serializer.save(created_by=self.request.user)
+        
+        # Crear settings por defecto si no existe
         if not hasattr(instance, "settings") or not instance.settings:
             RouletteSettings.objects.create(
                 roulette=instance,
@@ -142,9 +144,13 @@ class RouletteCreateView(generics.CreateAPIView):
                 show_countdown=True,
                 notify_on_participation=True,
                 notify_on_draw=True,
-                winners_target=0,  # auto por stock
+                winners_target=0,
             )
+        
         logger.info("Ruleta creada: %s (ID: %s) por %s", instance.name, instance.id, self.request.user.username)
+        
+        # Las notificaciones se envían automáticamente vía signal post_save
+        # de forma asíncrona usando Celery (ver roulettes/signals.py)
 
 
 class RouletteDetailView(generics.RetrieveAPIView):
@@ -312,10 +318,8 @@ class RoulettePrizeListCreateView(_PrizeBase, generics.ListCreateAPIView):
     POST /api/roulettes/<roulette_id>/prizes/
     """
     def get_serializer_class(self):
-        # Lectura
         if self.request.method in ("GET", "HEAD", "OPTIONS"):
             return RoulettePrizeSerializer
-        # Escritura (crear)
         return RoulettePrizeCreateUpdateSerializer
 
     def perform_create(self, serializer):

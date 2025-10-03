@@ -310,14 +310,6 @@ SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24)))
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Configuración del Frontend
-# ──────────────────────────────────────────────────────────────────────────────
-FRONTEND_BASE_URL = os.getenv(
-    "FRONTEND_BASE_URL",
-    "http://localhost:3000" if DEBUG else "https://tu-dominio-frontend.com"
-)
-
-# ──────────────────────────────────────────────────────────────────────────────
 # Configuración de uploads
 # ──────────────────────────────────────────────────────────────────────────────
 FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("FILE_UPLOAD_MAX_MEMORY_SIZE", str(15 * 1024 * 1024)))
@@ -512,5 +504,20 @@ CELERY_RESULT_EXTENDED = True
 
 WINNER_NOTIFICATION_DELAY = int(os.getenv('WINNER_NOTIFICATION_DELAY', '300'))
 
-BRAND_NAME = os.getenv("BRAND_NAME", "HAYU 24")
+BRAND_NAME = os.getenv("BRAND_NAME", "HAYU24")
 MEDIA_URL_BASE = os.getenv("MEDIA_URL_BASE", "http://localhost:8000")
+
+
+# ============================================================================
+# Configuración del Frontend y Backend
+# ============================================================================
+FRONTEND_BASE_URL = os.getenv(
+    "FRONTEND_BASE_URL",
+    "http://localhost:3000" if DEBUG else "https://tu-dominio-frontend.com"
+)
+
+# Configuración de la URL base del Backend
+BACKEND_BASE_URL = os.getenv(
+    "BACKEND_BASE_URL",
+    "http://localhost:8000" if DEBUG else "https://tu-dominio-backend.com"
+)

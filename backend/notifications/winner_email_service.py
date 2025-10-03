@@ -4,6 +4,8 @@ from typing import Optional, List
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth import get_user_model
+from django.utils.http import urlsafe_base64_encode
+from django.utils.encoding import force_bytes
 import logging
 
 from .notification_manager import notification_manager
@@ -85,7 +87,7 @@ class WinnerEmailService:
             
         except Exception as e:
             error_msg = f"Error sending winner notification: {str(e)}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True)
             results["errors"].append(error_msg)
         
         return results
@@ -100,6 +102,9 @@ class WinnerEmailService:
             "http://localhost:3000"
         )
         
+        # URL base del BACKEND para unsubscribe/resubscribe
+        backend_base = getattr(settings, "BACKEND_BASE_URL", "http://localhost:8000")
+        
         # Metadatos del rango
         rank_meta = _get_rank_metadata(context.prize_rank)
         
@@ -107,17 +112,23 @@ class WinnerEmailService:
         prize_url = f"{frontend_base}/mis-premios"
         roulette_url = f"{frontend_base}/roulette/{context.roulette_id}" if context.roulette_id else None
         
-        # CORRECCIÓN: Usar BRAND_NAME de settings
-        brand_name = getattr(settings, "BRAND_NAME", "HAYU 24")
+        # Nombre de la marca
+        brand_name = getattr(settings, "BRAND_NAME", "HAYU24")
         
-        # URL para darse de baja (opcional - solo si implementas la funcionalidad)
+        # URLs para suscripción/desuscripción
         unsubscribe_url = None
+        resubscribe_url = None
+        
         if hasattr(context.winner, 'id'):
-            # Generar token seguro para unsubscribe
-            from django.utils.http import urlsafe_base64_encode
-            from django.utils.encoding import force_bytes
-            user_id_b64 = urlsafe_base64_encode(force_bytes(context.winner.id))
-            unsubscribe_url = f"{frontend_base}/unsubscribe/{user_id_b64}"
+            try:
+                user_id_b64 = urlsafe_base64_encode(force_bytes(context.winner.id))
+                unsubscribe_url = f"{backend_base}/api/auth/unsubscribe/{user_id_b64}/"
+                resubscribe_url = f"{backend_base}/api/auth/resubscribe/{user_id_b64}/"
+                
+                logger.debug(f"Generated unsubscribe URL: {unsubscribe_url}")
+                logger.debug(f"Generated resubscribe URL: {resubscribe_url}")
+            except Exception as e:
+                logger.error(f"Error generating subscription URLs: {e}")
         
         return {
             # Información del usuario
@@ -143,12 +154,13 @@ class WinnerEmailService:
             "pickup_instructions": context.pickup_instructions,
             "prize_url": prize_url,
             "roulette_url": roulette_url,
-            "unsubscribe_url": unsubscribe_url,  # NUEVO
+            "unsubscribe_url": unsubscribe_url,
+            "resubscribe_url": resubscribe_url,
             
-            # Configuración del sitio - CORREGIDO
+            # Configuración del sitio
             "support_email": getattr(settings, "DEFAULT_FROM_EMAIL", None),
             "brand_logo": f"{frontend_base}/static/email/logo.png",
-            "brand_name": brand_name,  # USAR VARIABLE
+            "brand_name": brand_name,
             "site_url": frontend_base,
         }
     
@@ -281,6 +293,7 @@ class WinnerEmailService:
         return batch_results
 
 
+# Función de conveniencia
 def send_winner_email(
     winner: AbstractUser,
     roulette_name: str,

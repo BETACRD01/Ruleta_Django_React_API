@@ -56,6 +56,24 @@
             border: 1px solid #e5e7eb;
             font-size: 14px;
         }
+        .status-badge {
+            display: inline-block;
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 24px;
+        }
+        .status-badge.subscribed {
+            background: #d1fae5;
+            color: #047857;
+            border: 1px solid #a7f3d0;
+        }
+        .status-badge.unsubscribed {
+            background: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fecaca;
+        }
         .button {
             background: #059669;
             color: white;
@@ -104,6 +122,36 @@
             display: block;
             border: 1px solid #fecaca;
         }
+        .message.info {
+            background: #eff6ff;
+            color: #1e40af;
+            display: block;
+            border: 1px solid #dbeafe;
+        }
+        .unsubscribe-link {
+            display: none;
+            margin-top: 24px;
+            padding: 20px;
+            background: #fef2f2;
+            border-radius: 8px;
+            border: 1px solid #fecaca;
+        }
+        .unsubscribe-link.show {
+            display: block;
+        }
+        .unsubscribe-link a {
+            color: #dc2626;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 15px;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .unsubscribe-link a:hover {
+            color: #b91c1c;
+            text-decoration: underline;
+        }
         .footer {
             margin-top: 32px;
             padding-top: 24px;
@@ -116,15 +164,39 @@
 </head>
 <body>
     <div class="container">
-        <div class="icon">📬</div>
-        <h1>Reactivar notificaciones</h1>
-        <p>¿Quieres volver a recibir notificaciones por email cuando ganes premios?</p>
-        
-        <div class="email">{{ email }}</div>
-        
-        <button class="button" id="resubscribeBtn" onclick="resubscribe()">
-            Sí, reactivar notificaciones
-        </button>
+        {% if not is_subscribed %}
+            <!-- Usuario NO está suscrito - puede reactivar -->
+            <div class="icon">🔬</div>
+            <h1>Reactivar notificaciones</h1>
+            <span class="status-badge unsubscribed">✗ Notificaciones desactivadas</span>
+            <p>¿Quieres volver a recibir notificaciones por email cuando ganes premios?</p>
+            
+            <div class="email">{{ email }}</div>
+            
+            <button class="button" id="resubscribeBtn" onclick="resubscribe()">
+                Sí, reactivar notificaciones
+            </button>
+        {% else %}
+            <!-- Usuario YA está suscrito -->
+            <div class="icon">✅</div>
+            <h1>Ya estás suscrito</h1>
+            <span class="status-badge subscribed">✓ Notificaciones activadas</span>
+            <p>Actualmente estás recibiendo todas las notificaciones por email.</p>
+            
+            <div class="email">{{ email }}</div>
+            
+            <div class="message info">
+                Ya estás recibiendo notificaciones. Recibirás un email cada vez que ganes un premio.
+            </div>
+            
+            <!-- Mostrar directamente el link para desactivar -->
+            <div class="unsubscribe-link show">
+                <p style="color: #b91c1c; margin-bottom: 12px;">¿Quieres dejar de recibirlas?</p>
+                <a href="{{ unsubscribe_url }}">
+                    🔕 Cancelar suscripción
+                </a>
+            </div>
+        {% endif %}
         
         <div class="message" id="message"></div>
         
@@ -134,9 +206,13 @@
     </div>
 
     <script>
+        const isSubscribed = {{ is_subscribed|lower }};
+        
         function resubscribe() {
             const btn = document.getElementById('resubscribeBtn');
             const msg = document.getElementById('message');
+            
+            if (!btn) return; // Si no hay botón (ya suscrito), no hacer nada
             
             btn.disabled = true;
             btn.textContent = 'Procesando...';

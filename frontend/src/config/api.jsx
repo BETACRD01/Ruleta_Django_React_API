@@ -605,7 +605,18 @@ export class NotificationAPI extends BaseAPI {
   getRealTimeMessages(params = {}) {
     const ep = `${NOTIFICATION_ENDPOINTS.REALTIME}${toQuery(params)}`;
     return this.request(ep);
-  }
+  } 
+/**
+ * Actualiza el estado de envío de email de una notificación
+ * Usado por el admin para marcar emails como enviados o con error
+ */
+  async updateEmailStatus(notificationId, statusData) {
+  const endpoint = `/notifications/${notificationId}/email-status/`;
+  return this.request(endpoint, {
+    method: "POST",
+    body: statusData
+  });
+ }
 
   async getUnreadNotifications(params = {}) {
     return this.getUserNotifications({ ...params, unread_only: true, include_stats: true });
@@ -943,5 +954,8 @@ const APIClient = {
     };
   }
 };
+
+
+
 
 export default APIClient

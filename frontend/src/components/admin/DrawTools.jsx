@@ -25,7 +25,7 @@ import {
 import { roulettesAPI } from "../../config/api"
 
 /* =============================================================================
-   Herramientas de Sorteo — Ruleta Premium (SIN auto-serie, manual 1 a 1)
+   Herramientas de Sorteo — Ruleta Premium (OPTIMIZADA)
 ============================================================================= */
 
 const TAU = Math.PI * 2
@@ -99,17 +99,20 @@ const useRouletteTransition = (onTransitionEnd, spinDurationMs) => {
       cleanup()
 
       setIsTransitioning(true)
+
+      wheel.style.willChange = "transform"
       wheel.style.transition = "none"
       wheel.style.transform = `rotate(${fromAngle}deg)`
-      // reflow
-      // eslint-disable-next-line no-unused-expressions
-      wheel.offsetHeight
+
+      // Force reflow
+      void wheel.offsetHeight
 
       const total = spinDurationMs
       if (!opts.twoPhase) {
         wheel.style.transition = `transform ${total}ms cubic-bezier(0.08, 0.8, 0.16, 1)`
         wheel.style.transform = `rotate(${toAngle}deg)`
         phaseTimeoutRef.current = setTimeout(() => {
+          wheel.style.willChange = "auto"
           setIsTransitioning(false)
           onTransitionEnd?.()
         }, total + 100)
@@ -127,6 +130,7 @@ const useRouletteTransition = (onTransitionEnd, spinDurationMs) => {
           wheel.style.transition = `transform ${B_MS}ms cubic-bezier(0.05, 0.85, 0.15, 1)`
           wheel.style.transform = `rotate(${toAngle}deg)`
           phaseTimeoutRef.current = setTimeout(() => {
+            wheel.style.willChange = "auto"
             setIsTransitioning(false)
             onTransitionEnd?.()
           }, B_MS + 120)
@@ -615,120 +619,122 @@ const DrawTools = ({ onRefresh }) => {
   const closePrize = useCallback(() => setPrizeModal({ open: false, prize: null }), [])
   const getPrizeImage = (p) => p?.image_url || p?.image || p?.photo || p?.picture || p?.thumbnail || null
 
-  const PrizeCard = ({ prize, idx }) => {
-    const img = getPrizeImage(prize)
-    const pos = prize.position ?? idx + 1
-    const rank = getRankMetaShared(pos)
+  const PrizeCard = useCallback(
+    ({ prize, idx }) => {
+      const img = getPrizeImage(prize)
+      const pos = prize.position ?? idx + 1
+      const rank = getRankMetaShared(pos)
 
-    const { initial, current, exhausted, low } = derivePrizeState(prize)
+      const { initial, current, exhausted, low } = derivePrizeState(prize)
 
-    const stockBadge = (
-      <span
-        className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-semibold ${
-          low ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-blue-100 text-blue-700 border-blue-200"
-        }`}
-        title={`Stock restante: ${current}${typeof initial === "number" ? ` / ${initial}` : ""}`}
-      >
-        <Package className="w-3 h-3" />
-        {current}
-        {typeof initial === "number" ? ` / ${initial}` : ""}
-      </span>
-    )
-
-    const ribbon = (label, cls) => (
-      <div className="absolute -left-9 top-4 -rotate-12 z-10">
-        <span className={`text-white text-xs font-black tracking-wider px-3 py-1 rounded-md shadow ${cls}`}>
-          {label}
+      const stockBadge = (
+        <span
+          className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-semibold ${
+            low ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-blue-100 text-blue-700 border-blue-200"
+          }`}
+          title={`Stock restante: ${current}${typeof initial === "number" ? ` / ${initial}` : ""}`}
+        >
+          <Package className="w-3 h-3" />
+          {current}
+          {typeof initial === "number" ? ` / ${initial}` : ""}
         </span>
-      </div>
-    )
+      )
 
-    const isSoldOut = exhausted
-    // FIX: derivedPrizeState was called instead of derivePrizeState
-    const isAwardedSome = derivePrizeState(prize).awarded > 0
-    const sorteadoBadge = !isSoldOut && isAwardedSome && ribbon("SORTEADO", "bg-emerald-600")
-    const agotadoBadge = isSoldOut && ribbon("AGOTADO", "bg-slate-700")
+      const ribbon = (label, cls) => (
+        <div className="absolute -left-9 top-4 -rotate-12 z-10">
+          <span className={`text-white text-xs font-black tracking-wider px-3 py-1 rounded-md shadow ${cls}`}>
+            {label}
+          </span>
+        </div>
+      )
 
-    return (
-      <div
-        className={`group relative p-4 rounded-2xl border transition-all duration-200 cursor-pointer focus-within:ring-2 focus-within:ring-blue-400 ${
-          exhausted ? "border-slate-300 bg-slate-50 opacity-80" : "border-slate-200 bg-white hover:shadow-md"
-        }`}
-        onClick={() => openPrize(prize)}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => (e.key === "Enter" ? openPrize(prize) : null)}
-        aria-label={`Ver premio: ${prize.name || "Premio"}`}
-        title={prize.name || "Premio"}
-      >
-        {agotadoBadge || sorteadoBadge}
+      const isSoldOut = exhausted
+      const isAwardedSome = derivePrizeState(prize).awarded > 0
+      const sorteadoBadge = !isSoldOut && isAwardedSome && ribbon("SORTEADO", "bg-emerald-600")
+      const agotadoBadge = isSoldOut && ribbon("AGOTADO", "bg-slate-700")
 
-        <div className="flex items-center gap-4">
-          <div
-            className={`relative w-20 h-20 rounded-xl overflow-hidden border bg-slate-50 grid place-items-center shrink-0 ${
-              exhausted ? "border-slate-300" : "border-slate-200 shadow-sm"
-            }`}
-          >
-            {img ? (
-              <>
-                <img
-                  src={img || "/placeholder.svg"}
-                  alt={prize.name || "Premio"}
-                  className={`w-full h-full object-cover transition-transform duration-200 ${
-                    exhausted ? "grayscale" : "group-hover:scale-105"
-                  }`}
-                />
-                {!exhausted && (
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                    <div className="absolute bottom-1.5 right-1.5 bg-white/95 text-slate-800 px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1 shadow-sm">
-                      <ZoomIn className="w-3 h-3" />
-                      Ver
+      return (
+        <div
+          className={`group relative p-4 rounded-2xl border transition-all duration-200 cursor-pointer focus-within:ring-2 focus-within:ring-blue-400 ${
+            exhausted ? "border-slate-300 bg-slate-50 opacity-80" : "border-slate-200 bg-white hover:shadow-md"
+          }`}
+          onClick={() => openPrize(prize)}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => (e.key === "Enter" ? openPrize(prize) : null)}
+          aria-label={`Ver premio: ${prize.name || "Premio"}`}
+          title={prize.name || "Premio"}
+        >
+          {agotadoBadge || sorteadoBadge}
+
+          <div className="flex items-center gap-4">
+            <div
+              className={`relative w-20 h-20 rounded-xl overflow-hidden border bg-slate-50 grid place-items-center shrink-0 ${
+                exhausted ? "border-slate-300" : "border-slate-200 shadow-sm"
+              }`}
+            >
+              {img ? (
+                <>
+                  <img
+                    src={img || "/placeholder.svg"}
+                    alt={prize.name || "Premio"}
+                    className={`w-full h-full object-cover transition-transform duration-200 ${
+                      exhausted ? "grayscale" : "group-hover:scale-105"
+                    }`}
+                  />
+                  {!exhausted && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <div className="absolute bottom-1.5 right-1.5 bg-white/95 text-slate-800 px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1 shadow-sm">
+                        <ZoomIn className="w-3 h-3" />
+                        Ver
+                      </div>
                     </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <div
-                className={`w-full h-full grid place-items-center ${
-                  exhausted
-                    ? "bg-gradient-to-br from-slate-200 to-slate-300"
-                    : "bg-gradient-to-br from-blue-100 via-blue-200 to-indigo-100"
-                }`}
-              >
-                <Gift className={`w-7 h-7 ${exhausted ? "text-slate-400" : "text-blue-700"}`} />
-              </div>
-            )}
-          </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-3 mb-1">
-              <h5 className={`font-semibold truncate text-base ${exhausted ? "text-slate-600" : "text-slate-800"}`}>
-                {prize.name || "Premio"}
-              </h5>
-              <span className={rank.badgeClass} title={`Posición ${pos}`}>
-                {rank.icon}
-                {rank.label}
-              </span>
+                  )}
+                </>
+              ) : (
+                <div
+                  className={`w-full h-full grid place-items-center ${
+                    exhausted
+                      ? "bg-gradient-to-br from-slate-200 to-slate-300"
+                      : "bg-gradient-to-br from-blue-100 via-blue-200 to-indigo-100"
+                  }`}
+                >
+                  <Gift className={`w-7 h-7 ${exhausted ? "text-slate-400" : "text-blue-700"}`} />
+                </div>
+              )}
             </div>
 
-            {prize.description && (
-              <p
-                className={`text-xs mt-1.5 line-clamp-2 leading-relaxed ${exhausted ? "text-slate-500" : "text-slate-600"}`}
-              >
-                {linkifyText(prize.description)}
-              </p>
-            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-3 mb-1">
+                <h5 className={`font-semibold truncate text-base ${exhausted ? "text-slate-600" : "text-slate-800"}`}>
+                  {prize.name || "Premio"}
+                </h5>
+                <span className={rank.badgeClass} title={`Posición ${pos}`}>
+                  {rank.icon}
+                  {rank.label}
+                </span>
+              </div>
 
-            <div className="mt-2.5 flex items-center gap-2 flex-wrap">{stockBadge}</div>
+              {prize.description && (
+                <p
+                  className={`text-xs mt-1.5 line-clamp-2 leading-relaxed ${exhausted ? "text-slate-500" : "text-slate-600"}`}
+                >
+                  {linkifyText(prize.description)}
+                </p>
+              )}
+
+              <div className="mt-2.5 flex items-center gap-2 flex-wrap">{stockBadge}</div>
+            </div>
           </div>
-        </div>
 
-        {!exhausted && (
-          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl pointer-events-none" />
-        )}
-      </div>
-    )
-  }
+          {!exhausted && (
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl pointer-events-none" />
+          )}
+        </div>
+      )
+    },
+    [openPrize],
+  )
 
   return (
     <div className="space-y-6">
@@ -776,11 +782,10 @@ const DrawTools = ({ onRefresh }) => {
       <div className="grid lg:grid-cols-5 gap-6">
         <div className="lg:col-span-2 space-y-5">
           <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <label className="block text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-              <Crown className="w-4 h-4 text-blue-600" />
-              Ruleta a sortear
+            <label className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
+            <Crown className="w-4 h-4 text-blue-600" />
+             Ruleta a sortear
             </label>
-
             <div className="relative">
               <Users className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
               <select
@@ -1025,7 +1030,6 @@ const PREMIUM_COLORS = [
   { base: "#5eead4", light: "#99f6e4", dark: "#2dd4bf" }, // Teal
 ]
 
-
 const PremiumRoulette = ({
   participants = [],
   isSpinning = false,
@@ -1042,12 +1046,13 @@ const PremiumRoulette = ({
   const box = useAutoSize()
   const { wheelRef, startTransition, isTransitioning } = useRouletteTransition(onTransitionEnd, spinDurationMs)
   const [lastAngle, setLastAngle] = useState(0)
-  const confettiCount = 100
+
+  const confettiCount = 50 // Reducido de 100
   const animationLevel = 1
-  const starsCount = 50
+  const starsCount = 25 // Reducido de 50
+  const sparklesCount = 30 // Reducido de 60
   const bannerAnimation = "winnerEntry 1.5s cubic-bezier(0.25, 1, 0.5, 1)"
   const glowIntensity = 0.6
-  const sparklesCount = 60
 
   const layout = useMemo(() => {
     const padding = 24
@@ -1256,7 +1261,7 @@ const PremiumRoulette = ({
         }}
       >
         <div
-          className="absolute inset-0 opacity-15"
+          className="absolute inset-0 opacity-10"
           style={{
             background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)",
             backgroundSize: "200% 100%",
@@ -1265,7 +1270,7 @@ const PremiumRoulette = ({
         />
 
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          {[...Array(12)].map((_, i) => (
+          {[...Array(6)].map((_, i) => (
             <div
               key={i}
               className="absolute w-1 h-1 bg-slate-400 rounded-full"
@@ -1288,8 +1293,8 @@ const PremiumRoulette = ({
               left: -8,
               top: -8,
               background: "conic-gradient(from 0deg, #64748b, #78716c, #737373, #64748b)",
-              filter: "blur(8px)",
-              opacity: 0.25,
+              filter: "blur(6px)",
+              opacity: 0.2,
               animation: "spin 15s linear infinite",
             }}
           />
@@ -1304,6 +1309,7 @@ const PremiumRoulette = ({
             style={{
               transformOrigin: `${cx}px ${cy}px`,
               filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.12))",
+              willChange: isSpinning ? "transform" : "auto",
             }}
           >
             <circle cx={cx} cy={cy} r={radius + 4} fill="none" stroke="url(#metalGradient)" strokeWidth="5" />
@@ -1412,9 +1418,6 @@ const PremiumRoulette = ({
           </svg>
         </div>
 
-        {/* Se movió el ícono del centro de la ruleta para que aparezca *sobre* la ruleta */}
-        {/* Se eliminó el ícono de la ruleta del centro, ya que ya no es necesario */}
-
         <div
           className="pointer-events-none absolute z-20"
           style={{
@@ -1442,19 +1445,14 @@ const PremiumRoulette = ({
             <div className="absolute inset-0 overflow-hidden">
               {[...Array(confettiCount)].map((_, i) => {
                 const colors = ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ec4899", "#fbbf24"]
-                const shapes = ["circle", "square", "triangle"]
+                const shapes = ["circle", "square"]
                 const shape = shapes[Math.floor(Math.random() * shapes.length)]
-                const size =
-                  animationLevel === 1
-                    ? 4 + Math.random() * 10
-                    : animationLevel === 2
-                      ? 3 + Math.random() * 7
-                      : 3 + Math.random() * 5
+                const size = 4 + Math.random() * 8
 
                 return (
                   <div
                     key={i}
-                    className={`absolute ${shape === "circle" ? "rounded-full" : shape === "square" ? "rounded-sm" : ""}`}
+                    className={`absolute ${shape === "circle" ? "rounded-full" : "rounded-sm"}`}
                     style={{
                       left: `${Math.random() * 100}%`,
                       top: `${50 + Math.random() * 50}%`,
@@ -1464,8 +1462,8 @@ const PremiumRoulette = ({
                       animation: `confetti ${1.5 + Math.random() * 2}s ease-out infinite`,
                       animationDelay: `${Math.random() * 0.5}s`,
                       "--tx": `${(Math.random() - 0.5) * 200}px`,
-                      transform: shape === "triangle" ? "rotate(45deg)" : "none",
                       boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                      willChange: "transform, opacity",
                     }}
                   />
                 )
@@ -1480,11 +1478,12 @@ const PremiumRoulette = ({
                   style={{
                     left: `${Math.random() * 100}%`,
                     top: `${Math.random() * 100}%`,
-                    width: `${animationLevel === 1 ? 12 + Math.random() * 18 : animationLevel === 2 ? 10 + Math.random() * 12 : 8 + Math.random() * 8}px`,
-                    height: `${animationLevel === 1 ? 12 + Math.random() * 18 : animationLevel === 2 ? 10 + Math.random() * 12 : 8 + Math.random() * 8}px`,
+                    width: `${12 + Math.random() * 12}px`,
+                    height: `${12 + Math.random() * 12}px`,
                     animation: `sparkle ${1 + Math.random() * 2}s ease-in-out infinite`,
                     animationDelay: `${Math.random() * 1}s`,
-                    filter: `drop-shadow(0 0 ${animationLevel === 1 ? 6 : animationLevel === 2 ? 4 : 2}px rgba(250, 204, 21, 0.8))`,
+                    filter: "drop-shadow(0 0 4px rgba(250, 204, 21, 0.8))",
+                    willChange: "transform, opacity",
                   }}
                 />
               ))}
@@ -1506,7 +1505,6 @@ const PremiumRoulette = ({
                 }}
               />
 
-              {/* Contenedor principal */}
               <div
                 className="relative px-10 py-8 rounded-3xl border-4 border-white shadow-2xl overflow-hidden"
                 style={{

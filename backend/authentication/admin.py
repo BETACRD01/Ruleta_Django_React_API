@@ -65,6 +65,7 @@ class UserAdmin(BaseUserAdmin):
         "get_phone",
         "is_active",
         "is_email_verified",
+        "notification_status",
         "has_accepted_terms",
         "created_at",
         "last_login",
@@ -76,8 +77,10 @@ class UserAdmin(BaseUserAdmin):
         "is_email_verified",
         "is_staff",
         "is_superuser",
+        "notify_new_roulettes",
+        "receive_notifications",
         "created_at",
-        TermsAcceptedFilter,  # <- reemplaza "profile__terms_accepted_at"
+        TermsAcceptedFilter,
     ]
     ordering = ["-created_at"]
     readonly_fields = ["created_at", "updated_at", "last_login", "date_joined"]
@@ -93,6 +96,13 @@ class UserAdmin(BaseUserAdmin):
             "Permisos y Rol",
             {
                 "fields": ("role", "is_active", "is_staff", "is_superuser", "is_email_verified"),
+            },
+        ),
+        (
+            "Preferencias de Notificaciones",
+            {
+                "fields": ("notify_new_roulettes", "receive_notifications"),
+                "classes": ("collapse",),
             },
         ),
         (
@@ -118,7 +128,12 @@ class UserAdmin(BaseUserAdmin):
                 "fields": ("username", "email", "first_name", "last_name", "password1", "password2"),
             },
         ),
-        ("Configuración Inicial", {"fields": ("role", "is_active")}),
+        (
+            "Configuración Inicial", 
+            {
+                "fields": ("role", "is_active", "notify_new_roulettes", "receive_notifications")
+            }
+        ),
     )
     list_display_links = ["email", "username"]
     list_per_page = 25
@@ -135,6 +150,21 @@ class UserAdmin(BaseUserAdmin):
             return format_html('<span style="color: #999;">Sin teléfono</span>')
 
     get_phone.short_description = "Teléfono"
+    
+    def notification_status(self, obj):
+        """Muestra el estado de las notificaciones del usuario"""
+        notifications = []
+        if obj.notify_new_roulettes:
+            notifications.append("Ruletas")
+        if obj.receive_notifications:
+            notifications.append("Premios")
+        
+        if not notifications:
+            return format_html('<span style="color: #999;">Ninguna</span>')
+        
+        return format_html('<span style="color: green;">{}</span>', " | ".join(notifications))
+    
+    notification_status.short_description = "Notificaciones Activas"
 
     def has_accepted_terms(self, obj):
         try:
@@ -149,7 +179,14 @@ class UserAdmin(BaseUserAdmin):
         # Optimiza el acceso a profile
         return super().get_queryset(request).select_related("profile")
 
-    actions = ["make_admin", "make_user", "verify_email", "unverify_email"]
+    actions = [
+        "make_admin", 
+        "make_user", 
+        "verify_email", 
+        "unverify_email",
+        "enable_all_notifications",
+        "disable_roulette_notifications",
+    ]
 
     def make_admin(self, request, queryset):
         updated = queryset.update(role="admin")
@@ -174,6 +211,23 @@ class UserAdmin(BaseUserAdmin):
         self.message_user(request, f"{updated} emails desverificados.")
 
     unverify_email.short_description = "Desverificar Email"
+    
+    def enable_all_notifications(self, request, queryset):
+        """Habilita todas las notificaciones para los usuarios seleccionados"""
+        updated = queryset.update(
+            notify_new_roulettes=True,
+            receive_notifications=True
+        )
+        self.message_user(request, f"Todas las notificaciones habilitadas para {updated} usuarios.")
+    
+    enable_all_notifications.short_description = "Habilitar todas las notificaciones"
+    
+    def disable_roulette_notifications(self, request, queryset):
+        """Deshabilita notificaciones de nuevas ruletas"""
+        updated = queryset.update(notify_new_roulettes=False)
+        self.message_user(request, f"Notificaciones de ruletas deshabilitadas para {updated} usuarios.")
+    
+    disable_roulette_notifications.short_description = "Deshabilitar notificaciones de ruletas"
 
 
 # --------- UserProfile Admin ---------
@@ -183,7 +237,6 @@ class UserProfileAdmin(admin.ModelAdmin):
     search_fields = ["user__email", "user__username", "phone"]
     list_filter = ["birth_date", "terms_accepted_at"]
     readonly_fields = ["user", "terms_accepted_at"]
-    # Evita dropdown gigante si hay muchos usuarios (opcional):
     raw_id_fields = ("user",)
 
     fieldsets = (

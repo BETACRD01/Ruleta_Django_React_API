@@ -6,17 +6,14 @@ import {
   Settings, TrendingUp, AlertTriangle, Bell
 } from 'lucide-react';
 
-import { roulettesAPI, notificationAPI, notificationManager } from '../config/api';
-// ⬇️ Importa el centro de notificaciones externo (archivo único)
-import NotificationCenter from '../components/admin/NotificationCenter';
-import RouletteManager from '../components/admin/RouletteManager';
-import DrawTools from '../components/admin/DrawTools';
-import ParticipantManager from '../components/admin/ParticipantManager';
-import ReportsManager from '../components/admin/ReportsManager';
+// Removido notificationManager ya que no se usa
+import { roulettesAPI, notificationAPI } from '../config/api';
+import NotificationCenter from './admin/NotificationCenter';
+import RouletteManager from './admin/RouletteManager';
+import DrawTools from './admin/DrawTools';
+import ParticipantManager from './admin/ParticipantManager';
+import ReportsManager from './admin/ReportsManager';
 
-// ===============================
-// DASHBOARD PRINCIPAL
-// ===============================
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [loading, setLoading] = useState(true);
@@ -28,52 +25,42 @@ const AdminDashboard = () => {
   });
   const [roulettes, setRoulettes] = useState([]);
   const [error, setError] = useState(null);
-
-  // ---- Notificaciones (contador en campana) ----
   const [unreadCount, setUnreadCount] = useState(0);
 
-  // Cargar datos iniciales de ruletas
   useEffect(() => {
     loadDashboardData();
   }, []);
 
-  // Arrancar polling de notificaciones y sincronizar contador
   useEffect(() => {
     let mounted = true;
+    let intervalId = null;
 
     const syncUnread = async () => {
+      if (!mounted) return;
+      
       try {
-        // opción A: stats dedicadas
-        const s = await notificationAPI.stats();
-        if (mounted) setUnreadCount(s?.unread_notifications || s?.unread_count || 0);
+        const res = await notificationAPI.getUserNotifications({ 
+          include_stats: true, 
+          page_size: 1,
+          unread_only: true
+        });
+        
+        const count = res?.stats?.unread_count ?? 0;
+        if (mounted) {
+          setUnreadCount(count);
+        }
       } catch (e) {
-        // fallback: pedir user notifications con include_stats
-        try {
-          const res = await notificationAPI.getUserNotifications({ include_stats: true, page_size: 1 });
-          const count = res?.stats?.unread_count ?? 0;
-          if (mounted) setUnreadCount(count);
-        } catch (_) {}
+        console.error('Error syncing unread count:', e);
       }
     };
 
     syncUnread();
-
-    // Si ya usas notificationManager, enganchamos listener
-    const handler = ({ stats }) => setUnreadCount(stats?.unread_count || 0);
-    if (notificationManager?.addListener) {
-      notificationManager.addListener('notifications_updated', handler);
-      // Iniciar polling si aún no corre
-      if (notificationManager?.startPolling) notificationManager.startPolling(30000);
-    } else {
-      // Fallback: poll manual cada 30s
-      const id = setInterval(syncUnread, 30000);
-      return () => { mounted = false; clearInterval(id); };
-    }
+    intervalId = setInterval(syncUnread, 30000);
 
     return () => {
       mounted = false;
-      if (notificationManager?.removeListener) {
-        notificationManager.removeListener('notifications_updated', handler);
+      if (intervalId) {
+        clearInterval(intervalId);
       }
     };
   }, []);
@@ -111,7 +98,6 @@ const AdminDashboard = () => {
     { id: 'roulettes', label: 'Gestión de Ruletas', icon: Settings },
     { id: 'draws', label: 'Herramientas de Sorteo', icon: RotateCcw },
     { id: 'participants', label: 'Participantes', icon: Users },
-    // ⬇️ Pestaña Notificaciones con badge real
     { id: 'notifications', label: 'Notificaciones', icon: Bell, badge: unreadCount },
     { id: 'reports', label: 'Reportes', icon: Award }
   ];
@@ -127,7 +113,6 @@ const AdminDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 xl:px-12 py-6 lg:py-8">
-        {/* Header */}
         <div className="mb-6 lg:mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Panel de Administración</h1>
@@ -135,7 +120,6 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Error Alert */}
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
             <div className="flex">
@@ -145,7 +129,6 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        {/* Estadísticas principales - Grid totalmente responsivo */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 lg:gap-6 mb-6 lg:mb-8">
           <StatCard 
             title="Ruletas Activas" 
@@ -173,7 +156,6 @@ const AdminDashboard = () => {
           />
         </div>
 
-        {/* Pestañas */}
         <div className="mb-6 lg:mb-8">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8" aria-label="Tabs">
@@ -203,13 +185,11 @@ const AdminDashboard = () => {
           </div>
         </div>
 
-        {/* Contenido de pestañas */}
         <div>
           {activeTab === 'overview' && <OverviewTab roulettes={roulettes} stats={stats} />}
-          {activeTab === 'roulettes' && ( <RouletteManager onRefetchDashboard={loadDashboardData} />)}
+          {activeTab === 'roulettes' && <RouletteManager onRefetchDashboard={loadDashboardData} />}
           {activeTab === 'draws' && <DrawTools onRefresh={loadDashboardData} />}
           {activeTab === 'participants' && <ParticipantManager onRefreshDashboard={loadDashboardData} />}
-          {/* 🔔 Integración real: usamos el componente externo */}
           {activeTab === 'notifications' && (
             <NotificationCenter
               onUnreadChange={setUnreadCount}
@@ -224,9 +204,6 @@ const AdminDashboard = () => {
   );
 };
 
-// ===============================
-// Tarjeta de estadística - Mejorada responsividad
-// ===============================
 const StatCard = ({ title, value, icon: Icon, color }) => (
   <div className="bg-white p-4 lg:p-6 rounded-lg shadow hover:shadow-md transition-shadow">
     <div className="flex items-center">
@@ -241,16 +218,12 @@ const StatCard = ({ title, value, icon: Icon, color }) => (
   </div>
 );
 
-// ===============================
-// Resumen - Layout mejorado
-// ===============================
 const OverviewTab = ({ roulettes, stats }) => {
   const recentRoulettes = roulettes.slice(0, 5);
 
   return (
     <div className="p-4 lg:p-6">
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 lg:gap-8">
-        {/* Ruletas recientes */}
         <div className="bg-gray-50 p-4 lg:p-6 rounded-lg">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-medium text-gray-900">Ruletas Recientes</h3>
@@ -281,7 +254,6 @@ const OverviewTab = ({ roulettes, stats }) => {
           </div>
         </div>
 
-        {/* Resumen de estadísticas */}
         <div className="bg-gray-50 p-4 lg:p-6 rounded-lg">
           <h3 className="text-lg font-medium text-gray-900 mb-4">Resumen General</h3>
           <div className="space-y-4">

@@ -1,0 +1,94 @@
+{{ brand_name }}
+
+Nueva Ruleta Creada - Notificación Administrativa
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PANEL DE ADMINISTRACIÓN
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+Estimado Administrador,
+
+Se ha creado una nueva ruleta en el sistema que requiere tu atención.
+
+
+📋 DETALLES DE LA RULETA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Nombre:        {{ roulette_name }}
+ID:            #{{ roulette_id }}
+{% if roulette_status %}Estado:        {{ roulette_status }}
+{% endif %}
+Descripción:   {{ roulette_description }}
+
+
+📅 FECHAS IMPORTANTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{% if participation_start %}
+Inicio Participación:    {{ participation_start }}
+{% endif %}{% if participation_end %}Fin Participación:       {{ participation_end }}
+{% endif %}{% if scheduled_date %}Fecha del Sorteo:        {{ scheduled_date }}
+{% endif %}
+
+
+👤 INFORMACIÓN DEL CREADOR
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{% if created_by_name %}
+Creada por:    {{ created_by_name }}
+{% endif %}{% if created_by_email %}Email:         {{ created_by_email }}
+{% endif %}
+
+
+🔗 ACCIONES ADMINISTRATIVAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{% if roulette_url %}
+Ver detalles de la ruleta:
+{{ roulette_url }}
+{% endif %}
+{% if admin_dashboard_url %}
+Panel de administración:
+{{ admin_dashboard_url }}
+{% endif %}
+
+
+⚠️ RECORDATORIO IMPORTANTE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Verifica que todos los detalles de la ruleta sean correctos antes de 
+que comience la participación.
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Síguenos en nuestras redes sociales
+Facebook | Instagram | Twitter
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+La información enviada desde este correo electrónico cumple con todas las 
+normas legales establecidas en LA LEY DE COMERCIO ELECTRÓNICO, FIRMAS 
+ELECTRÓNICAS, MENSAJES DE DATOS y su Reglamento General, vigente en el 
+Ecuador.
+
+Nota de descargo: La información contenida en este correo es confidencial 
+y solo puede ser utilizada por el individuo o la compañía a las cuales 
+está dirigido. Esta información no debe ser distribuida en copia total o 
+parcialmente por ningún medio sin la autorización de {{ brand_name }}.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+{{ brand_name }}
+Sistema de Gestión de Ruletas
+
+Este correo ha sido enviado de forma automática y no requiere respuesta
+{% if site_url %}{{ site_url }}{% endif %}
+{% if support_email %}Soporte: {{ support_email }}{% endif %}
+
+© {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.
+
+Este es un correo automático del sistema de administración.

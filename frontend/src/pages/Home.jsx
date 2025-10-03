@@ -478,11 +478,6 @@ export default function Home() {
       <main className="relative z-10 mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16">
         {/* Hero Section */}
         <div className="text-center mb-8 sm:mb-12 lg:mb-16">
-          <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm px-4 sm:px-6 py-2 sm:py-3 rounded-full shadow-lg mb-4 sm:mb-6 border border-gray-200">
-            <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-[#D62829]" />
-            <span className="text-xs sm:text-sm font-bold text-gray-900">Plataforma de Sorteos Confiable</span>
-          </div>
-          
           <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black mb-4 sm:mb-6 leading-tight px-4">
             <span className="text-[#0b56a7]">Bienvenido a </span>
             <span className="text-[#D62829] inline-block animate-pulse">Hayu 24</span>

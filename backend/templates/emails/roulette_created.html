@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>¡Nueva Ruleta Disponible! - {{ brand_name }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        .email-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border: 1px solid #ddd;
+        }
+        
+        .header {
+            background: #4a90e2;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .header h2 {
+            font-size: 18px;
+            font-weight: normal;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .greeting {
+            margin-bottom: 20px;
+        }
+        
+        .roulette-card {
+            background: #f8f9fa;
+            padding: 25px;
+            margin: 25px 0;
+            border-left: 4px solid #4a90e2;
+            border-radius: 4px;
+        }
+        
+        .roulette-name {
+            font-size: 22px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+        
+        .roulette-description {
+            font-size: 15px;
+            color: #555;
+            line-height: 1.7;
+            margin-bottom: 20px;
+        }
+        
+        .info-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        .info-table td {
+            padding: 12px;
+            border: 1px solid #ddd;
+        }
+        
+        .info-table td:first-child {
+            background: #f8f9fa;
+            font-weight: bold;
+            width: 40%;
+        }
+        
+        .urgent-badge {
+            display: inline-block;
+            background: #dc3545;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+        }
+        
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            padding: 16px 40px;
+            background-color: #28a745;
+            color: white !important;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        
+        .cta-button:hover {
+            background-color: #218838;
+        }
+        
+        .secondary-link {
+            text-align: center;
+            margin: 15px 0;
+        }
+        
+        .secondary-link a {
+            color: #4a90e2;
+            text-decoration: none;
+            font-size: 14px;
+        }
+        
+        .secondary-link a:hover {
+            text-decoration: underline;
+        }
+        
+        .tip-section {
+            background: #fff3cd;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #ffc107;
+        }
+        
+        .tip-section p {
+            color: #856404;
+            margin: 0;
+        }
+        
+        .social-links {
+            margin: 20px 0;
+            text-align: center;
+        }
+        
+        .social-links a {
+            display: inline-block;
+            margin: 0 8px;
+            text-decoration: none;
+        }
+        
+        .social-links img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+        
+        .social-links a:hover img {
+            transform: scale(1.1);
+        }
+        
+        .footer {
+            background: #f0f0f0;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #ddd;
+        }
+        
+        .footer p {
+            margin: 8px 0;
+        }
+        
+        .footer a {
+            color: #4a90e2;
+            text-decoration: none;
+        }
+        
+        .legal-text {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px dotted #ccc;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                padding: 20px;
+            }
+            
+            .roulette-card {
+                padding: 20px;
+            }
+            
+            .info-table td {
+                display: block;
+                width: 100% !important;
+            }
+            
+            .info-table td:first-child {
+                border-bottom: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>{{ brand_name }}</h1>
+            <h2>¡Nueva Ruleta Disponible!</h2>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+            <div class="greeting">
+                <p><strong>¡Hola!</strong></p>
+                <p style="margin-top: 10px;">Tenemos excelentes noticias para ti. 🎊</p>
+            </div>
+
+            <p style="margin-bottom: 20px;">
+                Se acaba de crear una nueva ruleta con premios increíbles y queremos que seas de los primeros en participar.
+            </p>
+
+            <!-- Roulette Card -->
+            <div class="roulette-card">
+                {% if scheduled_date %}
+                <div class="urgent-badge">⏰ Sorteo Programado</div>
+                {% endif %}
+                
+                <div class="roulette-name">{{ roulette_name }}</div>
+                
+                <div class="roulette-description">
+                    {{ roulette_description }}
+                </div>
+
+                <!-- Information Table -->
+                {% if participation_end or scheduled_date %}
+                <table class="info-table">
+                    {% if participation_end %}
+                    <tr>
+                        <td>📅 Participación hasta:</td>
+                        <td>{{ participation_end }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if scheduled_date %}
+                    <tr>
+                        <td>🎯 Sorteo programado:</td>
+                        <td>{{ scheduled_date }}</td>
+                    </tr>
+                    {% endif %}
+                </table>
+                {% endif %}
+            </div>
+
+            <!-- CTA Button -->
+            <div class="button-container">
+                <a href="{{ roulette_url }}" class="cta-button">🎲 Participar Ahora</a>
+            </div>
+
+            <div class="secondary-link">
+                <a href="{{ all_roulettes_url }}">Ver todas las ruletas disponibles →</a>
+            </div>
+
+            <!-- Tip Section -->
+            <div class="tip-section">
+                <p><strong>💡 Consejo Importante:</strong> ¡No esperes demasiado! Las plazas son limitadas y los mejores premios se agotan rápido.</p>
+            </div>
+
+            <!-- Social Links -->
+            <div style="text-align: center; margin: 30px 0;">
+                <p style="margin-bottom: 15px;"><strong>Síguenos en nuestras redes sociales</strong></p>
+                <div class="social-links">
+                    <a href="https://facebook.com/tupagina" title="Facebook">
+                        <img src="https://img.icons8.com/color/48/facebook-new.png" alt="Facebook">
+                    </a>
+                    <a href="https://instagram.com/tupagina" title="Instagram">
+                        <img src="https://img.icons8.com/fluency/48/instagram-new.png" alt="Instagram">
+                    </a>
+                    <a href="https://twitter.com/tupagina" title="Twitter">
+                        <img src="https://img.icons8.com/ios-filled/50/twitterx--v1.png" alt="Twitter">
+                    </a>
+                    <a href="https://tiktok.com/@tupagina" title="TikTok">
+                        <img src="https://img.icons8.com/fluency/48/tiktok.png" alt="TikTok">
+                    </a>
+                </div>
+            </div>
+
+            <!-- Legal Text -->
+            <div class="legal-text">
+                <p>La información enviada desde este correo electrónico cumple con todas las normas legales establecidas en LA LEY DE COMERCIO ELECTRÓNICO, FIRMAS ELECTRÓNICAS, MENSAJES DE DATOS y su Reglamento General, vigente en el Ecuador.</p>
+                
+                <p style="margin-top: 10px;"><strong>Nota de descargo:</strong> La información contenida en este correo es confidencial y solo puede ser utilizada por el individuo o la compañía a las cuales está dirigido. Esta información no debe ser distribuida en copia total o parcialmente por ningún medio sin la autorización de {{ brand_name }}.</p>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>{{ brand_name }}</strong></p>
+            <p>Este correo ha sido enviado de forma automática y no requiere respuesta</p>
+            {% if site_url %}
+            <p><a href="{{ site_url }}">{{ site_url }}</a></p>
+            {% endif %}
+            {% if support_email %}
+            <p>¿Necesitas ayuda? Contáctanos: <a href="mailto:{{ support_email }}">{{ support_email }}</a></p>
+            {% endif %}
+            <p style="margin-top: 10px;">&copy; {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.</p>
+            <p style="margin-top: 10px; font-size: 11px; color: #999;">
+                Recibiste este correo porque estás registrado en {{ brand_name }}.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
