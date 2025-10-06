@@ -3,7 +3,7 @@ import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom';
 import { 
   RefreshCcw, AlertTriangle, Users, Play, X, Download, Clock, Timer, 
-  ChevronDown, ChevronUp, Trophy
+  ChevronDown, ChevronUp, Trophy, Calendar, CalendarCheck, CalendarX2, Lock
 } from 'lucide-react';
 import { EmptyState } from '../UI';
 import {
@@ -36,16 +36,71 @@ const normalizeDate = (r) =>
 const getScheduledDate = (r) =>
   r?.scheduled_date || r?.schedule_date || r?.draw_date || r?.end_date || null;
 
+const getParticipationStart = (r) =>
+  r?.participation_start || r?.start_date || null;
+
+const getParticipationEnd = (r) =>
+  r?.participation_end || r?.end_date || null;
+
 const getParticipantsCount = (r) =>
   r?.participants_count ?? r?.participants ?? r?.stats?.participants_count ?? 0;
 
 const toArray = (res) => (Array.isArray(res?.results) ? res.results : Array.isArray(res) ? res : []);
 
 /* =========================
+   Verificar si la participación está abierta
+   ========================= */
+const isParticipationOpen = (roulette) => {
+  const now = new Date();
+  const participationStart = getParticipationStart(roulette);
+  const participationEnd = getParticipationEnd(roulette);
+  
+  // Si no hay fecha de inicio, está abierta (asumimos que siempre está disponible)
+  if (!participationStart) {
+    // Pero si hay fecha de fin, verificar que no haya expirado
+    if (participationEnd) {
+      return new Date(participationEnd) > now;
+    }
+    return true;
+  }
+  
+  // Si hay fecha de inicio, verificar que ya haya comenzado
+  const hasStarted = new Date(participationStart) <= now;
+  
+  // Si hay fecha de fin, verificar que no haya expirado
+  if (participationEnd) {
+    const hasNotEnded = new Date(participationEnd) > now;
+    return hasStarted && hasNotEnded;
+  }
+  
+  return hasStarted;
+};
+
+/* =========================
+   Formatear fechas
+   ========================= */
+const formatDate = (dateString) => {
+  if (!dateString) return null;
+  try {
+    const date = new Date(dateString);
+    const options = {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    };
+    return date.toLocaleString('es-ES', options);
+  } catch {
+    return null;
+  }
+};
+
+/* =========================
    Lógica de estado de ruleta
    ========================= */
 const getRouletteState = (r) => {
-  // Verificar si está completada/sorteada
   if (
     r?.status === 'cancelled' ||
     r?.status === 'completed' ||
@@ -53,11 +108,9 @@ const getRouletteState = (r) => {
     r?.drawn_at
   ) return 'completed';
 
-  // Verificar si está activa o programada
   if (r?.status === 'active') return 'active';
   if (r?.status === 'scheduled') return 'scheduled';
 
-  // Por defecto es completada
   return 'completed';
 };
 
@@ -105,14 +158,14 @@ const CountdownTimer = ({ endDate, onComplete, className = "" }) => {
     const totalMinutes = timeLeft.days * 24 * 60 + timeLeft.hours * 60 + timeLeft.minutes;
     if (totalMinutes < 60) return "bg-red-100 text-red-800 border-red-200";
     if (totalMinutes < 1440) return "bg-orange-100 text-orange-800 border-orange-200";
-    return "bg-purple-100 text-purple-800 border-purple-200";
+    return "bg-blue-100 text-blue-800 border-blue-200";
   };
 
   if (isExpired) {
     return (
       <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium border ${getUrgencyStyles()} ${className}`}>
         <Timer className="w-4 h-4" />
-        <span>Sorteo finalizado</span>
+        <span>Finalizado</span>
       </div>
     );
   }
@@ -262,8 +315,7 @@ const ImageLightbox = ({ open, src, alt = '', onClose }) => {
           <img
             src={src}
             alt={alt}
-            className={`max-w-[95vw] max-h-[90vh] object-contain transition-transform duration-300 rounded-lg shadow-2xl
-                        ${zoomed ? 'scale-150 cursor-zoom-out' : 'scale-100 cursor-zoom-in'}`}
+            className={`max-w-[95vw] max-h-[90vh] object-contain transition-transform duration-300 rounded-lg shadow-2xl ${zoomed ? 'scale-150 cursor-zoom-out' : 'scale-100 cursor-zoom-in'}`}
             onClick={(e) => { e.stopPropagation(); setZoomed(z => !z); }}
             draggable={false}
           />
@@ -348,12 +400,108 @@ const StatusBadge = ({ roulette, className = "" }) => {
 };
 
 /* =========================
+   Información de fechas
+   ========================= */
+const DateInfoPanel = ({ roulette, className = "" }) => {
+  const participationStart = getParticipationStart(roulette);
+  const participationEnd = getParticipationEnd(roulette);
+  const scheduledDate = getScheduledDate(roulette);
+  
+  const now = new Date();
+  const hasStarted = !participationStart || new Date(participationStart) <= now;
+  const hasEnded = participationEnd && new Date(participationEnd) <= now;
+  
+  // Mostrar cronómetro solo si ya comenzó y no ha terminado
+  const showCountdown = hasStarted && !hasEnded && participationEnd;
+  
+  return (
+    <div className={`space-y-2 ${className}`}>
+      {/* Inicio de participación */}
+      {participationStart && (
+        <div className="flex items-start gap-2 text-xs">
+          <Calendar className={`h-4 w-4 flex-shrink-0 mt-0.5 ${hasStarted ? 'text-green-500' : 'text-blue-500'}`} />
+          <div className="flex-1">
+            <div>
+              <span className="font-medium text-gray-700">Inicio:</span>
+              <span className="ml-1 text-gray-600">{formatDate(participationStart)}</span>
+              {!hasStarted && (
+                <span className="ml-2 text-blue-600 font-medium">(Próximamente)</span>
+              )}
+            </div>
+            {/* Cronómetro para inicio si aún no ha comenzado */}
+            {!hasStarted && (
+              <div className="mt-1">
+                <CountdownTimer
+                  endDate={participationStart}
+                  onComplete={() => {}}
+                  className="text-xs"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Fin de participación con cronómetro */}
+      {participationEnd && (
+        <div className="flex items-start gap-2 text-xs">
+          <CalendarX2 className={`h-4 w-4 flex-shrink-0 mt-0.5 ${hasEnded ? 'text-red-500' : 'text-orange-500'}`} />
+          <div className="flex-1">
+            <div>
+              <span className="font-medium text-gray-700">Cierre:</span>
+              <span className="ml-1 text-gray-600">{formatDate(participationEnd)}</span>
+            </div>
+            {/* Solo mostrar cronómetro si ya comenzó y no ha terminado */}
+            {showCountdown && (
+              <div className="mt-1">
+                <CountdownTimer
+                  endDate={participationEnd}
+                  onComplete={() => {}}
+                  className="text-xs"
+                />
+              </div>
+            )}
+            {/* Mensaje si aún no comienza */}
+            {!hasStarted && !hasEnded && (
+              <span className="text-gray-500 text-xs mt-1 block">
+                (Esperando inicio de participación)
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Fecha del sorteo (estática, sin cronómetro) */}
+      {scheduledDate && (
+        <div className="flex items-start gap-2 text-xs">
+          <CalendarCheck className="h-4 w-4 flex-shrink-0 mt-0.5 text-purple-500" />
+          <div>
+            <span className="font-medium text-gray-700">Sorteo:</span>
+            <span className="ml-1 text-gray-600">{formatDate(scheduledDate)}</span>
+            <span className="ml-2 text-purple-600 font-medium">(Manual)</span>
+          </div>
+        </div>
+      )}
+      
+      {/* Mensaje si no hay fechas configuradas */}
+      {!participationStart && !participationEnd && !scheduledDate && (
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <Clock className="h-4 w-4" />
+          <span>Sin fechas programadas</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* =========================
    Main Component
    ========================= */
 const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myPartsProp }) => {
   const [filterStatus, setFilterStatus] = useState('active');
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState('');
+  const [, forceUpdate] = useState(0);
 
   const [roulettes, setRoulettes] = useState(Array.isArray(roulettesProp) ? roulettesProp : []);
   const [myParticipations, setMyParticipations] = useState(Array.isArray(myPartsProp) ? myPartsProp : []);
@@ -361,14 +509,22 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
   const busyRef = useRef(null);
   const [lightbox, setLightbox] = useState({ open: false, src: '', alt: '' });
 
+  // Force re-render cada segundo para actualizar el estado de los botones
+  useEffect(() => {
+    const interval = setInterval(() => {
+      forceUpdate(prev => prev + 1);
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setPageError('');
       
-      // IMPORTANTE: Cargar TODAS las ruletas sin filtro de status
       const [rRes, pRes] = await Promise.all([
-        roulettesAPI.getRoulettes({ page_size: 100 }), // Sin filtro status
+        roulettesAPI.getRoulettes({ page_size: 100 }),
         participantsAPI.getMyParticipations({ page_size: 200 }),
       ]);
       
@@ -377,6 +533,8 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
         image_url: resolveImageUrl(r),
         participants_count: getParticipantsCount(r),
         scheduled_date: getScheduledDate(r),
+        participation_start: getParticipationStart(r),
+        participation_end: getParticipationEnd(r),
         created_date: normalizeDate(r),
       }));
       
@@ -419,17 +577,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
       return new Date(db || 0) - new Date(da || 0);
     });
   }, [roulettes, filterStatus]);
-
-  const handleRouletteComplete = useCallback((rouletteId) => {
-    console.log(`Ruleta ${rouletteId} completada`);
-    loadData();
-  }, [loadData]);
-
-  const shouldShowTimer = (roulette) => {
-    if (!roulette?.scheduled_date) return false;
-    const t = new Date(roulette.scheduled_date).getTime();
-    return Number.isFinite(t) && t > Date.now();
-  };
 
   return (
     <div className="space-y-6">
@@ -513,25 +660,27 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
           {filteredRoulettes.map((r) => {
             const participating = isParticipating(r.id);
             const isCompleted = isRouletteCompleted(r);
+            const participationOpen = isParticipationOpen(r);
+            const participationStart = getParticipationStart(r);
             
-            // Solo deshabilitar si está cargando - permitir ver completadas
-            const ctaDisabled = busyRef.current === r.id;
+            const ctaDisabled = busyRef.current === r.id || (!isCompleted && !participationOpen);
             
-            // Cambiar texto según estado
-            const ctaLabel = isCompleted 
-              ? 'Ver Resultados' 
-              : participating 
-                ? 'Ya participas — Entrar' 
-                : 'Participar Ahora';
+            let ctaLabel = 'Participar Ahora';
+            if (isCompleted) {
+              ctaLabel = 'Ver Resultados';
+            } else if (!participationOpen && participationStart) {
+              ctaLabel = 'Próximamente';
+            } else if (participating) {
+              ctaLabel = 'Ya participas — Entrar';
+            }
 
             const gridCtaClass = ctaDisabled
-              ? 'pointer-events-none bg-gray-100 text-gray-500 border border-gray-200'
+              ? 'pointer-events-none bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed'
               : participating
                 ? 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50'
                 : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-sm hover:shadow-md transform hover:scale-105';
 
             const cardImg = r.image_url || resolveImageUrl(r);
-            const showTimer = shouldShowTimer(r);
 
             return (
               <div
@@ -552,17 +701,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                       className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     
-                    {/* Cronómetro SOLO si hay scheduled_date */}
-                    {showTimer && (
-                      <div className="absolute top-3 right-3">
-                        <CountdownTimer
-                          endDate={r.scheduled_date}
-                          onComplete={() => handleRouletteComplete(r.id)}
-                          className="bg-white/95 backdrop-blur-sm shadow-lg text-xs"
-                        />
-                      </div>
-                    )}
-                    
                     {/* Badge de estado */}
                     <div className="absolute top-3 left-3">
                       <StatusBadge 
@@ -570,6 +708,16 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                         className="bg-white/95 backdrop-blur-sm shadow-lg"
                       />
                     </div>
+                    
+                    {/* Badge de participación bloqueada */}
+                    {!isCompleted && !participationOpen && participationStart && (
+                      <div className="absolute top-3 right-3">
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 rounded-full shadow-lg backdrop-blur-sm">
+                          <Lock className="w-3 h-3" />
+                          Bloqueada
+                        </span>
+                      </div>
+                    )}
                   </AspectBox>
                 </button>
 
@@ -587,12 +735,30 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                   {r.description && (
                     <ExpandableDescription 
                       description={r.description} 
-                      maxLength={120} 
+                      maxLength={100} 
                       className="flex-1"
                     />
                   )}
 
-                  {/* Metadata - SOLO participantes siempre visible */}
+                  {/* Información de fechas */}
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <DateInfoPanel roulette={r} />
+                  </div>
+
+                  {/* Alerta si está bloqueada */}
+                  {!isCompleted && !participationOpen && participationStart && (
+                    <div className="bg-amber-50 border-l-4 border-amber-400 p-3 rounded-r-lg">
+                      <div className="flex items-start gap-2">
+                        <Lock className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                        <div className="text-xs text-amber-800">
+                          <p className="font-medium">Participación cerrada</p>
+                          <p className="mt-1">Espera a que inicie para poder participar</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Participantes */}
                   <div className="flex items-center text-sm text-gray-600">
                     <span className="inline-flex items-center gap-1.5">
                       <Users className="h-4 w-4 text-blue-500" />
@@ -602,37 +768,47 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
 
                   {/* CTA */}
                   <div className="mt-auto pt-2">
-                    <Link
-                      to={`/ruletas/${r.id}/participar`}
-                      onClick={(e) => {
-                        if (!isAuthenticated()) {
-                          e.preventDefault();
-                          setPageError('Debes iniciar sesión para participar.');
-                          return;
-                        }
-                        if (ctaDisabled) {
-                          e.preventDefault();
-                          return;
-                        }
-                        busyRef.current = r.id;
-                        setTimeout(() => {
-                          if (busyRef.current === r.id) busyRef.current = null;
-                        }, 300);
-                      }}
-                      className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${gridCtaClass}`}
-                    >
-                      {busyRef.current === r.id ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          Cargando...
-                        </>
-                      ) : (
-                        <>
-                          <Play className="h-4 w-4" />
-                          {ctaLabel}
-                        </>
-                      )}
-                    </Link>
+                    {!isCompleted && !participationOpen ? (
+                      <button
+                        disabled
+                        className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${gridCtaClass}`}
+                      >
+                        <Lock className="h-4 w-4" />
+                        {ctaLabel}
+                      </button>
+                    ) : (
+                      <Link
+                        to={`/ruletas/${r.id}/participar`}
+                        onClick={(e) => {
+                          if (!isAuthenticated()) {
+                            e.preventDefault();
+                            setPageError('Debes iniciar sesión para participar.');
+                            return;
+                          }
+                          if (ctaDisabled) {
+                            e.preventDefault();
+                            return;
+                          }
+                          busyRef.current = r.id;
+                          setTimeout(() => {
+                            if (busyRef.current === r.id) busyRef.current = null;
+                          }, 300);
+                        }}
+                        className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${gridCtaClass}`}
+                      >
+                        {busyRef.current === r.id ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            Cargando...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="h-4 w-4" />
+                            {ctaLabel}
+                          </>
+                        )}
+                      </Link>
+                    )}
                   </div>
                 </div>
               </div>

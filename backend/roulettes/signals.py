@@ -44,24 +44,33 @@ def create_roulette_settings(sender, instance: Roulette, created: bool, **kwargs
     if not created:
         return
 
-    settings, created_settings = RouletteSettings.objects.get_or_create(
-        roulette=instance,
-        defaults={
-            "max_participants": 0,
-            "allow_multiple_entries": False,
-            "show_countdown": True,
-            "notify_on_participation": True,
-            "notify_on_draw": True,
-            "winners_target": 0,
-        },
-    )
+    try:
+        settings, created_settings = RouletteSettings.objects.get_or_create(
+            roulette=instance,
+            defaults={
+                "max_participants": 0,
+                "allow_multiple_entries": False,
+                "show_countdown": True,
+                "notify_on_participation": True,
+                "notify_on_draw": True,
+                "winners_target": 0,
+            },
+        )
 
-    logger.info(
-        "RouletteSettings %s para ruleta %s (id=%s)",
-        "creados" if created_settings else "ya existían",
-        instance.name,
-        instance.id,
-    )
+        logger.info(
+            "RouletteSettings %s para ruleta %s (id=%s)",
+            "creados" if created_settings else "ya existían",
+            instance.name,
+            instance.id,
+        )
+    except Exception as exc:
+        logger.error(
+            "Error creando RouletteSettings para ruleta %s (id=%s): %s",
+            instance.name,
+            instance.id,
+            exc,
+            exc_info=True
+        )
 
 # ============================================================
 # Roulette: notificaciones asíncronas
@@ -80,18 +89,35 @@ def schedule_roulette_notifications(sender, instance: Roulette, created: bool, *
         try:
             from roulettes.tasks import send_roulette_creation_notifications
             
-            send_roulette_creation_notifications.delay(
+            # Programar tarea de Celery
+            task = send_roulette_creation_notifications.delay(
                 roulette_id=instance.id,
                 created_by_id=instance.created_by.id if instance.created_by else None
             )
             
-            logger.info(f"Tarea de notificaciones programada para ruleta: {instance.name}")
+            logger.info(
+                "Tarea de notificaciones programada para ruleta '%s' (id=%s, task_id=%s)",
+                instance.name,
+                instance.id,
+                task.id
+            )
             
         except ImportError:
-            logger.error("No se pudo importar tasks de Celery")
+            logger.error(
+                "Celery no disponible - notificaciones NO enviadas para ruleta '%s' (id=%s)",
+                instance.name,
+                instance.id
+            )
         except Exception as e:
-            logger.error(f"Error programando notificaciones: {e}", exc_info=True)
+            logger.error(
+                "Error crítico programando notificaciones para ruleta '%s' (id=%s): %s",
+                instance.name,
+                instance.id,
+                str(e),
+                exc_info=True
+            )
     
+    # Ejecutar después de que el commit sea exitoso
     transaction.on_commit(send_notifications)
 
 # ============================================================
@@ -111,25 +137,46 @@ def handle_roulette_status_changes(sender, instance: Roulette, **kwargs):
         old = Roulette.objects.only("status", "winner_id", "is_drawn", "name").get(pk=instance.pk)
     except Roulette.DoesNotExist:
         return
+    except Exception as exc:
+        logger.error("Error obteniendo ruleta anterior (id=%s): %s", instance.pk, exc)
+        return
 
+    # Logging de cambios de estado
     if old.status != instance.status:
         logger.info(
-            "Estado de ruleta '%s' cambió: %s -> %s",
+            "Estado de ruleta '%s' (id=%s) cambió: %s -> %s",
             getattr(instance, "name", instance.pk),
+            instance.pk,
             old.status,
             instance.status,
         )
 
+        # Validar que hay configuración al activar
         if instance.status == RouletteStatus.ACTIVE:
             settings = getattr(instance, "settings", None)
             if settings is None:
-                logger.warning("Ruleta '%s' activada sin configuración", instance.name)
+                logger.warning(
+                    "Ruleta '%s' (id=%s) activada sin configuración - se creará automáticamente",
+                    instance.name,
+                    instance.pk
+                )
 
+        # Advertencia si se marca como completada sin sortear
         if instance.status == RouletteStatus.COMPLETED and not old.is_drawn:
-            logger.info("Ruleta '%s' marcada como COMPLETED (is_drawn aún falso)", instance.name)
+            logger.warning(
+                "Ruleta '%s' (id=%s) marcada como COMPLETED pero is_drawn=False",
+                instance.name,
+                instance.pk
+            )
 
+    # Logging de asignación de ganador
     if old.winner_id is None and instance.winner_id is not None:
-        logger.info("Ganador asignado a ruleta '%s' (winner_id=%s)", instance.name, instance.winner_id)
+        logger.info(
+            "Ganador asignado a ruleta '%s' (id=%s, winner_id=%s)",
+            instance.name,
+            instance.pk,
+            instance.winner_id
+        )
 
 # ============================================================
 # RoulettePrize: validaciones y cambios
@@ -141,7 +188,11 @@ def validate_prize_before_save(sender, instance: RoulettePrize, **kwargs):
     Normaliza stock a rangos válidos.
     """
     if instance.stock is None or instance.stock < 0:
-        logger.warning("Stock negativo/no válido en premio '%s' -> normalizando a 0", instance.name)
+        logger.warning(
+            "Stock negativo/no válido en premio '%s' (id=%s) -> normalizando a 0",
+            instance.name,
+            instance.pk or "nuevo"
+        )
         instance.stock = 0
 
 
@@ -151,12 +202,20 @@ def handle_prize_changes(sender, instance: RoulettePrize, created: bool, **kwarg
     Loggea cambios en premios.
     """
     logger.info(
-        "Premio %s en ruleta '%s': %s (id=%s)",
+        "Premio %s en ruleta '%s' (id=%s): %s",
         "creado" if created else "actualizado",
         instance.roulette.name,
-        instance.name,
         instance.id,
+        instance.name,
     )
+    
+    # Advertencia si se crea premio sin stock
+    if created and instance.stock == 0:
+        logger.warning(
+            "Premio '%s' (id=%s) creado con stock=0 - no estará disponible para sorteos",
+            instance.name,
+            instance.id
+        )
 
 # ============================================================
 # Borrado de archivos y limpieza
@@ -169,6 +228,11 @@ def delete_prize_image(sender, instance: RoulettePrize, **kwargs):
     """
     if instance.image:
         _safe_delete_storage_path(getattr(instance.image, "name", None), label="prize-image")
+        logger.info(
+            "Imagen del premio '%s' (id=%s) eliminada del almacenamiento",
+            instance.name,
+            instance.id
+        )
 
 
 @receiver(pre_delete, sender=Roulette)
@@ -176,15 +240,33 @@ def delete_roulette_assets_and_related(sender, instance: Roulette, **kwargs):
     """
     Elimina portada y hace limpieza antes de borrar la ruleta.
     """
+    # Eliminar imagen de portada
     if instance.cover_image:
         _safe_delete_storage_path(getattr(instance.cover_image, "name", None), label="roulette-cover")
+        logger.info(
+            "Portada de ruleta '%s' (id=%s) eliminada del almacenamiento",
+            instance.name,
+            instance.id
+        )
 
+    # Limpiar historial de sorteos
     try:
         deleted, _ = getattr(instance, "draw_history", None) and instance.draw_history.all().delete() or (0, {})
         if deleted:
-            logger.info("Eliminados %s registros de historial para ruleta '%s'", deleted, instance.name)
+            logger.info(
+                "Eliminados %s registros de historial para ruleta '%s' (id=%s)",
+                deleted,
+                instance.name,
+                instance.id
+            )
     except Exception as exc:
-        logger.error("Error limpiando historial de ruleta '%s': %s", instance.name, exc)
+        logger.error(
+            "Error limpiando historial de ruleta '%s' (id=%s): %s",
+            instance.name,
+            instance.id,
+            exc,
+            exc_info=True
+        )
 
 # ============================================================
 # Señales personalizadas
@@ -199,13 +281,66 @@ roulette_scheduled_date_reached = Signal()
 def handle_draw_completed(sender, roulette: Roulette, winner, draw_type: str, **kwargs):
     """
     Evento: sorteo completado.
+    Se dispara cuando se completa un sorteo exitosamente.
     """
-    logger.info(
-        "DRAW_COMPLETED roulette_id=%s winner_id=%s draw_type=%s",
-        roulette.id,
-        getattr(winner, "id", None),
-        draw_type,
-    )
+    try:
+        winner_id = getattr(winner, "id", None)
+        winner_name = getattr(getattr(winner, "user", None), "username", "desconocido")
+        
+        logger.info(
+            "DRAW_COMPLETED: ruleta_id=%s ruleta='%s' winner_id=%s winner='%s' draw_type=%s",
+            roulette.id,
+            roulette.name,
+            winner_id,
+            winner_name,
+            draw_type,
+        )
+    except Exception as exc:
+        logger.error(
+            "Error en handler de draw_completed para ruleta_id=%s: %s",
+            roulette.id,
+            exc,
+            exc_info=True
+        )
+
+
+@receiver(roulette_participation_limit_reached)
+def handle_participation_limit_reached(sender, roulette: Roulette, **kwargs):
+    """
+    Evento: límite de participantes alcanzado.
+    """
+    try:
+        logger.info(
+            "PARTICIPATION_LIMIT_REACHED: ruleta_id=%s ruleta='%s'",
+            roulette.id,
+            roulette.name,
+        )
+    except Exception as exc:
+        logger.error(
+            "Error en handler de participation_limit_reached: %s",
+            exc,
+            exc_info=True
+        )
+
+
+@receiver(roulette_scheduled_date_reached)
+def handle_scheduled_date_reached(sender, roulette: Roulette, **kwargs):
+    """
+    Evento: fecha programada alcanzada.
+    """
+    try:
+        logger.info(
+            "SCHEDULED_DATE_REACHED: ruleta_id=%s ruleta='%s' scheduled_date=%s",
+            roulette.id,
+            roulette.name,
+            roulette.scheduled_date,
+        )
+    except Exception as exc:
+        logger.error(
+            "Error en handler de scheduled_date_reached: %s",
+            exc,
+            exc_info=True
+        )
 
 # ============================================================
 # Verificación inicial
@@ -214,10 +349,15 @@ def handle_draw_completed(sender, roulette: Roulette, winner, draw_type: str, **
 def ready():
     """
     Verifica integridad al iniciar.
+    Llamado desde apps.py en el método ready().
     """
     try:
         missing = Roulette.objects.filter(settings__isnull=True).count()
         if missing > 0:
-            logger.warning("Hay %s ruletas sin RouletteSettings", missing)
+            logger.warning(
+                "Encontradas %s ruletas sin RouletteSettings al iniciar - se crearán automáticamente al acceder",
+                missing
+            )
     except Exception as exc:
-        logger.error("Error en verificación inicial de ruletas: %s", exc)
+        # Es normal que falle si las tablas aún no existen (primera migración)
+        logger.debug("Error en verificación inicial de ruletas (puede ser normal): %s", exc)

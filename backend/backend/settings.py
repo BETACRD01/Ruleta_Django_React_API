@@ -22,9 +22,9 @@ else:
     print(f"⚠ .env NO se cargó. Buscando en: {env_path}")
     print(f"⚠ Archivo existe: {env_path.exists()}")
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Seguridad / Debug
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# SEGURIDAD Y DEBUG
+# ============================================================================
 SECRET_KEY = os.getenv(
     "DJANGO_SECRET_KEY",
     "django-insecure-dev-key-k8x-9m-p2w-v4n5q7r-t9y-u3i6o0p-a1s2d3f4g5h6j7"
@@ -41,9 +41,27 @@ if DEBUG:
 else:
     ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",")
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Apps
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# CONFIGURACIÓN DE MARCA Y URLs
+# ============================================================================
+# IMPORTANTE: Estas variables deben definirse ANTES de usarlas en otras configuraciones
+BRAND_NAME = os.getenv("BRAND_NAME", "HAYU24")
+MEDIA_URL_BASE = os.getenv("MEDIA_URL_BASE", "http://localhost:8000")
+
+# URLs del Frontend y Backend
+FRONTEND_BASE_URL = os.getenv(
+    "FRONTEND_BASE_URL",
+    "http://localhost:3000" if DEBUG else "https://tu-dominio-frontend.com"
+)
+
+BACKEND_BASE_URL = os.getenv(
+    "BACKEND_BASE_URL",
+    "http://localhost:8000" if DEBUG else "https://tu-dominio-backend.com"
+)
+
+# ============================================================================
+# APLICACIONES INSTALADAS
+# ============================================================================
 DJANGO_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -51,17 +69,34 @@ DJANGO_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "django.contrib.sites",
+    "django.contrib.sites",  # Requerido por allauth
 ]
 
 THIRD_PARTY_APPS = [
+    # Django REST Framework
     "rest_framework",
     "rest_framework.authtoken",
+    
+    # CORS
     "corsheaders",
+    
+    # CKEditor
     "ckeditor",
     "ckeditor_uploader",
+    
+    # Celery
     "django_celery_beat",
     "django_celery_results",
+    
+    # Django Allauth - Autenticación Social
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
+    
+    # DJ Rest Auth - API de Autenticación
+    "dj_rest_auth",
+    "dj_rest_auth.registration",
 ]
 
 LOCAL_APPS = [
@@ -73,11 +108,12 @@ LOCAL_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
+# ID del sitio (requerido por django-allauth)
 SITE_ID = int(os.getenv("SITE_ID", "1"))
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Middleware
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# MIDDLEWARE
+# ============================================================================
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
@@ -87,11 +123,12 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",  # Requerido por allauth
 ]
 
-# ──────────────────────────────────────────────────────────────────────────────
-# URLs / Templates
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# URLs Y TEMPLATES
+# ============================================================================
 ROOT_URLCONF = "backend.urls"
 
 TEMPLATES = [
@@ -112,9 +149,9 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Base de datos
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# BASE DE DATOS
+# ============================================================================
 DATABASES = {
     "default": {
         "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.sqlite3"),
@@ -126,9 +163,9 @@ DATABASES = {
     }
 }
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Validación de contraseñas - SIMPLIFICADA
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# VALIDACIÓN DE CONTRASEÑAS
+# ============================================================================
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
@@ -141,17 +178,17 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Internacionalización
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# INTERNACIONALIZACIÓN
+# ============================================================================
 LANGUAGE_CODE = "es-es"
 TIME_ZONE = "America/Guayaquil"
 USE_I18N = True
 USE_TZ = True
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Archivos estáticos y media
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# ARCHIVOS ESTÁTICOS Y MEDIA
+# ============================================================================
 STATIC_URL = "/static/"
 STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
 STATIC_ROOT = BASE_DIR / "staticfiles"
@@ -162,9 +199,86 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "authentication.User"
 
-# ──────────────────────────────────────────────────────────────────────────────
-# CKEditor Configuration
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# CONFIGURACIÓN DE DJANGO-ALLAUTH (AUTENTICACIÓN SOCIAL)
+# ============================================================================
+
+# --- Configuración de Cuentas ---
+ACCOUNT_AUTHENTICATION_METHOD = 'email'  # Login solo con email
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'  # Verificación obligatoria
+ACCOUNT_USERNAME_REQUIRED = False  # No requerir username para OAuth
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None  # Sin campo username
+
+# Auto-registro con proveedores sociales
+SOCIALACCOUNT_AUTO_SIGNUP = True
+
+# Prevenir duplicados de email
+ACCOUNT_UNIQUE_EMAIL = True
+
+# Configuración de inicio de sesión
+ACCOUNT_LOGIN_ATTEMPTS_LIMIT = 5
+ACCOUNT_LOGIN_ATTEMPTS_TIMEOUT = 300  # 5 minutos
+
+# Configuración de logout
+ACCOUNT_LOGOUT_ON_GET = False  # Require confirmación de logout
+
+# URLs de redirección
+ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = '/dashboard/'
+ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = '/login/'
+LOGIN_REDIRECT_URL = '/dashboard/'
+ACCOUNT_LOGOUT_REDIRECT_URL = '/'
+
+# --- Configuración de Proveedores Sociales ---
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': [
+            'profile',
+            'email',
+        ],
+        'AUTH_PARAMS': {
+            'access_type': 'offline',  # Para obtener refresh tokens
+            'prompt': 'consent',  # Siempre pedir consentimiento
+        },
+        'APP': {
+            'client_id': os.getenv('GOOGLE_CLIENT_ID', ''),
+            'secret': os.getenv('GOOGLE_CLIENT_SECRET', ''),
+            'key': ''
+        },
+        'VERIFIED_EMAIL': True,  # Confiar en emails verificados por Google
+    }
+}
+
+# --- Adapter Personalizado ---
+# Para manejar lógica personalizada en el registro social
+SOCIALACCOUNT_ADAPTER = 'authentication.adapters.CustomSocialAccountAdapter'
+
+# --- Configuración de DJ-Rest-Auth ---
+REST_AUTH_REGISTER_SERIALIZERS = {
+    'REGISTER_SERIALIZER': 'authentication.serializers.CustomRegisterSerializer',
+}
+
+REST_AUTH_SERIALIZERS = {
+    'USER_DETAILS_SERIALIZER': 'authentication.serializers.UserSerializer',
+}
+
+# Token de autenticación
+REST_AUTH_TOKEN_MODEL = 'rest_framework.authtoken.models.Token'
+REST_AUTH_TOKEN_CREATOR = 'dj_rest_auth.utils.default_create_token'
+
+# Configuración de sesiones para OAuth
+SOCIALACCOUNT_SESSION_REMEMBER = True
+ACCOUNT_SESSION_REMEMBER = True
+
+# URL de callback para Google OAuth (FRONTEND_BASE_URL ya está definido arriba)
+GOOGLE_OAUTH_CALLBACK_URL = f"{FRONTEND_BASE_URL}/auth/google/callback"
+
+# ID del cliente de Google (ya lo tienes en .env, pero lo exponemos para las vistas)
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+
+# ============================================================================
+# CONFIGURACIÓN DE CKEDITOR
+# ============================================================================
 CKEDITOR_UPLOAD_PATH = "ckeditor_uploads/"
 CKEDITOR_IMAGE_BACKEND = "pillow"
 CKEDITOR_ALLOW_NONIMAGE_FILES = False
@@ -209,9 +323,9 @@ CKEDITOR_CONFIGS = {
     }
 }
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Django REST Framework
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# DJANGO REST FRAMEWORK
+# ============================================================================
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
@@ -240,9 +354,9 @@ REST_FRAMEWORK = {
     }
 }
 
-# ──────────────────────────────────────────────────────────────────────────────
-# CORS Configuration
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# CONFIGURACIÓN DE CORS
+# ============================================================================
 CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
@@ -281,9 +395,9 @@ CSRF_TRUSTED_ORIGINS = [
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = False
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Configuración de Email - BREVO
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# CONFIGURACIÓN DE EMAIL - BREVO
+# ============================================================================
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 
 # Solo configurar SMTP si no es console backend
@@ -309,18 +423,18 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "williancerda0@gmail.com")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
 PASSWORD_RESET_TIMEOUT = int(os.getenv("PASSWORD_RESET_TIMEOUT", str(60 * 60 * 24)))
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Configuración de uploads
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# CONFIGURACIÓN DE UPLOADS
+# ============================================================================
 FILE_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("FILE_UPLOAD_MAX_MEMORY_SIZE", str(15 * 1024 * 1024)))
 DATA_UPLOAD_MAX_MEMORY_SIZE = int(os.getenv("DATA_UPLOAD_MAX_MEMORY_SIZE", str(30 * 1024 * 1024)))
 
 ALLOWED_RECEIPT_EXTENSIONS = [".jpg", ".jpeg", ".png", ".pdf"]
 MAX_RECEIPT_SIZE = 10 * 1024 * 1024
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Configuración de Logging
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# CONFIGURACIÓN DE LOGGING
+# ============================================================================
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -387,9 +501,9 @@ LOGGING = {
 
 (BASE_DIR / "logs").mkdir(exist_ok=True)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Configuración de producción
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# CONFIGURACIÓN DE SEGURIDAD (PRODUCCIÓN)
+# ============================================================================
 if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -436,9 +550,9 @@ else:
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Configuraciones adicionales
-# ──────────────────────────────────────────────────────────────────────────────
+# ============================================================================
+# CONFIGURACIÓN DE CACHÉ
+# ============================================================================
 CACHES = {
     'default': {
         'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
@@ -457,12 +571,18 @@ CACHES = {
     }
 }
 
+# ============================================================================
+# CONFIGURACIÓN DE SESIONES
+# ============================================================================
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 7
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 1 semana
 SESSION_COOKIE_NAME = 'luckyspin_sessionid'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_SAVE_EVERY_REQUEST = True
 
+# ============================================================================
+# CONFIGURACIÓN DE LA APLICACIÓN
+# ============================================================================
 ROULETTE_MAX_PRIZES = int(os.getenv("ROULETTE_MAX_PRIZES", "20"))
 ROULETTE_MAX_PARTICIPANTS = int(os.getenv("ROULETTE_MAX_PARTICIPANTS", "1000"))
 NOTIFICATION_BATCH_SIZE = int(os.getenv("NOTIFICATION_BATCH_SIZE", "50"))
@@ -472,7 +592,7 @@ IMAGE_MAX_WIDTH = int(os.getenv("IMAGE_MAX_WIDTH", "1200"))
 IMAGE_MAX_HEIGHT = int(os.getenv("IMAGE_MAX_HEIGHT", "1200"))
 
 # ============================================================================
-# CELERY CONFIGURATION
+# CONFIGURACIÓN DE CELERY
 # ============================================================================
 ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 
@@ -503,21 +623,3 @@ CELERY_RESULT_EXPIRES = 3600
 CELERY_RESULT_EXTENDED = True
 
 WINNER_NOTIFICATION_DELAY = int(os.getenv('WINNER_NOTIFICATION_DELAY', '300'))
-
-BRAND_NAME = os.getenv("BRAND_NAME", "HAYU24")
-MEDIA_URL_BASE = os.getenv("MEDIA_URL_BASE", "http://localhost:8000")
-
-
-# ============================================================================
-# Configuración del Frontend y Backend
-# ============================================================================
-FRONTEND_BASE_URL = os.getenv(
-    "FRONTEND_BASE_URL",
-    "http://localhost:3000" if DEBUG else "https://tu-dominio-frontend.com"
-)
-
-# Configuración de la URL base del Backend
-BACKEND_BASE_URL = os.getenv(
-    "BACKEND_BASE_URL",
-    "http://localhost:8000" if DEBUG else "https://tu-dominio-backend.com"
-)

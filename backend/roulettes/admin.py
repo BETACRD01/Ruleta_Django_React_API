@@ -9,7 +9,7 @@ from django.contrib.admin import SimpleListFilter
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
-from django.utils.timezone import localtime
+from django.utils.timezone import localtime, now as timezone_now
 
 from .models import (
     Roulette,
@@ -110,7 +110,7 @@ class RouletteAdminForm(forms.ModelForm):
             attrs={
                 "type": "datetime-local",
                 "class": "vDateTimeInput optional-field",
-                "placeholder": "Opcional - participación inmediata si se deja vacío",
+                "placeholder": "Dejar vacío = participación inmediata",
                 "style": "border-left: 4px solid #28a745;",
             }
         ),
@@ -118,9 +118,10 @@ class RouletteAdminForm(forms.ModelForm):
         help_text=mark_safe(
             """
             <div style='background:#e8f5e8;padding:8px;border-radius:4px;margin-top:5px;'>
-                <strong>📅 CAMPO OPCIONAL</strong><br>
+                <strong>INICIO DE PARTICIPACIÓN</strong><br>
                 • <strong>Vacío:</strong> participación inmediata al activar<br>
-                • <strong>Con fecha:</strong> comienza a partir de ese momento
+                • <strong>Con fecha:</strong> participación desde esa fecha/hora<br>
+                • Ejemplo: 25/10/2025 00:00 = abre a medianoche del día 25
             </div>
             """
         ),
@@ -132,17 +133,18 @@ class RouletteAdminForm(forms.ModelForm):
             attrs={
                 "type": "datetime-local",
                 "class": "vDateTimeInput optional-field",
-                "placeholder": "Opcional - sin límite si se deja vacío",
-                "style": "border-left: 4px solid #28a745;",
+                "placeholder": "Dejar vacío = sin límite de tiempo",
+                "style": "border-left: 4px solid #dc3545;",
             }
         ),
         input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"],
         help_text=mark_safe(
             """
-            <div style='background:#e8f5e8;padding:8px;border-radius:4px;margin-top:5px;'>
-                <strong>⏰ CAMPO OPCIONAL</strong><br>
-                • <strong>Vacío:</strong> sin límite (hasta sorteo manual)<br>
-                • <strong>Con fecha:</strong> no se aceptan más participaciones después
+            <div style='background:#ffe8e8;padding:8px;border-radius:4px;margin-top:5px;'>
+                <strong>FIN DE PARTICIPACIÓN (CIERRE)</strong><br>
+                • <strong>Vacío:</strong> sin límite, hasta sorteo manual<br>
+                • <strong>Con fecha:</strong> se cierra participación después de esta fecha<br>
+                • Ejemplo: 30/10/2025 23:59 = cierra antes de medianoche del día 30
             </div>
             """
         ),
@@ -154,17 +156,19 @@ class RouletteAdminForm(forms.ModelForm):
             attrs={
                 "type": "datetime-local",
                 "class": "vDateTimeInput optional-field",
-                "placeholder": "Opcional - fecha planificada (no ejecuta sorteo automático)",
-                "style": "border-left: 4px solid #64748b;",
+                "placeholder": "¿Qué día sortearás?",
+                "style": "border-left: 4px solid #ffc107;",
             }
         ),
         input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"],
         help_text=mark_safe(
             """
-            <div style='background:#eef2ff;padding:8px;border-radius:4px;margin-top:5px;'>
-                <strong>🗓️ CAMPO OPCIONAL</strong><br>
-                • Referencia de fecha/hora planificada para realizar el sorteo <em>manualmente</em>.<br>
-                • Debe ser posterior al fin de participación, si existe.
+            <div style='background:#fff8e8;padding:8px;border-radius:4px;margin-top:5px;'>
+                <strong>FECHA DEL SORTEO</strong><br>
+                • Cuándo ejecutarás el sorteo manualmente<br>
+                • Debe ser DESPUÉS del fin de participación<br>
+                • <strong>NO es automático:</strong> debes ejecutarlo con el botón<br>
+                • Ejemplo: 31/10/2025 20:00 = sorteas ese día a las 8pm
             </div>
             """
         ),
@@ -216,19 +220,35 @@ class RouletteAdminForm(forms.ModelForm):
     def clean_scheduled_date(self):
         v = self.cleaned_data.get("scheduled_date")
         return v or None
-
+    
     def clean(self):
         cleaned = super().clean()
         start = cleaned.get("participation_start")
         end = cleaned.get("participation_end")
         sched = cleaned.get("scheduled_date")
-
-        if start and end and start >= end:
-            self.add_error("participation_end", "La fecha de fin debe ser posterior al inicio de participación.")
-
-        if sched and end and sched <= end:
-            self.add_error("scheduled_date", "La fecha planificada debe ser posterior al fin de participación.")
-
+        now = timezone_now()
+         
+        # Fin debe ser posterior a inicio
+        if start and end:
+            if start >= end:
+                self.add_error(
+                    "participation_end", 
+                    "La fecha de fin debe ser posterior a la fecha de inicio."
+                )
+        
+        # Sorteo debe ser después de fin de participación
+        if sched:
+            if end and sched <= end:
+                self.add_error(
+                    "scheduled_date",
+                    "La fecha del sorteo debe ser posterior al fin de participación."
+                )
+            if not end:
+                self.add_error(
+                    "scheduled_date",
+                    "Debes especificar una fecha de fin de participación antes de programar el sorteo."
+                )
+        
         return cleaned
 
 
@@ -370,19 +390,36 @@ class RouletteAdmin(admin.ModelAdmin):
             {"fields": ("cover_image", "cover_image_preview_large"), "classes": ("collapse",), "description": "Imagen principal"},
         ),
         (
-            "📅 Configuración de Fechas y Horarios (Todas Opcionales)",
+            "Configuración de Fechas",
             {
                 "fields": ("participation_start", "participation_end", "scheduled_date", "date_configuration_summary"),
                 "description": mark_safe(
                     """
-                    <div style='background:#f8f9fa;padding:12px;border-radius:6px;border:1px solid #dee2e6;'>
-                        <h4 style='color:#495057;margin-top:0;'>💡 Guía Rápida</h4>
-                        <ul style='margin:0;color:#6c757d;'>
-                            <li><strong>Sin fechas:</strong> participación libre + sorteo manual</li>
-                            <li><strong>Solo fin:</strong> participación hasta fecha límite + sorteo manual</li>
-                            <li><strong>Inicio + fin:</strong> participación en período específico + sorteo manual</li>
-                            <li><strong>Fecha planificada:</strong> referencia para realizar el sorteo manualmente</li>
-                        </ul>
+                    <div style='background:#f0f8ff;padding:15px;border-radius:6px;border:2px solid #4a90e2;'>
+                        <h3 style='margin-top:0;color:#2c5282;'>Ejemplo de Configuración</h3>
+                        
+                        <div style='background:white;padding:10px;border-radius:4px;margin:10px 0;'>
+                            <strong>Escenario 1: Sorteo Inmediato</strong>
+                            <ul style='margin:5px 0;'>
+                                <li><strong>Inicio:</strong> (vacío) → Participación empieza AL ACTIVAR</li>
+                                <li><strong>Fin:</strong> (vacío) → Sin límite de tiempo</li>
+                                <li><strong>Sorteo:</strong> (vacío) → Sorteas cuando quieras</li>
+                            </ul>
+                        </div>
+                        
+                        <div style='background:white;padding:10px;border-radius:4px;margin:10px 0;'>
+                            <strong>Escenario 2: Sorteo Programado</strong>
+                            <ul style='margin:5px 0;'>
+                                <li><strong>Inicio:</strong> 25/10/2025 00:00 → Abre a medianoche del 25</li>
+                                <li><strong>Fin:</strong> 30/10/2025 23:59 → Cierra el 30 a las 11:59pm</li>
+                                <li><strong>Sorteo:</strong> 31/10/2025 20:00 → El 31 a las 8pm ejecutas sorteo</li>
+                            </ul>
+                        </div>
+                        
+                        <p style='color:#e53e3e;font-weight:bold;margin-bottom:0;'>
+                            IMPORTANTE: El sorteo NO es automático. Debes ejecutarlo manualmente desde 
+                            la lista de ruletas usando la acción "Ejecutar sorteo manual"
+                        </p>
                     </div>
                     """
                 ),
@@ -444,7 +481,7 @@ class RouletteAdmin(admin.ModelAdmin):
 
     def participation_period_display(self, obj):
         if not obj.participation_start and not obj.participation_end:
-            return mark_safe('<span style="color:#28a745;font-weight:bold;">📅 Sin límites</span>')
+            return mark_safe('<span style="color:#28a745;font-weight:bold;">Sin límites</span>')
 
         parts = []
         if obj.participation_start:
@@ -466,24 +503,24 @@ class RouletteAdmin(admin.ModelAdmin):
             return mark_safe('<span style="color:#6c757d;">—</span>')
         scheduled = obj.scheduled_date.strftime("%d/%m/%Y %H:%M")
         if obj.is_drawn:
-            return format_html('<span style="color:#17a2b8;">🗓️ {}</span>', scheduled)
-        return format_html('<span style="color:#007bff;font-weight:bold;">🗓️ {}</span>', scheduled)
+            return format_html('<span style="color:#17a2b8;">Realizado: {}</span>', scheduled)
+        return format_html('<span style="color:#007bff;font-weight:bold;">Programado: {}</span>', scheduled)
 
-    scheduled_date_display.short_description = "Fecha planificada"
+    scheduled_date_display.short_description = "Fecha del sorteo"
 
     def date_configuration_summary(self, obj):
         html = "<div style='background:#f8f9fa;padding:10px;border-radius:4px;font-family:monospace;'>"
         html += "<strong>Configuración Actual:</strong><br><br>"
-        html += "🎯 <strong>Participación:</strong><br>"
+        html += "<strong>Participación:</strong><br>"
         if not obj.participation_start and not obj.participation_end:
             html += "&nbsp;&nbsp;• Sin restricciones de tiempo<br>"
         else:
             html += f"&nbsp;&nbsp;• Inicio: {obj.participation_start.strftime('%d/%m/%Y %H:%M') if obj.participation_start else 'Inmediato'}<br>"
             html += f"&nbsp;&nbsp;• Fin: {obj.participation_end.strftime('%d/%m/%Y %H:%M') if obj.participation_end else 'Sin límite'}<br>"
 
-        html += "<br>🗓️ <strong>Sorteo:</strong><br>"
+        html += "<br><strong>Sorteo:</strong><br>"
         html += (
-            f"&nbsp;&nbsp;• Fecha planificada: {obj.scheduled_date.strftime('%d/%m/%Y %H:%M')}<br>"
+            f"&nbsp;&nbsp;• Fecha programada: {obj.scheduled_date.strftime('%d/%m/%Y %H:%M')}<br>"
             if obj.scheduled_date
             else "&nbsp;&nbsp;• Manual (ejecutado por administrador)<br>"
         )
@@ -523,7 +560,7 @@ class RouletteAdmin(admin.ModelAdmin):
         total = obj.prizes.filter(is_active=True, stock__gt=0).count()
         if total == 0:
             return mark_safe('<span style="color:#999;">Sin premios disponibles</span>')
-        return format_html('<span style="color:#28a745;">🎁 {}</span>', total)
+        return format_html('<span style="color:#28a745;">{}</span>', total)
 
     prizes_count.short_description = "Premios disponibles"
 
@@ -538,7 +575,7 @@ class RouletteAdmin(admin.ModelAdmin):
     def winners_progress(self, obj):
         winners, target = self._winners_pair(obj)
         color = "#28a745" if winners >= target else "#007bff"
-        return format_html('<span style="color:{};font-weight:bold;">🏆 {}/{}</span>', color, winners, target)
+        return format_html('<span style="color:{};font-weight:bold;">{}/{}</span>', color, winners, target)
 
     winners_progress.short_description = "Ganadores"
 
@@ -558,7 +595,7 @@ class RouletteAdmin(admin.ModelAdmin):
         if obj.winner:
             user = obj.winner.user
             name = user.get_full_name() or user.username
-            return format_html('<span style="color:#28a745;font-weight:bold;">🏆 {}</span>', name)
+            return format_html('<span style="color:#28a745;font-weight:bold;">{}</span>', name)
         if obj.is_drawn:
             return format_html('<span style="color:#dc3545;">Sorteada</span>')
         return mark_safe('<span style="color:#999;">Pendiente</span>')
@@ -598,27 +635,27 @@ class RouletteAdmin(admin.ModelAdmin):
                 errors.append(f"'{roulette.name}': {str(e)}")
 
         if executed > 0:
-            self.message_user(request, f"✅ Sorteo ejecutado en {executed} ruleta(s).")
+            self.message_user(request, f"Sorteo ejecutado en {executed} ruleta(s).")
 
         if errors:
-            error_msg = "❌ Errores encontrados:\n" + "\n".join(errors[:5])
+            error_msg = "Errores encontrados:\n" + "\n".join(errors[:5])
             if len(errors) > 5:
                 error_msg += f"\n... y {len(errors) - 5} errores más"
             self.message_user(request, error_msg, level="ERROR")
 
-    admin_execute_draw.short_description = "🎲 Ejecutar sorteo manual"
+    admin_execute_draw.short_description = "Ejecutar sorteo manual"
 
     def mark_as_active(self, request, queryset):
         count = queryset.filter(status__in=["draft", "scheduled"]).update(status="active")
-        self.message_user(request, f"✅ {count} ruleta(s) marcada(s) como activa(s).")
+        self.message_user(request, f"{count} ruleta(s) marcada(s) como activa(s).")
 
-    mark_as_active.short_description = "✅ Marcar como activa"
+    mark_as_active.short_description = "Marcar como activa"
 
     def mark_as_cancelled(self, request, queryset):
         count = queryset.exclude(status="completed").update(status="cancelled")
-        self.message_user(request, f"❌ {count} ruleta(s) cancelada(s).")
+        self.message_user(request, f"{count} ruleta(s) cancelada(s).")
 
-    mark_as_cancelled.short_description = "❌ Cancelar ruletas"
+    mark_as_cancelled.short_description = "Cancelar ruletas"
 
     class Media:
         css = {"all": ("/static/admin/css/custom_roulette_admin.css",)}
@@ -707,7 +744,7 @@ class RoulettePrizeAdmin(admin.ModelAdmin):
 
     def has_pickup_instructions(self, obj):
         if obj.pickup_instructions and obj.pickup_instructions.strip():
-            return mark_safe('<span style="color:#28a745;">✓ Sí</span>')
+            return mark_safe('<span style="color:#28a745;">Sí</span>')
         return mark_safe('<span style="color:#999;">—</span>')
 
     has_pickup_instructions.short_description = "Instrucciones"

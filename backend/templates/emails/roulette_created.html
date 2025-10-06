@@ -190,6 +190,28 @@
             text-decoration: none;
         }
         
+        .unsubscribe-section {
+            margin-top: 5px;
+            padding: 0;
+            text-align: center;
+        }
+        
+        .unsubscribe-section p {
+            display: none;
+        }
+        
+        .unsubscribe-link {
+            color: #999;
+            text-decoration: none;
+            font-size: 10px;
+            font-weight: normal;
+            opacity: 0.5;
+        }
+        
+        .unsubscribe-link:hover {
+            opacity: 0.8;
+        }
+        
         .legal-text {
             margin-top: 20px;
             padding: 15px;
@@ -282,21 +304,26 @@
                 <p><strong>💡 Consejo Importante:</strong> ¡No esperes demasiado! Las plazas son limitadas y los mejores premios se agotan rápido.</p>
             </div>
 
+            
             <!-- Social Links -->
             <div style="text-align: center; margin: 30px 0;">
                 <p style="margin-bottom: 15px;"><strong>Síguenos en nuestras redes sociales</strong></p>
                 <div class="social-links">
-                    <a href="https://facebook.com/tupagina" title="Facebook">
-                        <img src="https://img.icons8.com/color/48/facebook-new.png" alt="Facebook">
+                    <!-- Facebook -->
+                    <a href="https://www.facebook.com/DigitalEducasOficial" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/color/48/facebook-new.png" alt="Facebook Digital Educas" style="width: 40px; height: 40px; border-radius: 50%;">
                     </a>
-                    <a href="https://instagram.com/tupagina" title="Instagram">
-                        <img src="https://img.icons8.com/fluency/48/instagram-new.png" alt="Instagram">
+                    <!-- Instagram -->
+                    <a href="https://www.instagram.com/digitaleducas/#2" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/fluency/48/instagram-new.png" alt="Instagram Digital Educas" style="width: 40px; height: 40px; border-radius: 50%;">
                     </a>
-                    <a href="https://twitter.com/tupagina" title="Twitter">
-                        <img src="https://img.icons8.com/ios-filled/50/twitterx--v1.png" alt="Twitter">
+                    <!-- X / Twitter -->
+                    <a href="https://x.com/digital_educas" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/ios-filled/50/twitterx--v1.png" alt="X (Twitter) Digital Educas" style="width: 40px; height: 40px; border-radius: 50%;">
                     </a>
-                    <a href="https://tiktok.com/@tupagina" title="TikTok">
-                        <img src="https://img.icons8.com/fluency/48/tiktok.png" alt="TikTok">
+                    <!-- YouTube -->
+                    <a href="https://www.youtube.com/DigitalEducas" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/color/48/youtube-play.png" alt="YouTube Digital Educas" style="width: 40px; height: 40px; border-radius: 50%;">
                     </a>
                 </div>
             </div>
@@ -323,6 +350,15 @@
             <p style="margin-top: 10px; font-size: 11px; color: #999;">
                 Recibiste este correo porque estás registrado en {{ brand_name }}.
             </p>
+            
+            <!-- Unsubscribe Section -->
+            {% if unsubscribe_url %}
+            <div class="unsubscribe-section">
+                <a href="{{ unsubscribe_url }}" class="unsubscribe-link">
+                    Cancelar
+                </a>
+            </div>
+            {% endif %}
         </div>
     </div>
 </body>

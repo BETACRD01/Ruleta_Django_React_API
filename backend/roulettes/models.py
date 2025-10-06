@@ -11,6 +11,7 @@ from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.db import models, transaction
+from django.db.models import F, Case, When
 from django.utils import timezone
 from django.utils.text import slugify
 from django.conf import settings
@@ -43,6 +44,139 @@ def _build_absolute_image_url(image_field) -> Optional[str]:
     except Exception as e:
         logger.warning(f"Error construyendo URL de imagen: {e}")
         return None
+
+
+# ============================================================
+# Helper para asignación atómica de premios (SIN DUPLICACIÓN)
+# ============================================================
+
+def _assign_prize_atomically(roulette, iteration: int = 0) -> Optional['RoulettePrize']:
+    """
+    Asigna un premio disponible de forma atómica.
+    Previene race conditions en sorteos concurrentes.
+    """
+    prize = (
+        roulette.prizes.select_for_update(nowait=False)
+        .filter(is_active=True, stock__gt=0)
+        .order_by("display_order", "id")
+        .first()
+    )
+
+    if not prize:
+        logger.warning(f"No hay premios disponibles (ruleta {roulette.id}, iter {iteration})")
+        return None
+
+    # Verificar stock después del lock
+    prize.refresh_from_db()
+    if prize.stock <= 0:
+        logger.warning(f"Premio {prize.id} sin stock después del lock (iter {iteration})")
+        return None
+
+    # Actualización atómica usando F() expressions
+    from .models import RoulettePrize  # Import local para evitar circular
+    updated_rows = RoulettePrize.objects.filter(
+        id=prize.id,
+        stock__gt=0
+    ).update(
+        stock=F('stock') - 1,
+        is_active=Case(
+            When(stock=1, then=False),
+            default=F('is_active')
+        )
+    )
+    
+    if updated_rows == 0:
+        logger.warning(f"Race condition en premio {prize.id} (iter {iteration})")
+        return None
+
+    prize.refresh_from_db()
+    logger.info(f"Premio {prize.id} asignado. Stock: {prize.stock}")
+    
+    return prize
+
+
+# ============================================================
+# Helper para notificaciones (SIN DUPLICACIÓN)
+# ============================================================
+
+def _schedule_winner_notifications(
+    roulette,
+    winner_participation: Participation,
+    prize: Optional['RoulettePrize'],
+    iteration: int = 0,
+    is_first_winner: bool = True
+):
+    """
+    Crea notificaciones en BD y programa envío por email.
+    Centraliza toda la lógica de notificaciones.
+    """
+    winner_user = winner_participation.user
+    
+    # Crear notificaciones en base de datos
+    try:
+        from notifications.services import NotificationService
+        
+        logger.info(f"Creando notificaciones para ganador #{iteration+1}: {winner_user.username}")
+        
+        public_notif, personal_notif, admin_notifs = NotificationService.create_winner_announcement(
+            winner_user=winner_user,
+            roulette_name=roulette.name,
+            roulette_id=roulette.id,
+            total_participants=roulette.participations.count(),
+            prize_details=prize.name if prize else "Premio especial"
+        )
+        
+        logger.info(
+            f"Notificaciones #{iteration+1}: publica={public_notif.id}, "
+            f"personal={personal_notif.id}, admins={len(admin_notifs)}"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error creando notificaciones #{iteration+1}: {e}", exc_info=True)
+
+    # Programar envío de email con Celery
+    try:
+        settings_obj = getattr(roulette, "settings", None)
+        notify_flag = bool(settings_obj.notify_on_draw) if settings_obj else True
+        winner_email = getattr(winner_user, 'email', None)
+        
+        if not winner_email or not winner_email.strip():
+            logger.warning(f"Ganador #{iteration+1} sin email configurado")
+            return
+        
+        if not notify_flag:
+            logger.info(f"Notificaciones deshabilitadas para ganador #{iteration+1}")
+            return
+        
+        from notifications.tasks import send_winner_notification_delayed
+        
+        base_delay = getattr(settings, 'WINNER_NOTIFICATION_DELAY', 300)
+        delay_seconds = base_delay + (iteration * 30)  # Escalonar envíos
+        
+        logger.info(f"Programando email ganador #{iteration+1} (+{delay_seconds}s)")
+        
+        task_data = {
+            "user_id": winner_user.id,
+            "roulette_name": roulette.name,
+            "prize_name": prize.name if prize else "Premio especial",
+            "prize_description": prize.description if prize else None,
+            "prize_image_url": _build_absolute_image_url(prize.image) if prize and prize.image else None,
+            "prize_rank": getattr(prize, 'display_order', None) if prize else None,
+            "pickup_instructions": getattr(prize, 'pickup_instructions', None) if prize else None,
+            "roulette_id": roulette.id,
+            "prize_id": prize.id if prize else None,
+            "notify_admins": is_first_winner  # Solo notificar admins en el primero
+        }
+        
+        task = send_winner_notification_delayed.apply_async(
+            kwargs=task_data,
+            countdown=delay_seconds
+        )
+        
+        logger.info(f"Tarea programada: {task.id}")
+            
+    except Exception as e:
+        logger.error(f"Error programando email #{iteration+1}: {e}", exc_info=True)
 
 
 # ========= RichText dinámico (CKEditor si está disponible) =========
@@ -387,6 +521,7 @@ class Roulette(models.Model):
 
     @transaction.atomic
     def draw_winner(self, drawn_by_user: AbstractUser | None = None, draw_type: str = DrawType.MANUAL):
+        """Sortea UN ganador usando función helper centralizada"""
         if self.is_drawn:
             raise ValidationError("No se puede realizar el sorteo: la ruleta ya fue completada.")
         if not self.participations.exists():
@@ -403,25 +538,14 @@ class Roulette(models.Model):
 
         winner_participation = random.choice(candidates)
 
-        prize = (
-            self.prizes.select_for_update()
-            .filter(is_active=True, stock__gt=0)
-            .order_by("display_order", "id")
-            .first()
-        )
+        # Asignación atómica usando helper (SIN DUPLICACIÓN)
+        prize = _assign_prize_atomically(self, iteration=0)
 
         winner_participation.is_winner = True
         winner_participation.won_at = timezone.now()
         winner_participation.won_prize = prize
         winner_participation.prize_position = prize.display_order if prize else None
         winner_participation.save(update_fields=["is_winner", "won_at", "won_prize", "prize_position"])
-
-        if prize:
-            new_stock = int(prize.stock) - 1
-            prize.stock = new_stock if new_stock >= 0 else 0
-            if prize.stock <= 0 and prize.is_active:
-                prize.is_active = False
-            prize.save(update_fields=["stock", "is_active"])
 
         if not self.winner_id:
             self.winner = winner_participation
@@ -438,88 +562,21 @@ class Roulette(models.Model):
             random_seed=seed,
         )
 
-        # ============================================================
-        # CREAR NOTIFICACIONES EN BASE DE DATOS
-        # ============================================================
-        try:
-            from notifications.services import NotificationService
-            
-            logger.info(f"Creando notificaciones para ganador: {winner_participation.user.username}")
-            
-            public_notif, personal_notif, admin_notifs = NotificationService.create_winner_announcement(
-                winner_user=winner_participation.user,
-                roulette_name=self.name,
-                roulette_id=self.id,
-                total_participants=self.participations.count(),
-                prize_details=prize.name if prize else "Premio especial"
-            )
-            
-            logger.info(f"Notificaciones creadas:")
-            logger.info(f"   - Publica: ID {public_notif.id}")
-            logger.info(f"   - Personal: ID {personal_notif.id}")
-            logger.info(f"   - Admins: {len(admin_notifs)} notificaciones")
-            
-        except Exception as e:
-            logger.error(f"Error creando notificaciones: {e}", exc_info=True)
-
-        # ============================================================
-        # NOTIFICACIÓN RETARDADA CON CELERY
-        # ============================================================
-        try:
-            notify_flag = True
-            s = getattr(self, "settings", None)
-            if s:
-                notify_flag = bool(s.notify_on_draw)
-            
-            winner_email = getattr(winner_participation.user, 'email', None)
-            
-            if not winner_email or not winner_email.strip():
-                logger.warning(
-                    f"Ganador {winner_participation.user.username} (ID: {winner_participation.user.id}) "
-                    "no tiene email configurado."
-                )
-            elif notify_flag:
-                from notifications.tasks import send_winner_notification_delayed
-                
-                delay_seconds = getattr(settings, 'WINNER_NOTIFICATION_DELAY', 300)
-                
-                logger.info(
-                    f"Programando notificacion retardada (+{delay_seconds}s) para: {winner_email}"
-                )
-                
-                task_data = {
-                    "user_id": winner_participation.user.id,
-                    "roulette_name": self.name,
-                    "prize_name": prize.name if prize else "Premio especial",
-                    "prize_description": prize.description if prize else None,
-                    "prize_image_url": _build_absolute_image_url(prize.image) if prize and prize.image else None,
-                    "prize_rank": getattr(prize, 'display_order', None) if prize else None,
-                    "pickup_instructions": getattr(prize, 'pickup_instructions', None) if prize else None,
-                    "roulette_id": self.id,
-                    "prize_id": prize.id if prize else None,
-                    "notify_admins": True
-                }
-                
-                task = send_winner_notification_delayed.apply_async(
-                    kwargs=task_data,
-                    countdown=delay_seconds
-                )
-                
-                logger.info(f"Tarea programada: {task.id} (Envio en ~{delay_seconds/60:.1f} min)")
-            else:
-                logger.info("Notificaciones deshabilitadas en la configuracion de la ruleta.")
-                
-        except Exception as e:
-            logger.error(
-                f"Excepcion al programar notificacion: {str(e)}", 
-                exc_info=True
-            )
+        # Notificaciones usando helper centralizado (SIN DUPLICACIÓN)
+        _schedule_winner_notifications(
+            roulette=self,
+            winner_participation=winner_participation,
+            prize=prize,
+            iteration=0,
+            is_first_winner=True
+        )
 
         logger.info("Ruleta %s: ganador seleccionado", self.name)
         return winner_participation
 
     @transaction.atomic
     def draw_winners(self, n: int, drawn_by_user: AbstractUser | None = None, draw_type: str = DrawType.MANUAL) -> List[Participation]:
+        """Sortea MÚLTIPLES ganadores usando función helper centralizada"""
         if n <= 0:
             return []
 
@@ -540,14 +597,6 @@ class Roulette(models.Model):
         winners: List[Participation] = []
         pool = list(total_candidates_qs)
 
-        notify_flag = True
-        try:
-            s = getattr(self, "settings", None)
-            if s:
-                notify_flag = bool(s.notify_on_draw)
-        except Exception:
-            notify_flag = True
-
         for i in range(min(picks, len(pool))):
             seed_i = hashlib.sha256(f"{seed_base}-{i}".encode()).hexdigest()
             random.seed(seed_i)
@@ -555,12 +604,8 @@ class Roulette(models.Model):
             choice = random.choice(pool)
             pool.remove(choice)
 
-            prize = (
-                self.prizes.select_for_update()
-                .filter(is_active=True, stock__gt=0)
-                .order_by("display_order", "id")
-                .first()
-            )
+            # Asignación atómica usando helper (SIN DUPLICACIÓN)
+            prize = _assign_prize_atomically(self, iteration=i)
 
             choice.is_winner = True
             choice.won_at = timezone.now()
@@ -571,13 +616,6 @@ class Roulette(models.Model):
             if not self.winner_id:
                 self.winner = choice
 
-            if prize:
-                new_stock = int(prize.stock) - 1
-                prize.stock = new_stock if new_stock >= 0 else 0
-                if prize.stock <= 0 and prize.is_active:
-                    prize.is_active = False
-                prize.save(update_fields=["stock", "is_active"])
-
             DrawHistory.objects.create(
                 roulette=self,
                 winner_selected=choice,
@@ -587,80 +625,14 @@ class Roulette(models.Model):
                 random_seed=seed_i,
             )
 
-            # ============================================================
-            # CREAR NOTIFICACIONES EN BASE DE DATOS (MÚLTIPLES GANADORES)
-            # ============================================================
-            try:
-                from notifications.services import NotificationService
-                
-                logger.info(f"Creando notificaciones para ganador {i+1}/{picks}: {choice.user.username}")
-                
-                public_notif, personal_notif, admin_notifs = NotificationService.create_winner_announcement(
-                    winner_user=choice.user,
-                    roulette_name=self.name,
-                    roulette_id=self.id,
-                    total_participants=self.participations.count(),
-                    prize_details=prize.name if prize else "Premio especial"
-                )
-                
-                logger.info(f"Notificaciones ganador {i+1} creadas: publica={public_notif.id}, personal={personal_notif.id}, admins={len(admin_notifs)}")
-                
-            except Exception as e:
-                logger.error(f"Error creando notificaciones ganador {i+1}: {e}", exc_info=True)
-
-            # ============================================================
-            # NOTIFICACIÓN RETARDADA CON CELERY (MÚLTIPLES GANADORES)
-            # ============================================================
-            try:
-                winner_email = getattr(choice.user, 'email', None)
-                
-                if not winner_email or not winner_email.strip():
-                    logger.warning(
-                        f"Ganador {i+1} ({choice.user.username}, ID: {choice.user.id}) "
-                        "no tiene email configurado."
-                    )
-                    winners.append(choice)
-                    continue
-                
-                if not notify_flag:
-                    logger.info(f"Notificaciones deshabilitadas. No se enviara email al ganador {i+1}.")
-                    winners.append(choice)
-                    continue
-                
-                from notifications.tasks import send_winner_notification_delayed
-                
-                base_delay = getattr(settings, 'WINNER_NOTIFICATION_DELAY', 300)
-                delay_seconds = base_delay + (i * 30)
-                
-                logger.info(
-                    f"Programando notificacion ganador {i+1}/{picks} (+{delay_seconds}s): {winner_email}"
-                )
-                
-                task_data = {
-                    "user_id": choice.user.id,
-                    "roulette_name": self.name,
-                    "prize_name": prize.name if prize else "Premio especial",
-                    "prize_description": prize.description if prize else None,
-                    "prize_image_url": _build_absolute_image_url(prize.image) if prize and prize.image else None,
-                    "prize_rank": getattr(prize, 'display_order', None) if prize else None,
-                    "pickup_instructions": getattr(prize, 'pickup_instructions', None) if prize else None,
-                    "roulette_id": self.id,
-                    "prize_id": prize.id if prize else None,
-                    "notify_admins": (i == 0)
-                }
-                
-                task = send_winner_notification_delayed.apply_async(
-                    kwargs=task_data,
-                    countdown=delay_seconds
-                )
-                
-                logger.info(f"Tarea {i+1} programada: {task.id}")
-                    
-            except Exception as e:
-                logger.error(
-                    f"Excepcion al programar notificacion ganador {i+1}: {str(e)}", 
-                    exc_info=True
-                )
+            # Notificaciones usando helper centralizado (SIN DUPLICACIÓN)
+            _schedule_winner_notifications(
+                roulette=self,
+                winner_participation=choice,
+                prize=prize,
+                iteration=i,
+                is_first_winner=(i == 0)
+            )
 
             winners.append(choice)
 

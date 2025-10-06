@@ -8,9 +8,9 @@ import {
   Users,
   Calendar,
   RefreshCcw,
+  Award,
   AlertTriangle,
   Gift,
-  Trophy,
   Package,
   X,
   ZoomIn,
@@ -19,18 +19,17 @@ import {
   AtSign,
   Timer,
   Crown,
-  Sparkles,
-  Star,
 } from "lucide-react"
 import { roulettesAPI } from "../../config/api"
+import PremiumRoulette from "./Gestión de Ruletas/PremiumRoulette"
 
-/* =============================================================================
-   Herramientas de Sorteo — Ruleta Premium (OPTIMIZADA)
-============================================================================= */
+const STORAGE_KEY_SELECTED_ROULETTE = "draw_tools_selected_roulette_id"
 
-const TAU = Math.PI * 2
+/* ============================================================================
+   UTILIDADES COMPARTIDAS
+============================================================================ */
 
-/* ---------- Helper compartido: meta de "posición" (1°, 2°, 3°...) ---------- */
+/** Helper para meta de posición (1°, 2°, 3°...) */
 const getRankMetaShared = (position) => {
   if (!position || position > 3) {
     return {
@@ -40,19 +39,25 @@ const getRankMetaShared = (position) => {
       icon: null,
     }
   }
+
   const base = "inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border font-bold"
-  if (position === 1)
+
+  if (position === 1) {
     return {
       label: "1°",
       icon: <Medal className="w-3.5 h-3.5 text-amber-600" />,
       badgeClass: `${base} bg-amber-50 text-amber-700 border-amber-200`,
     }
-  if (position === 2)
+  }
+
+  if (position === 2) {
     return {
       label: "2°",
       icon: <Medal className="w-3.5 h-3.5 text-slate-500" />,
       badgeClass: `${base} bg-slate-50 text-slate-700 border-slate-200`,
     }
+  }
+
   return {
     label: "3°",
     icon: <Medal className="w-3.5 h-3.5 text-orange-600" />,
@@ -60,245 +65,16 @@ const getRankMetaShared = (position) => {
   }
 }
 
-/* ---------- Utilidad de layout (autodimensiona contenedor) ---------- */
-const useAutoSize = () => {
-  const ref = useRef(null)
-  const [size, setSize] = useState({ w: 0, h: 0 })
-  useEffect(() => {
-    if (!ref.current) return
-    const updateSize = () => {
-      if (!ref.current) return
-      const rect = ref.current.getBoundingClientRect()
-      setSize({ w: rect.width, h: rect.height })
-    }
-    const ro = new ResizeObserver(() => requestAnimationFrame(updateSize))
-    ro.observe(ref.current)
-    updateSize()
-    return () => ro.disconnect()
-  }, [])
-  return { ref, w: size.w, h: size.h }
-}
-
-/* ---------- Transición de giro bi-fase (impulso → desaceleración) ---------- */
-const useRouletteTransition = (onTransitionEnd, spinDurationMs) => {
-  const wheelRef = useRef(null)
-  const phaseTimeoutRef = useRef(null)
-  const [isTransitioning, setIsTransitioning] = useState(false)
-
-  const cleanup = useCallback(() => {
-    if (phaseTimeoutRef.current) {
-      clearTimeout(phaseTimeoutRef.current)
-      phaseTimeoutRef.current = null
-    }
-  }, [])
-
-  const startTransition = useCallback(
-    (fromAngle, toAngle, opts = { twoPhase: true }) => {
-      const wheel = wheelRef.current
-      if (!wheel) return
-      cleanup()
-
-      setIsTransitioning(true)
-
-      wheel.style.willChange = "transform"
-      wheel.style.transition = "none"
-      wheel.style.transform = `rotate(${fromAngle}deg)`
-
-      // Force reflow
-      void wheel.offsetHeight
-
-      const total = spinDurationMs
-      if (!opts.twoPhase) {
-        wheel.style.transition = `transform ${total}ms cubic-bezier(0.08, 0.8, 0.16, 1)`
-        wheel.style.transform = `rotate(${toAngle}deg)`
-        phaseTimeoutRef.current = setTimeout(() => {
-          wheel.style.willChange = "auto"
-          setIsTransitioning(false)
-          onTransitionEnd?.()
-        }, total + 100)
-        return
-      }
-
-      const A_MS = Math.max(300, Math.floor(total * 0.2))
-      const B_MS = Math.max(800, total - A_MS)
-      const impulseAngle = fromAngle + 720
-
-      requestAnimationFrame(() => {
-        wheel.style.transition = `transform ${A_MS}ms linear`
-        wheel.style.transform = `rotate(${impulseAngle}deg)`
-        phaseTimeoutRef.current = setTimeout(() => {
-          wheel.style.transition = `transform ${B_MS}ms cubic-bezier(0.05, 0.85, 0.15, 1)`
-          wheel.style.transform = `rotate(${toAngle}deg)`
-          phaseTimeoutRef.current = setTimeout(() => {
-            wheel.style.willChange = "auto"
-            setIsTransitioning(false)
-            onTransitionEnd?.()
-          }, B_MS + 120)
-        }, A_MS + 40)
-      })
-    },
-    [spinDurationMs, onTransitionEnd, cleanup],
-  )
-
-  useEffect(() => {
-    const wheel = wheelRef.current
-    if (!wheel) return
-    const handleEnd = (e) => {
-      if (e.target === wheel && e.propertyName === "transform") {
-        /* safety net */
-      }
-    }
-    wheel.addEventListener("transitionend", handleEnd)
-    return () => {
-      wheel.removeEventListener("transitionend", handleEnd)
-      cleanup()
-    }
-  }, [cleanup])
-
-  useEffect(() => () => cleanup(), [cleanup])
-
-  return { wheelRef, startTransition, isTransitioning }
-}
-
-/* ---------- Cálculos de texto y geometría ---------- */
-const calculateTextPosition = (segmentMidAngle, radius, participantCount, cx, cy) => {
-  let textRadiusFactor
-  if (participantCount <= 4) textRadiusFactor = 0.82
-  else if (participantCount <= 8) textRadiusFactor = 0.78
-  else if (participantCount <= 16) textRadiusFactor = 0.75
-  else if (participantCount <= 24) textRadiusFactor = 0.72
-  else if (participantCount <= 50) textRadiusFactor = 0.68
-  else textRadiusFactor = 0.65
-  const textRadius = radius * textRadiusFactor
-  const x = cx + textRadius * Math.cos(segmentMidAngle)
-  const y = cy + textRadius * Math.sin(segmentMidAngle)
-  return { x, y }
-}
-
-const calculateTextRotation = (segmentMidAngle) => {
-  let rotationDegrees = (segmentMidAngle * 180) / Math.PI
-  if (rotationDegrees > 90 && rotationDegrees < 270) rotationDegrees += 180
-  return rotationDegrees
-}
-
-const calculateOptimalFontSize = (participantCount, mode) => {
-  let fontSize
-  if (participantCount <= 6) fontSize = mode === "focus" ? 18 : 16
-  else if (participantCount <= 10) fontSize = mode === "focus" ? 16 : 14
-  else if (participantCount <= 15) fontSize = 12 + (mode === "focus" ? 1 : 0)
-  else if (participantCount <= 25) fontSize = 11 + (mode === "focus" ? 1 : 0)
-  else if (participantCount <= 50) fontSize = 9 + (mode === "focus" ? 1 : 0)
-  else fontSize = 8 + (mode === "focus" ? 1 : 0)
-  return fontSize
-}
-
-const calculateMaxTextLength = (participantCount) => {
-  if (participantCount <= 4) return 20
-  if (participantCount <= 8) return 16
-  if (participantCount <= 12) return 14
-  if (participantCount <= 20) return 12
-  if (participantCount <= 30) return 10
-  if (participantCount <= 50) return 8
-  if (participantCount <= 80) return 6
-  return 4
-}
-
-/* ---------- ¿Se puede continuar sorteando? ---------- */
-const canContinueDraw = (detail, prizes) => {
-  if (!detail) return false
-
-  const totalUnitsAvailable = (prizes || []).reduce((acc, p) => {
-    if (p.is_active === false || p.is_disabled === true) return acc
-    const current = readCurrentUnits(p)
-    return acc + Math.max(0, current)
-  }, 0)
-
-  return totalUnitsAvailable > 0 && (detail.status === "active" || detail.status === "scheduled") && !detail.is_drawn
-}
-
-/* ---------- Linkificador (URLs + emails) ---------- */
-const URL_RE = /\b((?:https?:\/\/|www\.)[^\s<]+)/gi
-const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi
-const normalizeHref = (raw) => (!raw ? "#" : raw.startsWith("http") ? raw : `https://${raw}`)
-
-const linkifyText = (text) => {
-  if (!text) return null
-  const parts = []
-  let lastIdx = 0
-
-  const emailChunks = (() => {
-    let m
-    const chunks = []
-    while ((m = EMAIL_RE.exec(text)) !== null) {
-      const [match] = m
-      const start = m.index
-      const end = start + match.length
-      if (lastIdx < start) chunks.push({ type: "text", value: text.slice(lastIdx, start) })
-      chunks.push({ type: "email", value: match })
-      lastIdx = end
-    }
-    if (lastIdx < text.length) chunks.push({ type: "text", value: text.slice(lastIdx) })
-    lastIdx = 0
-    return chunks
-  })()
-
-  emailChunks.forEach((chunk, i) => {
-    if (chunk.type !== "text") {
-      parts.push(
-        <a
-          key={`e-${i}`}
-          href={`mailto:${chunk.value}`}
-          className="inline-flex items-center gap-1 text-blue-700 hover:underline break-words"
-        >
-          <AtSign className="w-3 h-3" />
-          {chunk.value}
-        </a>,
-      )
-      return
-    }
-    const txt = chunk.value
-    let m
-    lastIdx = 0
-    while ((m = URL_RE.exec(txt)) !== null) {
-      const [match] = m
-      const start = m.index
-      const end = start + match.length
-      if (lastIdx < start) parts.push(txt.slice(lastIdx, start))
-      parts.push(
-        <a
-          key={`u-${i}-${start}`}
-          href={normalizeHref(match)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-blue-700 hover:underline break-words"
-        >
-          <Link2 className="w-3 h-3" />
-          {match}
-        </a>,
-      )
-      lastIdx = end
-    }
-    if (lastIdx < txt.length) parts.push(txt.slice(lastIdx))
-  })
-
-  return <>{parts}</>
-}
-
-/* ---------- Utilidades de giro (alinear con puntero) ---------- */
-const mod360 = (x) => ((x % 360) + 360) % 360
-const pointerOffsetDegrees = (pointerSide) => (pointerSide === "top" ? -90 : 0)
-const rotationForWinnerIndex = (winnerIndex, total, pointerSide) => {
-  const segAngle = 360 / total
-  const mid = winnerIndex * segAngle + segAngle / 2
-  const offset = pointerOffsetDegrees(pointerSide)
-  return mod360(offset - mid)
-}
+/* ============================================================================
+   UTILIDADES DE PREMIOS
+============================================================================ */
 
 /** Lectura robusta de UNIDADES actuales */
 const readCurrentUnits = (prize) => {
   const candidates = [prize?.stock, prize?.remaining_stock, prize?.quantity, prize?.units]
   const found = candidates.find((v) => typeof v === "number")
   if (typeof found === "number") return Math.max(0, found)
+
   if (typeof prize?.__initial_stock === "number") {
     if (prize?.is_awarded && prize.__initial_stock <= 1) return 0
     return prize.__initial_stock
@@ -306,7 +82,7 @@ const readCurrentUnits = (prize) => {
   return 1
 }
 
-/** Derivados de premio robustos */
+/** Derivar estado del premio */
 const derivePrizeState = (prize) => {
   const initial =
     typeof prize?.__initial_stock === "number"
@@ -332,6 +108,7 @@ const derivePrizeState = (prize) => {
   return { initial, current, awarded, exhausted, low, status }
 }
 
+/** Fusionar premio mínimo devuelto por draw con lista local */
 const enrichPrize = (rawPrize, prizeList) => {
   if (!rawPrize) return null
   const local = prizeList.find((p) => String(p.id) === String(rawPrize.id))
@@ -343,7 +120,103 @@ const enrichPrize = (rawPrize, prizeList) => {
   }
 }
 
+/** Verificar si se puede continuar sorteando */
+const canContinueDraw = (detail, prizes) => {
+  if (!detail) return false
+
+  const totalUnitsAvailable = (prizes || []).reduce((acc, p) => {
+    if (p.is_active === false || p.is_disabled === true) return acc
+    const current = readCurrentUnits(p)
+    return acc + Math.max(0, current)
+  }, 0)
+
+  return totalUnitsAvailable > 0 && (detail.status === "active" || detail.status === "scheduled") && !detail.is_drawn
+}
+
+/* ============================================================================
+   UTILIDADES DE TEXTO Y ENLACES
+============================================================================ */
+
+const URL_RE = /\b((?:https?:\/\/|www\.)[^\s<]+)/gi
+const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/gi
+
+const normalizeHref = (raw) => (!raw ? "#" : raw.startsWith("http") ? raw : `https://${raw}`)
+
+const linkifyText = (text) => {
+  if (!text) return null
+
+  const parts = []
+  let lastIdx = 0
+
+  const emailMatches = [...text.matchAll(EMAIL_RE)]
+  const urlMatches = [...text.matchAll(URL_RE)]
+
+  const allMatches = [
+    ...emailMatches.map((m) => ({ type: "email", match: m[0], index: m.index })),
+    ...urlMatches.map((m) => ({ type: "url", match: m[0], index: m.index })),
+  ].sort((a, b) => a.index - b.index)
+
+  allMatches.forEach((item, i) => {
+    if (lastIdx < item.index) {
+      parts.push(text.slice(lastIdx, item.index))
+    }
+
+    if (item.type === "email") {
+      parts.push(
+        <a
+          key={`e-${i}`}
+          href={`mailto:${item.match}`}
+          className="inline-flex items-center gap-1 text-blue-700 hover:underline break-words"
+        >
+          <AtSign className="w-3 h-3" />
+          {item.match}
+        </a>,
+      )
+    } else {
+      parts.push(
+        <a
+          key={`u-${i}`}
+          href={normalizeHref(item.match)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1 text-blue-700 hover:underline break-words"
+        >
+          <Link2 className="w-3 h-3" />
+          {item.match}
+        </a>,
+      )
+    }
+
+    lastIdx = item.index + item.match.length
+  })
+
+  if (lastIdx < text.length) {
+    parts.push(text.slice(lastIdx))
+  }
+
+  return <>{parts}</>
+}
+
+/* ============================================================================
+   UTILIDADES DE ROTACIÓN (para alinear con puntero)
+============================================================================ */
+
+const mod360 = (x) => ((x % 360) + 360) % 360
+const pointerOffsetDegrees = (pointerSide) => (pointerSide === "top" ? -90 : 0)
+
+const rotationForWinnerIndex = (winnerIndex, total, pointerSide) => {
+  const segAngle = 360 / total
+  const mid = winnerIndex * segAngle + segAngle / 2
+  const offset = pointerOffsetDegrees(pointerSide)
+  return mod360(offset - mid)
+}
+
+/* ============================================================================
+   COMPONENTE PRINCIPAL: DRAW TOOLS
+============================================================================ */
+
 const DrawTools = ({ onRefresh }) => {
+  /* ========== Estado Principal ========== */
   const [loading, setLoading] = useState(true)
   const [executing, setExecuting] = useState(false)
   const [error, setError] = useState("")
@@ -353,23 +226,25 @@ const DrawTools = ({ onRefresh }) => {
   const [detail, setDetail] = useState(null)
   const [prizes, setPrizes] = useState([])
 
+  /* ========== Estado de la Ruleta ========== */
   const [rouletteAngle, setRouletteAngle] = useState(0)
   const [rouletteSpinning, setRouletteSpinning] = useState(false)
   const [rouletteWinner, setRouletteWinner] = useState(null)
   const [showWinnerAnimation, setShowWinnerAnimation] = useState(false)
 
-  const [winnerCount, setWinnerCount] = useState(0)
-
   const bannerResolverRef = useRef(null)
   const SPIN_DURATION_MS = 4500
 
+  /* ========== Cronómetro para sorteos programados ========== */
   const [nowTs, setNowTs] = useState(Date.now())
+
   useEffect(() => {
     const id = setInterval(() => setNowTs(Date.now()), 1000)
     return () => clearInterval(id)
   }, [])
 
   const pad2 = (n) => String(n).padStart(2, "0")
+
   const countdown = useMemo(() => {
     if (!detail?.scheduled_date) return null
     const target = new Date(detail.scheduled_date).getTime()
@@ -384,6 +259,21 @@ const DrawTools = ({ onRefresh }) => {
     const seconds = secs % 60
     return { diffMs, days, hours, minutes, seconds }
   }, [detail?.scheduled_date, nowTs])
+
+  useEffect(() => {
+    const savedId = localStorage.getItem(STORAGE_KEY_SELECTED_ROULETTE)
+    if (savedId) {
+      setSelectedId(savedId)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (selectedId) {
+      localStorage.setItem(STORAGE_KEY_SELECTED_ROULETTE, selectedId)
+    }
+  }, [selectedId])
+
+  /* ========== Funciones de Carga de Datos ========== */
 
   const stampInitialStock = useCallback((list) => {
     return (list || []).map((p) => ({
@@ -411,35 +301,33 @@ const DrawTools = ({ onRefresh }) => {
         .then((r) => (Array.isArray(r) ? r : r.results || []))
         .catch(() => [])
 
-      const activeOnly = items.filter((r) => {
+      const activeAndCompleted = items.filter((r) => {
         const status = (r.status || "").toLowerCase()
-        return status === "active" || r.is_active === true
+        return status === "active" || status === "completed" || r.is_active === true
       })
 
-      const sorted = activeOnly.sort((a, b) => {
-        const countA = a.participants?.length || 0
-        const countB = b.participants?.length || 0
-        return countB - countA
-      })
+      setList(activeAndCompleted)
 
-      setList(sorted)
+      const savedId = localStorage.getItem(STORAGE_KEY_SELECTED_ROULETTE)
 
-      if (!selectedId && sorted.length > 0) {
-        setSelectedId(String(sorted[0].id))
-      } else if (selectedId) {
-        const exists = sorted.some((x) => String(x.id) === String(selectedId))
-        if (!exists && sorted.length > 0) setSelectedId(String(sorted[0].id))
-        if (!exists && sorted.length === 0) {
+      if (savedId) {
+        const exists = activeAndCompleted.some((x) => String(x.id) === String(savedId))
+        if (exists) {
+          // Mantener la selección guardada
+          setSelectedId(savedId)
+        } else {
+          // Si la ruleta guardada ya no existe, limpiar la selección
           setSelectedId("")
           setDetail(null)
           setPrizes([])
+          localStorage.removeItem(STORAGE_KEY_SELECTED_ROULETTE)
         }
       }
     } catch (e) {
       setError(`Error cargando sorteos: ${e?.message || "Error desconocido"}`)
       console.error(e)
     }
-  }, [selectedId])
+  }, [])
 
   const loadDetail = useCallback(
     async (id) => {
@@ -464,7 +352,7 @@ const DrawTools = ({ onRefresh }) => {
           position: p.position != null ? p.position : p.display_order != null ? p.display_order : undefined,
         }))
 
-        incoming.sort((a, b) => (a.display_order ?? b.display_order ?? 0) - (b.display_order ?? a.display_order ?? 0))
+        incoming.sort((a, b) => (a.display_order ?? a.position ?? 0) - (b.display_order ?? b.position ?? 0))
 
         setPrizes(stampInitialStock(incoming))
       } catch (e) {
@@ -476,6 +364,8 @@ const DrawTools = ({ onRefresh }) => {
     },
     [stampInitialStock],
   )
+
+  /* ========== Efectos de Carga ========== */
 
   useEffect(() => {
     ;(async () => {
@@ -491,6 +381,8 @@ const DrawTools = ({ onRefresh }) => {
   useEffect(() => {
     if (selectedId) loadDetail(selectedId)
   }, [selectedId, loadDetail])
+
+  /* ========== Datos Derivados ========== */
 
   const participants = useMemo(() => {
     if (!detail?.participants) return []
@@ -509,14 +401,33 @@ const DrawTools = ({ onRefresh }) => {
   const canDraw = useMemo(() => canContinueDraw(detail, prizes), [detail, prizes])
   const centerIconKey = (detail?.center_icon || "trophy").toLowerCase()
 
+  const prizeUnitStats = useMemo(() => {
+    let availableUnits = 0
+    let deliveredUnits = 0
+    let activeTypes = 0
+
+    prizes.forEach((p) => {
+      const { initial, current, exhausted } = derivePrizeState(p)
+      availableUnits += Math.max(0, current)
+      deliveredUnits += Math.max(0, (typeof initial === "number" ? initial : 1) - current)
+      if (!exhausted && p.is_active !== false) activeTypes += 1
+    })
+
+    return { availableUnits, deliveredUnits, activeTypes }
+  }, [prizes])
+
+  /* ========== Lógica de Sorteo ========== */
+
   const doOneSpin = useCallback(async () => {
     if (!selectedId || participants.length === 0) throw new Error("No hay participantes")
+
     const res = await roulettesAPI.executeRouletteDraw(Number(selectedId))
     if (!res?.success) throw new Error(res?.message || "No se pudo ejecutar el sorteo")
 
     const w = res.winner || res.winner_data || {}
     const prizeRaw = res.prize || null
 
+    // Encontrar índice del ganador
     let idx = -1
     if (w.participant_number != null)
       idx = participants.findIndex((p) => String(p.num) === String(w.participant_number))
@@ -536,18 +447,15 @@ const DrawTools = ({ onRefresh }) => {
 
     const prize = enrichPrize(prizeRaw, prizes)
 
-    const currentPosition = winnerCount + 1
-    setWinnerCount(currentPosition)
-
     const localWinner = {
       name: w.name || participants[idx]?.name || "Ganador",
       participant: participants[idx],
       prize,
       isLastDraw: false,
-      position: currentPosition, // Agregar posición del ganador
     }
     setRouletteWinner(localWinner)
 
+    // Actualizar stock localmente
     if (prize?.id != null) {
       setPrizes((prev) =>
         prev.map((p) => {
@@ -573,21 +481,25 @@ const DrawTools = ({ onRefresh }) => {
     setRouletteAngle(finalAngle)
     setRouletteSpinning(true)
 
+    // Esperar cierre manual del banner
     await new Promise((resolve) => {
       bannerResolverRef.current = resolve
     })
 
+    // Sincronizar con backend
     await Promise.all([loadDetail(selectedId), loadList().catch(() => {})])
 
     return true
-  }, [selectedId, participants, rouletteAngle, prizes, loadDetail, loadList, winnerCount])
+  }, [selectedId, participants, rouletteAngle, prizes, loadDetail, loadList])
+
+  /* ========== Handlers de la Ruleta ========== */
 
   const handleRouletteTransitionEnd = useCallback(() => {
     setRouletteSpinning(false)
     setShowWinnerAnimation(true)
   }, [])
 
-  const dismissWinner = useCallback(async () => {
+  const dismissWinner = useCallback(() => {
     setShowWinnerAnimation(false)
     setRouletteWinner(null)
     if (typeof bannerResolverRef.current === "function") {
@@ -595,10 +507,7 @@ const DrawTools = ({ onRefresh }) => {
       bannerResolverRef.current = null
       r()
     }
-    try {
-      await Promise.all([loadDetail(selectedId), loadList().catch(() => {})])
-    } catch (_) {}
-  }, [selectedId, loadDetail, loadList])
+  }, [])
 
   const handleSingleDraw = useCallback(async () => {
     if (!selectedId || rouletteSpinning || executing || participants.length === 0 || !canDraw) return
@@ -614,137 +523,134 @@ const DrawTools = ({ onRefresh }) => {
     }
   }, [selectedId, rouletteSpinning, executing, participants.length, canDraw, doOneSpin])
 
+  /* ========== Modal de Premios ========== */
+
   const [prizeModal, setPrizeModal] = useState({ open: false, prize: null })
   const openPrize = useCallback((prize) => setPrizeModal({ open: true, prize }), [])
   const closePrize = useCallback(() => setPrizeModal({ open: false, prize: null }), [])
   const getPrizeImage = (p) => p?.image_url || p?.image || p?.photo || p?.picture || p?.thumbnail || null
 
-  const PrizeCard = useCallback(
-    ({ prize, idx }) => {
-      const img = getPrizeImage(prize)
-      const pos = prize.position ?? idx + 1
-      const rank = getRankMetaShared(pos)
+  /* ========== Componente de Tarjeta de Premio ========== */
 
-      const { initial, current, exhausted, low } = derivePrizeState(prize)
+  const PrizeCard = ({ prize, idx }) => {
+    const img = getPrizeImage(prize)
+    const pos = prize.position ?? idx + 1
+    const rank = getRankMetaShared(pos)
 
-      const stockBadge = (
-        <span
-          className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-semibold ${
-            low ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-blue-100 text-blue-700 border-blue-200"
-          }`}
-          title={`Stock restante: ${current}${typeof initial === "number" ? ` / ${initial}` : ""}`}
-        >
-          <Package className="w-3 h-3" />
-          {current}
-          {typeof initial === "number" ? ` / ${initial}` : ""}
+    const { initial, current, awarded, exhausted, low } = derivePrizeState(prize)
+
+    const stockBadge = (
+      <span
+        className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-semibold ${
+          low ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-purple-100 text-purple-700 border-purple-200"
+        }`}
+        title={`Stock restante: ${current}${typeof initial === "number" ? ` / ${initial}` : ""}`}
+      >
+        <Package className="w-3 h-3" />
+        {current}
+        {typeof initial === "number" ? ` / ${initial}` : ""}
+      </span>
+    )
+
+    const ribbon = (label, cls) => (
+      <div className="absolute -left-9 top-4 -rotate-12 z-10">
+        <span className={`text-white text-xs font-black tracking-wider px-3 py-1 rounded-md shadow ${cls}`}>
+          {label}
         </span>
-      )
+      </div>
+    )
 
-      const ribbon = (label, cls) => (
-        <div className="absolute -left-9 top-4 -rotate-12 z-10">
-          <span className={`text-white text-xs font-black tracking-wider px-3 py-1 rounded-md shadow ${cls}`}>
-            {label}
-          </span>
-        </div>
-      )
+    const isSoldOut = exhausted
+    const isAwardedSome = awarded > 0
+    const sorteadoBadge = !isSoldOut && isAwardedSome && ribbon("SORTEADO", "bg-emerald-600")
+    const agotadoBadge = isSoldOut && ribbon("AGOTADO", "bg-slate-700")
 
-      const isSoldOut = exhausted
-      const isAwardedSome = derivePrizeState(prize).awarded > 0
-      const sorteadoBadge = !isSoldOut && isAwardedSome && ribbon("SORTEADO", "bg-emerald-600")
-      const agotadoBadge = isSoldOut && ribbon("AGOTADO", "bg-slate-700")
+    return (
+      <div
+        className={`group relative p-4 rounded-2xl border transition-all duration-200 cursor-pointer focus-within:ring-2 focus-within:ring-slate-400 ${
+          exhausted ? "border-slate-300 bg-slate-50 opacity-80" : "border-slate-200 bg-white hover:shadow-md"
+        }`}
+        onClick={() => openPrize(prize)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => (e.key === "Enter" ? openPrize(prize) : null)}
+        aria-label={`Ver premio: ${prize.name || "Premio"}`}
+        title={prize.name || "Premio"}
+      >
+        {agotadoBadge || sorteadoBadge}
 
-      return (
-        <div
-          className={`group relative p-4 rounded-2xl border transition-all duration-200 cursor-pointer focus-within:ring-2 focus-within:ring-blue-400 ${
-            exhausted ? "border-slate-300 bg-slate-50 opacity-80" : "border-slate-200 bg-white hover:shadow-md"
-          }`}
-          onClick={() => openPrize(prize)}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => (e.key === "Enter" ? openPrize(prize) : null)}
-          aria-label={`Ver premio: ${prize.name || "Premio"}`}
-          title={prize.name || "Premio"}
-        >
-          {agotadoBadge || sorteadoBadge}
-
-          <div className="flex items-center gap-4">
-            <div
-              className={`relative w-20 h-20 rounded-xl overflow-hidden border bg-slate-50 grid place-items-center shrink-0 ${
-                exhausted ? "border-slate-300" : "border-slate-200 shadow-sm"
-              }`}
-            >
-              {img ? (
-                <>
-                  <img
-                    src={img || "/placeholder.svg"}
-                    alt={prize.name || "Premio"}
-                    className={`w-full h-full object-cover transition-transform duration-200 ${
-                      exhausted ? "grayscale" : "group-hover:scale-105"
-                    }`}
-                  />
-                  {!exhausted && (
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                      <div className="absolute bottom-1.5 right-1.5 bg-white/95 text-slate-800 px-2 py-1 rounded-lg text-[10px] font-semibold flex items-center gap-1 shadow-sm">
-                        <ZoomIn className="w-3 h-3" />
-                        Ver
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div
-                  className={`w-full h-full grid place-items-center ${
-                    exhausted
-                      ? "bg-gradient-to-br from-slate-200 to-slate-300"
-                      : "bg-gradient-to-br from-blue-100 via-blue-200 to-indigo-100"
-                  }`}
-                >
-                  <Gift className={`w-7 h-7 ${exhausted ? "text-slate-400" : "text-blue-700"}`} />
-                </div>
-              )}
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-3 mb-1">
-                <h5 className={`font-semibold truncate text-base ${exhausted ? "text-slate-600" : "text-slate-800"}`}>
-                  {prize.name || "Premio"}
-                </h5>
-                <span className={rank.badgeClass} title={`Posición ${pos}`}>
-                  {rank.icon}
-                  {rank.label}
-                </span>
+        <div className="flex items-center gap-4">
+          <div
+            className={`relative w-16 h-16 rounded-xl overflow-hidden border bg-slate-50 grid place-items-center shrink-0 ${
+              exhausted ? "border-slate-300" : "border-slate-200"
+            }`}
+          >
+            {img ? (
+              <>
+                <img
+                  src={img || "/placeholder.svg"}
+                  alt={prize.name || "Premio"}
+                  className={`w-full h-full object-cover ${exhausted ? "grayscale" : ""}`}
+                />
+                {!exhausted && (
+                  <div className="absolute bottom-1 right-1 bg-black/55 text-white px-1.5 py-0.5 rounded-md text-[10px] flex items-center gap-1">
+                    <ZoomIn className="w-3 h-3" /> Ver
+                  </div>
+                )}
+              </>
+            ) : (
+              <div
+                className={`w-full h-full grid place-items-center text-amber-700 ${
+                  exhausted
+                    ? "bg-gradient-to-br from-slate-200 to-slate-300"
+                    : "bg-gradient-to-br from-amber-100 to-amber-200"
+                }`}
+              >
+                <Gift className="w-6 h-6" />
               </div>
-
-              {prize.description && (
-                <p
-                  className={`text-xs mt-1.5 line-clamp-2 leading-relaxed ${exhausted ? "text-slate-500" : "text-slate-600"}`}
-                >
-                  {linkifyText(prize.description)}
-                </p>
-              )}
-
-              <div className="mt-2.5 flex items-center gap-2 flex-wrap">{stockBadge}</div>
-            </div>
+            )}
           </div>
 
-          {!exhausted && (
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl pointer-events-none" />
-          )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between gap-3">
+              <h5 className={`font-semibold truncate ${exhausted ? "text-slate-600" : "text-slate-800"}`}>
+                {prize.name || "Premio"}
+              </h5>
+              <span className={rank.badgeClass} title={`Posición ${pos}`}>
+                {rank.icon}
+                {rank.label}
+              </span>
+            </div>
+
+            {prize.description && (
+              <p className={`text-xs mt-1 line-clamp-2 break-words ${exhausted ? "text-slate-500" : "text-slate-600"}`}>
+                {linkifyText(prize.description)}
+              </p>
+            )}
+
+            <div className="mt-2 flex items-center gap-2 flex-wrap">{stockBadge}</div>
+          </div>
         </div>
-      )
-    },
-    [openPrize],
-  )
+
+        {!exhausted && (
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 rounded-2xl pointer-events-none" />
+        )}
+      </div>
+    )
+  }
+
+  /* ========== Renderizado Principal ========== */
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div className="relative">
-            <div className="p-3 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg">
+            <div className="p-3 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 text-white shadow-lg">
               <RotateCcw className="h-6 w-6" />
             </div>
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-400 rounded-full animate-pulse" />
+            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-400 rounded-full animate-pulse" />
           </div>
           <div>
             <h2 className="text-2xl font-bold text-slate-900 mb-1">Herramientas de Sorteo</h2>
@@ -769,6 +675,7 @@ const DrawTools = ({ onRefresh }) => {
         </button>
       </div>
 
+      {/* Errores */}
       {error && (
         <div className="bg-gradient-to-r from-rose-50 to-red-50 border-2 border-rose-200 text-rose-800 rounded-xl p-4 flex items-start gap-3 shadow-sm">
           <AlertTriangle className="h-5 w-5 mt-0.5" />
@@ -780,69 +687,66 @@ const DrawTools = ({ onRefresh }) => {
       )}
 
       <div className="grid lg:grid-cols-5 gap-6">
+        {/* Panel Izquierdo: Controles */}
         <div className="lg:col-span-2 space-y-5">
           <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <label className="text-sm font-semibold text-slate-700 mb-3 flex items-center gap-2">
-            <Crown className="w-4 h-4 text-blue-600" />
-             Ruleta a sortear
-            </label>
+            <label className="block text-sm font-semibold text-slate-700 mb-2">Ruleta a sortear</label>
+
             <div className="relative">
-              <Users className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
+              <Crown className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
               <select
                 value={selectedId}
                 onChange={(e) => setSelectedId(e.target.value)}
-                className="w-full pl-10 pr-3 py-3 rounded-xl border-2 border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 appearance-none text-sm font-medium text-slate-800 hover:border-slate-400 transition-colors cursor-pointer"
+                className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-slate-400 appearance-none"
               >
                 <option value="" disabled>
                   Selecciona una ruleta activa
                 </option>
-                {list.map((r) => {
-                  const pCount = r.participants?.length || 0
-                  return (
-                    <option key={r.id} value={r.id}>
-                      {r.name || `Ruleta ${r.id}`} • {pCount} participante{pCount !== 1 ? "s" : ""}
-                    </option>
-                  )
-                })}
+                {list.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name || `Ruleta ${r.id}`}
+                  </option>
+                ))}
               </select>
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                <svg className="w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </div>
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="flex items-center gap-2 text-slate-600 text-sm bg-slate-50 px-3 py-2 rounded-lg">
-                <Users className="w-4 h-4 text-blue-600" />
-                <span className="font-semibold">{detail?.participants?.length ?? 0}</span>
-                <span className="text-slate-500">participantes</span>
+              <div className="flex items-center gap-2 text-slate-600 text-sm">
+                <Users className="w-4 h-4" />
+                <span>{detail?.participants?.length ?? 0} participantes</span>
               </div>
               {detail?.scheduled_date && (
-                <div className="flex items-center gap-2 text-slate-600 text-sm bg-slate-50 px-3 py-2 rounded-lg">
-                  <Calendar className="w-4 h-4 text-indigo-600" />
-                  <span className="text-xs">{new Date(detail.scheduled_date).toLocaleDateString("es-ES")}</span>
+                <div className="flex items-center gap-2 text-slate-600 text-sm">
+                  <Calendar className="w-4 h-4" />
+                  <span>{new Date(detail.scheduled_date).toLocaleString("es-ES")}</span>
                 </div>
               )}
             </div>
 
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <div className="flex items-center gap-2 text-slate-600 text-sm">
+                <Award className="w-4 h-4" />
+                <span>{prizeUnitStats.availableUnits} premios disponibles</span>
+              </div>
+            </div>
+
             {detail?.status === "completed" && !canDraw && (
-              <div className="mt-3 p-3 bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl border border-emerald-200">
-                <div className="flex items-center gap-2 justify-center text-emerald-800">
+              <div className="mt-3 p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl border border-green-200">
+                <div className="flex items-center gap-2 justify-center text-green-800">
                   <Crown className="w-4 h-4" />
                   <span className="font-semibold text-sm">¡Sorteo Completado!</span>
                 </div>
-                <p className="text-emerald-700 text-xs text-center mt-1">Se alcanzó el objetivo de ganadores</p>
+                <p className="text-green-700 text-xs text-center mt-1">Se alcanzó el objetivo de ganadores</p>
               </div>
             )}
 
             {detail?.scheduled_date && (
-              <div className="mt-3 flex items-center gap-2 text-slate-600 text-sm bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
-                <Timer className="w-4 h-4 text-amber-600" />
+              <div className="mt-2 flex items-center gap-2 text-slate-600 text-sm">
+                <Timer className="w-4 h-4" />
                 {countdown?.diffMs > 0 ? (
-                  <span className="font-mono">
-                    {countdown.days > 0 && <strong className="text-amber-700">{countdown.days}d </strong>}
-                    <strong className="text-amber-700">
+                  <span>
+                    Faltan {countdown.days > 0 && <strong>{countdown.days}d </strong>}
+                    <strong>
                       {pad2(countdown.hours)}:{pad2(countdown.minutes)}:{pad2(countdown.seconds)}
                     </strong>
                   </span>
@@ -852,52 +756,49 @@ const DrawTools = ({ onRefresh }) => {
               </div>
             )}
 
-            <div className="mt-5">
+            <div className="mt-4">
               {!canDraw && detail?.status === "completed" ? (
-                <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-100 text-emerald-800 font-semibold border border-emerald-200">
+                <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-green-100 text-green-800 font-semibold border border-green-200">
                   <Crown className="w-5 h-5" /> Sorteo Completado
                 </div>
               ) : (
                 <button
                   onClick={handleSingleDraw}
                   disabled={!selectedId || rouletteSpinning || executing || participants.length === 0 || !canDraw}
-                  className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold shadow-md disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200"
                 >
                   <Play className="w-5 h-5" />
-                  {rouletteSpinning || executing ? "Girando..." : "Girar Ruleta"}
+                  {rouletteSpinning || executing ? "Girando..." : "Girar una vez"}
                 </button>
               )}
             </div>
           </div>
 
+          {/* Lista de Premios */}
           <div className="p-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="flex items-center gap-2 mb-1">
-              <Gift className="w-5 h-5 text-blue-600" />
-              <h4 className="font-bold text-slate-800">Premios del Sorteo</h4>
+              <Gift className="w-5 h-5 text-amber-500" />
+              <h4 className="font-bold text-slate-800">Premios</h4>
             </div>
-            <p className="text-xs text-slate-500 mb-4">Toca un premio para ver todos sus detalles</p>
+            <p className="text-xs text-slate-500 mb-3">Toca un premio para ver sus detalles</p>
 
             {prizes.length === 0 ? (
-              <div className="text-center py-8">
-                <Gift className="w-12 h-12 text-slate-300 mx-auto mb-2" />
-                <p className="text-sm text-slate-500">No hay premios configurados</p>
-              </div>
+              <p className="text-sm text-slate-500">No hay premios.</p>
             ) : (
               <div className="grid gap-3">
                 {prizes.slice(0, 8).map((p, i) => (
                   <PrizeCard key={p.id ?? i} prize={p} idx={i} />
                 ))}
                 {prizes.length > 8 && (
-                  <div className="text-xs text-slate-500 px-2 py-2 bg-slate-50 rounded-lg text-center">
-                    y {prizes.length - 8} premio{prizes.length - 8 !== 1 ? "s" : ""} más
-                  </div>
+                  <div className="text-xs text-slate-500 px-2">y {prizes.length - 8} premios más</div>
                 )}
               </div>
             )}
           </div>
         </div>
 
-        <div className="lg:col-span-3 p-0 rounded-2xl border border-slate-200 shadow-inner bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+        {/* Panel Derecho: Ruleta */}
+        <div className="lg:col-span-3 p-0 rounded-2xl border border-slate-200 shadow-inner bg-gradient-to-br from-slate-50 to-blue-50">
           <PremiumRoulette
             participants={participants}
             isSpinning={rouletteSpinning}
@@ -914,42 +815,44 @@ const DrawTools = ({ onRefresh }) => {
         </div>
       </div>
 
+      {/* Modal de Premio - Vista detallada */}
       {prizeModal.open && (
         <div
-          className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-[1px] flex items-center justify-center p-4"
           role="dialog"
           aria-modal="true"
           onClick={closePrize}
         >
           <div
-            className="relative w-full max-w-4xl max-h-[90vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col"
+            className="relative w-full max-w-3xl max-h-[85vh] bg-white rounded-3xl shadow-2xl overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative h-72 sm:h-80 md:h-96 bg-gradient-to-br from-slate-100 to-slate-200 flex-shrink-0">
+            {/* Hero con imagen */}
+            <div className="relative h-60 sm:h-72 md:h-80 bg-slate-100">
               {(() => {
                 const url = getPrizeImage(prizeModal.prize)
                 return url ? (
                   <img
                     src={url || "/placeholder.svg"}
                     alt={prizeModal.prize?.name || "Premio"}
-                    className="absolute inset-0 w-full h-full object-contain p-6"
+                    className="absolute inset-0 w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="absolute inset-0 w-full h-full grid place-items-center">
-                    <div className="text-center">
-                      <Gift className="w-20 h-20 text-blue-600 mx-auto mb-3" />
-                      <p className="text-slate-500 text-sm">Sin imagen</p>
-                    </div>
+                  <div className="absolute inset-0 w-full h-full grid place-items-center text-amber-600">
+                    <Gift className="w-12 h-12" />
                   </div>
                 )
               })()}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/25 to-transparent" />
 
-              <div className="absolute top-5 left-5">
+              {/* Insignia posición */}
+              <div className="absolute top-4 left-4">
                 {(() => {
                   const r = getRankMetaShared(prizeModal.prize?.position ?? null)
                   return (
-                    <span className={`${r.badgeClass} text-base px-3 py-1.5 bg-white/95 backdrop-blur-sm shadow-lg`}>
+                    <span
+                      className={`${r.badgeClass} text-white/95 bg-black/30 border-white/30 backdrop-blur px-2 py-1`}
+                    >
                       {r.icon}
                       {r.label}
                     </span>
@@ -957,56 +860,55 @@ const DrawTools = ({ onRefresh }) => {
                 })()}
               </div>
 
+              {/* Botón cerrar */}
               <button
-                className="absolute top-4 right-4 p-2.5 rounded-xl bg-white/95 hover:bg-white shadow-lg transition-all hover:scale-110"
+                className="absolute top-3 right-3 p-2 rounded-xl bg-white/90 hover:bg-white shadow"
                 onClick={closePrize}
                 aria-label="Cerrar"
               >
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="absolute bottom-5 left-5 right-5">
-                <h3 className="text-white text-3xl sm:text-4xl font-extrabold drop-shadow-lg">
+              {/* Título sobre imagen */}
+              <div className="absolute bottom-4 left-4 right-4">
+                <h3 className="text-white text-2xl sm:text-3xl font-extrabold drop-shadow">
                   {prizeModal.prize?.name || "Premio"}
                 </h3>
               </div>
             </div>
 
-            <div className="p-6 overflow-y-auto flex-1">
-              <div className="flex items-center gap-3 flex-wrap mb-5">
+            {/* Cuerpo scrollable */}
+            <div className="p-5 overflow-y-auto max-h-[calc(85vh-9.5rem)]">
+              <div className="flex items-center gap-2 flex-wrap mb-4">
                 {(() => {
                   const { initial, current } = derivePrizeState(prizeModal.prize || {})
                   return (
                     <span
-                      className={`inline-flex items-center gap-2 text-sm px-4 py-2 rounded-xl border-2 font-bold ${
+                      className={`inline-flex items-center gap-2 text-sm px-3 py-1.5 rounded-full border font-semibold ${
                         current > 0 && current <= 2
-                          ? "bg-rose-50 text-rose-700 border-rose-300"
-                          : "bg-blue-50 text-blue-700 border-blue-300"
+                          ? "bg-rose-100 text-rose-700 border-rose-200"
+                          : "bg-purple-100 text-purple-700 border-purple-200"
                       }`}
                       title="Stock restante"
                     >
-                      <Package className="w-5 h-5" />
-                      <span className="text-base">
-                        {current}
-                        {typeof initial === "number" ? ` / ${initial}` : ""} unidades
-                      </span>
+                      <Package className="w-4 h-4" />
+                      {current}
+                      {typeof initial === "number" ? ` / ${initial}` : ""}
                     </span>
                   )
                 })()}
               </div>
 
               {prizeModal.prize?.description && (
-                <div className="prose prose-base max-w-none">
-                  <div className="text-slate-700 leading-relaxed text-base">
-                    {linkifyText(prizeModal.prize.description)}
-                  </div>
+                <div className="prose prose-sm max-w-none text-slate-800">
+                  {linkifyText(prizeModal.prize.description)}
                 </div>
               )}
             </div>
 
-            <div className="p-5 bg-slate-50 flex justify-end border-t border-slate-200 flex-shrink-0">
+            <div className="p-4 bg-slate-50 flex justify-end">
               <button
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold shadow-lg hover:shadow-xl transition-all"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-semibold shadow"
                 onClick={closePrize}
               >
                 Cerrar
@@ -1015,688 +917,6 @@ const DrawTools = ({ onRefresh }) => {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-const PREMIUM_COLORS = [
-  { base: "#fde047", light: "#fef08a", dark: "#facc15" }, // Amarillo brillante
-  { base: "#fb7185", light: "#fda4af", dark: "#f43f5e" }, // Rosa/coral
-  { base: "#67e8f9", light: "#a5f3fc", dark: "#22d3ee" }, // Cyan brillante
-  { base: "#818cf8", light: "#a5b4fc", dark: "#6366f1" }, // Azul/índigo
-  { base: "#86efac", light: "#bbf7d0", dark: "#4ade80" }, // Verde brillante
-  { base: "#fdba74", light: "#fed7aa", dark: "#fb923c" }, // Naranja
-  { base: "#c084fc", light: "#d8b4fe", dark: "#a855f7" }, // Morado
-  { base: "#5eead4", light: "#99f6e4", dark: "#2dd4bf" }, // Teal
-]
-
-const PremiumRoulette = ({
-  participants = [],
-  isSpinning = false,
-  angle = 0,
-  winner = null,
-  showWinnerAnimation = false,
-  onTransitionEnd,
-  onDismissWinner,
-  spinDurationMs = 4500,
-  pointerSide = "right",
-  mode = "page",
-  centerIconKey = "trophy",
-}) => {
-  const box = useAutoSize()
-  const { wheelRef, startTransition, isTransitioning } = useRouletteTransition(onTransitionEnd, spinDurationMs)
-  const [lastAngle, setLastAngle] = useState(0)
-
-  const confettiCount = 50 // Reducido de 100
-  const animationLevel = 1
-  const starsCount = 25 // Reducido de 50
-  const sparklesCount = 30 // Reducido de 60
-  const bannerAnimation = "winnerEntry 1.5s cubic-bezier(0.25, 1, 0.5, 1)"
-  const glowIntensity = 0.6
-
-  const layout = useMemo(() => {
-    const padding = 24
-    const availableW = Math.max(0, box.w - padding * 2)
-    const availableH = Math.max(0, box.h - padding * 2)
-    if (!availableW || !availableH) return { size: 0, radius: 0, fontSize: 12 }
-
-    const maxSize = Math.min(availableW, availableH)
-    const n = Math.max(1, participants.length)
-    let baseSize
-
-    if (mode === "focus") {
-      if (n <= 4) baseSize = Math.min(maxSize * 1.01, 700)
-      else if (n <= 8) baseSize = Math.min(maxSize * 1.01, 720)
-      else if (n <= 16) baseSize = Math.min(maxSize * 1.01, 740)
-      else baseSize = Math.min(maxSize * 1.01, 770)
-    } else {
-      if (n <= 4) baseSize = Math.min(maxSize * 1.0, 585)
-      else if (n <= 8) baseSize = Math.min(maxSize * 1.0, 605)
-      else if (n <= 16) baseSize = Math.min(maxSize * 1.0, 625)
-      else baseSize = Math.min(maxSize * 1.0, 660)
-    }
-
-    const size = Math.floor(baseSize)
-    const radius = Math.max(mode === "focus" ? 150 : 130, Math.floor(size / 2) - 12)
-    const fontSize = calculateOptimalFontSize(n, mode)
-    return { size, radius, fontSize }
-  }, [box.w, box.h, participants.length, mode])
-
-  const { size, radius, fontSize } = layout
-  const cx = size / 2
-  const cy = size / 2
-
-  const segments = useMemo(() => {
-    const n = Math.max(participants.length, 1)
-    const step = TAU / n
-    if (participants.length === 0) {
-      const c = PREMIUM_COLORS[0]
-      return [
-        {
-          idx: 0,
-          start: 0,
-          end: TAU,
-          mid: TAU / 2,
-          color: c.base,
-          light: c.light,
-          dark: c.dark,
-          label: "—",
-          id: 0,
-          isEmpty: true,
-        },
-      ]
-    }
-    return participants.map((p, idx) => {
-      const start = idx * step
-      const end = start + step
-      const c = PREMIUM_COLORS[idx % PREMIUM_COLORS.length]
-      return {
-        idx,
-        start,
-        end,
-        mid: start + step / 2,
-        color: c.base,
-        light: c.light,
-        dark: c.dark,
-        label: p.name || `Participante ${idx + 1}`,
-        id: p.id || idx + 1,
-        participant: p,
-        isEmpty: false,
-      }
-    })
-  }, [participants])
-
-  const createSegmentPath = useCallback(
-    (start, end) => {
-      const x0 = cx + radius * Math.cos(start)
-      const y0 = cy + radius * Math.sin(start)
-      const x1 = cx + radius * Math.cos(end)
-      const y1 = cy + radius * Math.sin(end)
-      const largeArc = end - start > Math.PI ? 1 : 0
-      return `M ${cx} ${cy} L ${x0} ${y0} A ${radius} ${radius} 0 ${largeArc} 1 ${x1} ${y1} Z`
-    },
-    [cx, cy, radius],
-  )
-
-  const truncate = useCallback((text, maxLen) => {
-    if (!text || typeof text !== "string") return ""
-    return text.length <= maxLen ? text : text.substring(0, maxLen - 1) + "…"
-  }, [])
-
-  const getDisplayText = useCallback(
-    (segment, participantCount) => {
-      const maxLen = calculateMaxTextLength(participantCount)
-      if (participantCount > 100) return ""
-      if (participantCount > 50) return `#${segment.idx + 1}`
-      return truncate(segment.label, maxLen)
-    },
-    [truncate],
-  )
-
-  useEffect(() => {
-    if (isSpinning && size > 0 && !isTransitioning && angle !== lastAngle) {
-      startTransition(lastAngle, angle, { twoPhase: true })
-      setLastAngle(angle)
-    }
-  }, [isSpinning, angle, size, startTransition, lastAngle, isTransitioning])
-
-  const heights =
-    mode === "focus"
-      ? "h-[560px] sm:h-[660px] md:h-[720px] lg:h-[740px]"
-      : "h-[500px] sm:h-[560px] md:h-[600px] lg:h-[620px]"
-
-  const centerOuterR = Math.max(mode === "focus" ? 28 : 24, radius * 0.155)
-  const centerInnerR = Math.max(4, radius * 0.03)
-
-  const idleStyle = !isSpinning ? { animation: "rdpIdleRotate 20s linear infinite" } : undefined
-
-  return (
-    <div className="w-full h-full p-4">
-      <style>{`
-        @keyframes rdpIdleRotate {
-          from { 
-            transform: rotate(0deg);
-          }
-          to { 
-            transform: rotate(360deg);
-          }
-        }
-        
-        @keyframes shimmer {
-          0% { background-position: -200% center; }
-          100% { background-position: 200% center; }
-        }
-        
-        @keyframes glow {
-          0%, 100% { opacity: 0.3; transform: scale(1); }
-          50% { opacity: 0.6; transform: scale(1.05); }
-        }
-        
-        @keyframes confetti {
-          0% { 
-            transform: translateY(0) translateX(0) rotate(0deg) scale(1); 
-            opacity: 1; 
-          }
-          100% { 
-            transform: translateY(-150px) translateX(var(--tx)) rotate(720deg) scale(0); 
-            opacity: 0; 
-          }
-        }
-        
-        @keyframes winnerBounce {
-          0% { transform: scale(0.8) translateY(20px); opacity: 0; }
-          50% { transform: scale(1.05) translateY(-10px); opacity: 1; }
-          70% { transform: scale(0.95) translateY(5px); }
-          85% { transform: scale(1.02) translateY(-3px); }
-          100% { transform: scale(1) translateY(0); opacity: 1; }
-        }
-
-        @keyframes gradient {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        
-        @keyframes sparkle {
-          0%, 100% { opacity: 0; transform: scale(0) rotate(0deg); }
-          50% { opacity: 1; transform: scale(1) rotate(180deg); }
-        }
-        
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-20px); }
-        }
-        
-        @keyframes winnerEntry {
-          0% {
-            transform: translateY(100px) scale(0.8);
-            opacity: 0;
-          }
-          50% {
-            transform: translateY(-20px) scale(1.05);
-            opacity: 1;
-          }
-          70% {
-            transform: translateY(10px) scale(0.98);
-          }
-          100% {
-            transform: translateY(0px) scale(1);
-            opacity: 1;
-          }
-        }
-      `}</style>
-
-      <div
-        ref={box.ref}
-        className={`relative w-full ${heights} rounded-3xl overflow-hidden grid place-items-center`}
-        style={{
-          background: "linear-gradient(135deg, #f8fafc 0%, #f1f5f9 25%, #e2e8f0 50%, #e0e7ff 75%, #f0f9ff 100%)",
-          backgroundSize: "400% 400%",
-          animation: "gradient 25s ease infinite",
-        }}
-      >
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{
-            background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)",
-            backgroundSize: "200% 100%",
-            animation: "shimmer 5s infinite",
-          }}
-        />
-
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          {[...Array(6)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute w-1 h-1 bg-slate-400 rounded-full"
-              style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animation: `glow ${4 + Math.random() * 5}s ease-in-out infinite`,
-                animationDelay: `${Math.random() * 4}s`,
-              }}
-            />
-          ))}
-        </div>
-
-        <div style={idleStyle} className="relative">
-          <div
-            className="absolute inset-0 rounded-full"
-            style={{
-              width: size + 16,
-              height: size + 16,
-              left: -8,
-              top: -8,
-              background: "conic-gradient(from 0deg, #64748b, #78716c, #737373, #64748b)",
-              filter: "blur(6px)",
-              opacity: 0.2,
-              animation: "spin 15s linear infinite",
-            }}
-          />
-
-          <svg
-            width={size}
-            height={size}
-            viewBox={`0 0 ${size} ${size}`}
-            className="select-none relative z-10"
-            ref={wheelRef}
-            aria-label="Ruleta de participantes"
-            style={{
-              transformOrigin: `${cx}px ${cy}px`,
-              filter: "drop-shadow(0 20px 40px rgba(0,0,0,0.12))",
-              willChange: isSpinning ? "transform" : "auto",
-            }}
-          >
-            <circle cx={cx} cy={cy} r={radius + 4} fill="none" stroke="url(#metalGradient)" strokeWidth="5" />
-
-            <defs>
-              <linearGradient id="metalGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#cbd5e1" />
-                <stop offset="50%" stopColor="#f1f5f9" />
-                <stop offset="100%" stopColor="#cbd5e1" />
-              </linearGradient>
-            </defs>
-
-            {segments.map((seg) => {
-              const textPos = calculateTextPosition(seg.mid, radius, participants.length, cx, cy)
-              const textRotation = calculateTextRotation(seg.mid)
-              const displayText = getDisplayText(seg, participants.length)
-              const dotRadius = radius + 6
-              const dotX = cx + dotRadius * Math.cos(seg.end)
-              const dotY = cy + dotRadius * Math.sin(seg.end)
-
-              return (
-                <g key={seg.idx}>
-                  <defs>
-                    <radialGradient id={`g${seg.idx}`} cx="40%" cy="30%" r="90%">
-                      <stop offset="0%" stopColor={seg.light} stopOpacity="1" />
-                      <stop offset="50%" stopColor={seg.color} stopOpacity="0.95" />
-                      <stop offset="85%" stopColor={seg.dark} stopOpacity="0.9" />
-                      <stop offset="100%" stopColor={seg.dark} stopOpacity="0.85" />
-                    </radialGradient>
-
-                    <linearGradient id={`shine${seg.idx}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="rgba(255,255,255,0.2)" />
-                      <stop offset="50%" stopColor="rgba(255,255,255,0)" />
-                      <stop offset="100%" stopColor="rgba(255,255,255,0.1)" />
-                    </linearGradient>
-                  </defs>
-
-                  <path
-                    d={createSegmentPath(seg.start, seg.end)}
-                    fill={`url(#g${seg.idx})`}
-                    stroke="#ffffff"
-                    strokeWidth="2.5"
-                    style={{
-                      filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.1))",
-                    }}
-                  />
-
-                  <path
-                    d={createSegmentPath(seg.start, seg.end)}
-                    fill={`url(#shine${seg.idx})`}
-                    opacity="0.25"
-                    pointerEvents="none"
-                  />
-
-                  <circle cx={dotX} cy={dotY} r="4" fill="rgba(255,255,255,0.2)" />
-                  <circle cx={dotX} cy={dotY} r="2.5" fill="#ffffff" stroke="rgba(0,0,0,0.1)" strokeWidth="0.5" />
-
-                  {displayText && (
-                    <text
-                      x={textPos.x}
-                      y={textPos.y}
-                      fontSize={fontSize}
-                      fontWeight="700"
-                      textAnchor="middle"
-                      dominantBaseline="middle"
-                      fill="#ffffff"
-                      style={{
-                        paintOrder: "stroke",
-                        stroke: "rgba(0,0,0,0.5)",
-                        strokeWidth: participants.length > 50 ? 2.5 : 3,
-                        filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))",
-                      }}
-                      transform={`rotate(${textRotation} ${textPos.x} ${textPos.y})`}
-                    >
-                      {displayText}
-                    </text>
-                  )}
-                </g>
-              )
-            })}
-
-            <defs>
-              <radialGradient id="centerG" cx="50%" cy="30%" r="80%">
-                <stop offset="0%" stopColor="#fcd34d" />
-                <stop offset="30%" stopColor="#fbbf24" />
-                <stop offset="70%" stopColor="#f59e0b" />
-                <stop offset="100%" stopColor="#d97706" />
-              </radialGradient>
-
-              <filter id="centerShadow">
-                <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#000000" floodOpacity="0.25" />
-              </filter>
-            </defs>
-
-            <circle cx={cx} cy={cy} r={centerOuterR + 2.5} fill="url(#centerG)" filter="url(#centerShadow)" />
-            <circle cx={cx} cy={cy} r={centerOuterR} fill="url(#centerG)" stroke="#fef3c7" strokeWidth="2" />
-            <circle
-              cx={cx}
-              cy={cy}
-              r={centerInnerR}
-              fill="#fffbeb"
-              style={{
-                filter: "drop-shadow(0 0 5px rgba(251, 191, 36, 0.5))",
-              }}
-            />
-          </svg>
-        </div>
-
-        <div
-          className="pointer-events-none absolute z-20"
-          style={{
-            left: `${(box.w / 2) + radius + 18}px`,
-            top: `${box.h / 2}px`,
-            transform: "translate(-50%, -50%)",
-            filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.3))",
-          }}
-          aria-hidden="true"
-        >
-          {/* Flecha negra sólida apuntando hacia el centro */}
-          <div
-            style={{
-              width: 0,
-              height: 0,
-              borderTop: "20px solid transparent",
-              borderBottom: "20px solid transparent",
-              borderRight: "40px solid #1e293b",
-            }}
-          />
-        </div>
-
-        {showWinnerAnimation && winner && (
-          <div className="absolute inset-0 z-50 flex items-center justify-center px-4 pointer-events-none">
-            <div className="absolute inset-0 overflow-hidden">
-              {[...Array(confettiCount)].map((_, i) => {
-                const colors = ["#3b82f6", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ec4899", "#fbbf24"]
-                const shapes = ["circle", "square"]
-                const shape = shapes[Math.floor(Math.random() * shapes.length)]
-                const size = 4 + Math.random() * 8
-
-                return (
-                  <div
-                    key={i}
-                    className={`absolute ${shape === "circle" ? "rounded-full" : "rounded-sm"}`}
-                    style={{
-                      left: `${Math.random() * 100}%`,
-                      top: `${50 + Math.random() * 50}%`,
-                      width: `${size}px`,
-                      height: `${size}px`,
-                      background: colors[Math.floor(Math.random() * colors.length)],
-                      animation: `confetti ${1.5 + Math.random() * 2}s ease-out infinite`,
-                      animationDelay: `${Math.random() * 0.5}s`,
-                      "--tx": `${(Math.random() - 0.5) * 200}px`,
-                      boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
-                      willChange: "transform, opacity",
-                    }}
-                  />
-                )
-              })}
-            </div>
-
-            <div className="absolute inset-0 overflow-hidden">
-              {[...Array(starsCount)].map((_, i) => (
-                <Star
-                  key={i}
-                  className="absolute text-yellow-400"
-                  style={{
-                    left: `${Math.random() * 100}%`,
-                    top: `${Math.random() * 100}%`,
-                    width: `${12 + Math.random() * 12}px`,
-                    height: `${12 + Math.random() * 12}px`,
-                    animation: `sparkle ${1 + Math.random() * 2}s ease-in-out infinite`,
-                    animationDelay: `${Math.random() * 1}s`,
-                    filter: "drop-shadow(0 0 4px rgba(250, 204, 21, 0.8))",
-                    willChange: "transform, opacity",
-                  }}
-                />
-              ))}
-            </div>
-
-            <div
-              className="w-full max-w-3xl pointer-events-auto relative"
-              style={{
-                animation: bannerAnimation,
-              }}
-            >
-              <div
-                className="absolute inset-0 rounded-3xl blur-3xl"
-                style={{
-                  background: "linear-gradient(135deg, #fbbf24, #f59e0b, #3b82f6, #8b5cf6)",
-                  animation: "gradient 3s ease infinite",
-                  backgroundSize: "400% 400%",
-                  opacity: glowIntensity,
-                }}
-              />
-
-              <div
-                className="relative px-10 py-8 rounded-3xl border-4 border-white shadow-2xl overflow-hidden"
-                style={{
-                  background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 30%, #fde68a 60%, #fcd34d 100%)",
-                }}
-              >
-                {/* Efecto shimmer */}
-                <div
-                  className="absolute inset-0 opacity-30"
-                  style={{
-                    background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)",
-                    backgroundSize: "200% 100%",
-                    animation: "shimmer 1.5s infinite",
-                  }}
-                />
-
-                <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                  {[...Array(sparklesCount)].map((_, i) => (
-                    <Sparkles
-                      key={i}
-                      className="absolute text-amber-400"
-                      style={{
-                        left: `${10 + Math.random() * 80}%`,
-                        top: `${10 + Math.random() * 80}%`,
-                        width: `${animationLevel === 1 ? 16 + Math.random() * 14 : animationLevel === 2 ? 12 + Math.random() * 10 : 10 + Math.random() * 6}px`,
-                        height: `${animationLevel === 1 ? 16 + Math.random() * 14 : animationLevel === 2 ? 12 + Math.random() * 10 : 10 + Math.random() * 6}px`,
-                        animation: `float ${2 + Math.random() * 2}s ease-in-out infinite`,
-                        animationDelay: `${Math.random() * 2}s`,
-                        opacity: animationLevel === 1 ? 0.7 : animationLevel === 2 ? 0.5 : 0.35,
-                      }}
-                    />
-                  ))}
-                </div>
-
-                <div className="relative z-10 flex flex-col items-center gap-5">
-                  <div className="flex items-center gap-4">
-                    <Trophy
-                      className={`${animationLevel === 1 ? "w-12 h-12" : animationLevel === 2 ? "w-10 h-10" : "w-8 h-8"} text-amber-600`}
-                      style={{
-                        animation: animationLevel <= 2 ? "float 2s ease-in-out infinite" : "none",
-                        filter: `drop-shadow(0 0 ${animationLevel === 1 ? 12 : animationLevel === 2 ? 8 : 4}px rgba(245, 158, 11, 0.8))`,
-                      }}
-                    />
-                    <div className="text-center">
-                      <div className="flex items-center gap-2 justify-center mb-2">
-                        <Star
-                          className={`${animationLevel === 1 ? "w-6 h-6" : animationLevel === 2 ? "w-5 h-5" : "w-4 h-4"} text-amber-500`}
-                          style={{ animation: animationLevel <= 2 ? "sparkle 1s ease-in-out infinite" : "none" }}
-                        />
-                        <span
-                          className={`${animationLevel === 1 ? "text-lg" : "text-base"} font-bold text-amber-700 tracking-wider`}
-                        >
-                          ¡GANADOR!
-                        </span>
-                        <Star
-                          className={`${animationLevel === 1 ? "w-6 h-6" : animationLevel === 2 ? "w-5 h-5" : "w-4 h-4"} text-amber-500`}
-                          style={{
-                            animation: animationLevel <= 2 ? "sparkle 1s ease-in-out infinite" : "none",
-                            animationDelay: "0.5s",
-                          }}
-                        />
-                      </div>
-                      <h3
-                        className={`${animationLevel === 1 ? "text-4xl md:text-5xl" : animationLevel === 2 ? "text-3xl md:text-4xl" : "text-2xl md:text-3xl"} font-black text-transparent bg-clip-text`}
-                        style={{
-                          backgroundImage: "linear-gradient(135deg, #92400e, #b45309, #d97706, #f59e0b, #fbbf24)",
-                          textShadow: "3px 3px 6px rgba(0,0,0,0.15)",
-                          letterSpacing: "0.02em",
-                        }}
-                      >
-                        {typeof winner === "string" ? winner : winner.name}
-                      </h3>
-                    </div>
-                    <Trophy
-                      className={`${animationLevel === 1 ? "w-12 h-12" : animationLevel === 2 ? "w-10 h-10" : "w-8 h-8"} text-amber-600`}
-                      style={{
-                        animation: animationLevel <= 2 ? "float 2s ease-in-out infinite" : "none",
-                        animationDelay: "1s",
-                        filter: `drop-shadow(0 0 ${animationLevel === 1 ? 12 : animationLevel === 2 ? 8 : 4}px rgba(245, 158, 11, 0.8))`,
-                      }}
-                    />
-                  </div>
-
-                  {/* Premio con diseño mejorado */}
-                  {typeof winner === "object" && winner.prize && (
-                    <div className="w-full">
-                      <div
-                        className="flex items-center gap-5 px-8 py-6 rounded-2xl border-3 border-amber-400 shadow-xl relative overflow-hidden"
-                        style={{
-                          background: "linear-gradient(135deg, rgba(255,255,255,0.95), rgba(254,243,199,0.95))",
-                        }}
-                      >
-                        {/* Brillo de fondo */}
-                        <div
-                          className="absolute inset-0 opacity-20"
-                          style={{
-                            background: "linear-gradient(45deg, transparent, rgba(251, 191, 36, 0.5), transparent)",
-                            backgroundSize: "200% 200%",
-                            animation: animationLevel <= 2 ? "shimmer 2s infinite" : "none",
-                          }}
-                        />
-
-                        {winner.prize.image_url ? (
-                          <div className="relative shrink-0">
-                            <div
-                              className="absolute inset-0 rounded-2xl blur-lg"
-                              style={{
-                                background: "linear-gradient(135deg, #fbbf24, #3b82f6)",
-                                opacity: animationLevel === 1 ? 0.5 : animationLevel === 2 ? 0.35 : 0.2,
-                                animation: animationLevel <= 2 ? "glow 2s ease-in-out infinite" : "none",
-                              }}
-                            />
-                            <img
-                              src={winner.prize.image_url || "/placeholder.svg"}
-                              alt={winner.prize.name || "Premio"}
-                              className="relative w-24 h-24 rounded-2xl object-cover border-4 border-white shadow-2xl"
-                              style={{
-                                animation: animationLevel <= 2 ? "float 3s ease-in-out infinite" : "none",
-                              }}
-                            />
-                          </div>
-                        ) : (
-                          <div
-                            className="w-24 h-24 rounded-2xl grid place-items-center shadow-2xl shrink-0"
-                            style={{
-                              background: "linear-gradient(135deg, #fbbf24, #f59e0b)",
-                              animation: animationLevel <= 2 ? "float 3s ease-in-out infinite" : "none",
-                            }}
-                          >
-                            <Gift className="w-12 h-12 text-white" />
-                          </div>
-                        )}
-
-                        <div className="text-left flex-1 relative z-10">
-                          <div className="flex items-center gap-3 mb-2">
-                            <span
-                              className="text-3xl font-black block"
-                              style={{
-                                background: "linear-gradient(135deg, #059669, #10b981, #34d399)",
-                                WebkitBackgroundClip: "text",
-                                WebkitTextFillColor: "transparent",
-                                textShadow: "0 2px 4px rgba(0,0,0,0.1)",
-                              }}
-                            >
-                              {winner.prize.name}
-                            </span>
-                            <Sparkles
-                              className="w-6 h-6 text-emerald-500"
-                              style={{ animation: animationLevel <= 2 ? "sparkle 1.5s ease-in-out infinite" : "none" }}
-                            />
-                          </div>
-                          {winner.prize.position != null && (
-                            <span className={`${getRankMetaShared(winner.prize.position).badgeClass} text-sm`}>
-                              {getRankMetaShared(winner.prize.position).icon}
-                              {getRankMetaShared(winner.prize.position).label}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {winner.prize.description && (
-                        <p className="text-slate-700 text-base max-w-2xl mx-auto px-4 mt-4 line-clamp-2 leading-relaxed font-medium">
-                          {winner.prize.description}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Botón de cerrar */}
-                  <button
-                    type="button"
-                    onClick={onDismissWinner}
-                    className="inline-flex items-center gap-3 px-10 py-4 rounded-2xl text-white text-lg font-bold shadow-2xl hover:shadow-3xl transition-all hover:scale-105 active:scale-95 mt-3 relative overflow-hidden group"
-                    style={{
-                      background: "linear-gradient(135deg, #1e293b, #0f172a)",
-                      border: "3px solid rgba(255,255,255,0.3)",
-                    }}
-                    aria-label="Cerrar mensaje de ganador"
-                  >
-                    <div
-                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                      style={{ backgroundSize: "200% 100%", animation: "shimmer 2s infinite" }}
-                    />
-                    <X className="w-6 h-6 relative z-10" />
-                    <span className="relative z-10">Continuar</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   )
 }

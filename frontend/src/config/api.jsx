@@ -42,6 +42,7 @@ export const ENDPOINTS = {
     PASSWORD_RESET_CONFIRM: "/auth/password-reset/confirm/",
     PASSWORD_RESET_VALIDATE: "/auth/validate-reset-token/",
     CHANGE_PASSWORD: "/auth/change-password/",
+    GOOGLE_LOGIN: "/auth/google/",
   },
   
   ROULETTES: {
@@ -371,6 +372,30 @@ export class AuthAPI extends BaseAPI {
       syncGlobalTokens(null);
     }
   }
+  
+  async checkEmailExists(email) {
+    return this.request("/auth/check-email/", {
+      method: "POST",
+      body: { email: email.trim().toLowerCase() }
+    });
+  }
+  
+  async googleLogin(accessToken) {
+    const result = await this.request(ENDPOINTS.AUTH.GOOGLE_LOGIN, {
+      method: "POST",
+      body: { access_token: accessToken }
+    });
+    
+    if (result?.key || result?.token) {
+      const token = result.key || result.token;
+      this.setAuthToken(token);
+      this.authToken = token;
+      syncGlobalTokens(token);
+    }
+    
+    return result;
+  }
+  
 
   getUserInfo() { 
     return this.request(ENDPOINTS.AUTH.USER_INFO); 

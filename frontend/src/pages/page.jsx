@@ -84,7 +84,7 @@ export default function Page() {
               aria-label="Ingresar a tu cuenta"
             >
               <LogIn size={18} className="shrink-0" />
-              <span className="hidden sm:inline">Ingresar</span>
+              <span>Ingresar</span>
             </button>
 
             <button
@@ -93,7 +93,7 @@ export default function Page() {
               aria-label="Crear cuenta nueva"
             >
               <UserPlus size={18} className="shrink-0" />
-              <span className="hidden sm:inline">Registrarse</span>
+              <span>Registrarse</span>
             </button>
           </nav>
         </div>

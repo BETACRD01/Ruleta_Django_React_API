@@ -8,14 +8,14 @@ const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [userProfile, setUserProfile] = useState(null); // ✅ Nuevo estado para perfil completo
+  const [userProfile, setUserProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(null);
   const [error, setError] = useState(null);
 
   const { showSuccess, showError, showInfo } = useNotification();
 
-  // ✅ Función helper para cargar perfil completo
+  // Función helper para cargar perfil completo
   const loadUserProfile = useCallback(async () => {
     try {
       const profileDetail = await authAPI.getProfileDetail();
@@ -34,7 +34,6 @@ export const AuthProvider = ({ children }) => {
           const userInfo = await authAPI.getUserInfo();
           setUser(userInfo);
           setToken(localStorage.getItem('token') || localStorage.getItem('auth_token') || localStorage.getItem('authToken'));
-          // ✅ Cargar perfil completo también
           await loadUserProfile();
         }
       } catch (err) {
@@ -59,7 +58,6 @@ export const AuthProvider = ({ children }) => {
         setGlobalAuthToken(result.token);
         const userInfo = await authAPI.getUserInfo();
         setUser(userInfo);
-        // ✅ Cargar perfil completo después del login
         await loadUserProfile();
         showSuccess(`¡Bienvenido de vuelta, ${userInfo.first_name || userInfo.username || 'Usuario'}!`, 'Inicio de sesión exitoso');
         return { success: true, user: userInfo };
@@ -80,13 +78,49 @@ export const AuthProvider = ({ children }) => {
     }
   }, [showSuccess, showError, loadUserProfile]);
 
-  // ✅ Función de registro mejorada que incluye teléfono y términos
+  // ============================================================================
+  // GOOGLE LOGIN
+  // ============================================================================
+  const googleLogin = useCallback(async (accessToken) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const result = await authAPI.googleLogin(accessToken);
+
+      if (result?.success && result?.token) {
+        setToken(result.token);
+        setGlobalAuthToken(result.token);
+        const userInfo = await authAPI.getUserInfo();
+        setUser(userInfo);
+        await loadUserProfile();
+        showSuccess(
+          `¡Bienvenido ${userInfo.first_name || userInfo.username || 'Usuario'}!`, 
+          'Inicio de sesión con Google exitoso'
+        );
+        return { success: true, user: userInfo };
+      }
+
+      const errorMessage = result?.message || 'Error al autenticar con Google';
+      setError(errorMessage);
+      showError(errorMessage, 'Error de autenticación con Google');
+      return { success: false, message: errorMessage };
+    } catch (err) {
+      const errorMessage = err.message || 'Error de conexión con Google';
+      setError(errorMessage);
+      console.error('Error en Google login:', err);
+      showError(errorMessage, 'Error de conexión');
+      return { success: false, message: errorMessage };
+    } finally {
+      setLoading(false);
+    }
+  }, [showSuccess, showError, loadUserProfile]);
+
   const register = useCallback(async (userData) => {
     try {
       setLoading(true);
       setError(null);
 
-      // ✅ Validar que incluya los campos requeridos
       if (!userData.phone) {
         const errorMessage = 'El número de teléfono es requerido';
         setError(errorMessage);
@@ -108,7 +142,6 @@ export const AuthProvider = ({ children }) => {
         setGlobalAuthToken(result.token);
         const userInfo = await authAPI.getUserInfo();
         setUser(userInfo);
-        // ✅ Cargar perfil completo después del registro
         await loadUserProfile();
         showSuccess(
           `¡Cuenta creada exitosamente! Bienvenido ${userInfo.first_name || userInfo.username || 'Usuario'}!`,
@@ -143,7 +176,7 @@ export const AuthProvider = ({ children }) => {
     } finally {
       clearAllTokens();
       setUser(null);
-      setUserProfile(null); // ✅ Limpiar perfil también
+      setUserProfile(null);
       setToken(null);
       setError(null);
     }
@@ -172,7 +205,6 @@ export const AuthProvider = ({ children }) => {
       setError(null);
       const updatedUser = await authAPI.updateProfile(profileData);
       setUser(updatedUser);
-      // ✅ Recargar perfil completo después de actualizar
       await loadUserProfile();
       showSuccess('Tu perfil ha sido actualizado correctamente', 'Perfil actualizado');
       return { success: true, user: updatedUser };
@@ -205,7 +237,6 @@ export const AuthProvider = ({ children }) => {
     }
   }, [showSuccess, showError]);
 
-  // Roles/Permisos (booleans + helpers) - Wrapped in useCallback to be stable
   const isAdmin = useCallback(() =>
     user?.role === 'admin' || user?.is_admin === true || user?.is_staff === true || user?.is_superuser === true,
   [user]);
@@ -216,7 +247,6 @@ export const AuthProvider = ({ children }) => {
 
   const hasRole = useCallback((role) => user?.role === role, [user]);
 
-  // ✅ Helpers para teléfono y términos
   const hasAcceptedTerms = useCallback(() => {
     return userProfile?.profile?.terms_accepted_at !== null && userProfile?.profile?.terms_accepted_at !== undefined;
   }, [userProfile]);
@@ -236,7 +266,7 @@ export const AuthProvider = ({ children }) => {
       if (isAuthenticated()) {
         const userInfo = await authAPI.getUserInfo();
         setUser(userInfo);
-        await loadUserProfile(); // ✅ Recargar perfil también
+        await loadUserProfile();
         return userInfo;
       }
     } catch (err) {
@@ -278,13 +308,14 @@ export const AuthProvider = ({ children }) => {
   const value = useMemo(() => ({
     // Estado
     user,
-    userProfile, // ✅ Exponer perfil completo
+    userProfile,
     token,
     loading,
     error,
 
     // Métodos de autenticación
     login,
+    googleLogin, // ← AGREGADO
     register,
     logout,
 
@@ -292,9 +323,9 @@ export const AuthProvider = ({ children }) => {
     updateProfile,
     changePassword,
     requestPasswordReset,
-    loadUserProfile, // ✅ Método para recargar perfil
+    loadUserProfile,
 
-    // Verificaciones (exportamos booleans y helpers)
+    // Verificaciones
     isAuthenticated: !!user,
     isAdmin: isAdmin(),
     isUser: isUser(),
@@ -305,7 +336,7 @@ export const AuthProvider = ({ children }) => {
     hasPermission,
     hasRole,
 
-    // ✅ Nuevos helpers para teléfono y términos
+    // Helpers para teléfono y términos
     hasAcceptedTerms: hasAcceptedTerms(),
     getUserPhone: getUserPhone(),
     getTermsAcceptedDate: getTermsAcceptedDate(),
@@ -320,7 +351,8 @@ export const AuthProvider = ({ children }) => {
     token, 
     loading, 
     error, 
-    login, 
+    login,
+    googleLogin, // ← AGREGADO
     register, 
     logout, 
     updateProfile, 
@@ -348,7 +380,7 @@ export const useAuth = () => {
   return context;
 };
 
-// Rutas protegidas (sin cambios)
+// Rutas protegidas
 export const ProtectedRoute = ({ children, requireAdmin = false, requireRole = null, requirePermission = null }) => {
   const { user, loading, isAdmin, hasRole, hasPermission } = useAuth();
 

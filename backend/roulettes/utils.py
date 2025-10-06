@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count, Sum
+from django.db.models import Count, Sum, F, Case, When
 from django.utils import timezone
 from django.conf import settings
 
@@ -17,6 +17,8 @@ from .models import (
     RouletteStatus,
     RoulettePrize,
     RouletteSettings,
+    _assign_prize_atomically,
+    _schedule_winner_notifications,
 )
 from participants.models import Participation
 
@@ -29,32 +31,6 @@ try:
 except ImportError:
     send_winner_email = None  # type: ignore
     logger.warning("Módulo de notificaciones no disponible")
-
-
-# ============================================================
-# Helper para construir URLs absolutas de imágenes
-# ============================================================
-
-def _build_absolute_image_url(image_field) -> Optional[str]:
-    """Construye URL absoluta para imágenes de premios"""
-    if not image_field:
-        return None
-    
-    try:
-        relative_url = image_field.url
-        
-        # Si ya es absoluta, retornarla
-        if relative_url.startswith(('http://', 'https://')):
-            return relative_url
-        
-        # Construir URL absoluta
-        base_url = getattr(settings, 'MEDIA_URL_BASE', 'http://localhost:8000')
-        base_url = base_url.rstrip('/')
-        
-        return f"{base_url}{relative_url}"
-    except Exception as e:
-        logger.warning(f"Error construyendo URL de imagen: {e}")
-        return None
 
 
 # ============================================================
@@ -97,19 +73,18 @@ def validate_roulette_participation(roulette: Roulette, user) -> None:
 
 
 # ============================================================
-# Ejecución del sorteo CON NOTIFICACIÓN RETARDADA
+# Ejecución del sorteo CON HELPERS CENTRALIZADOS
 # ============================================================
 
 @transaction.atomic
 def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manual") -> Dict[str, Any]:
     """
-    Ejecuta un sorteo:
+    Ejecuta un sorteo usando helpers centralizados de models.py:
     - Selecciona un participante que todavía NO ha ganado.
-    - Asigna un premio disponible (stock>0, activo) y descuenta stock.
-    - Asigna el premio específico a la participación ganadora (won_prize).
-    - Programa notificación RETARDADA con Celery (5-10 minutos).
+    - Usa _assign_prize_atomically() para asignar premio y reducir stock.
+    - Usa _schedule_winner_notifications() para programar notificación retardada.
     - NO cierra anticipado: el cierre se decide en reconcile_completion() según
-      stock restante y/o meta fija (solo cierra si ya NO se puede continuar).
+      stock restante y/o meta fija.
     """
     
     roulette = (
@@ -158,32 +133,20 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
         roulette.winner = winner
 
     # ============================================================
-    # SECCIÓN CRÍTICA: Asignar premio y reducir stock
+    # USAR HELPER CENTRALIZADO PARA ASIGNACIÓN ATÓMICA
     # ============================================================
-    prize: Optional[RoulettePrize] = (
-        RoulettePrize.objects.select_for_update()
-        .filter(roulette=roulette, is_active=True, stock__gt=0)
-        .order_by("display_order", "id")
-        .first()
-    )
-
+    prize = _assign_prize_atomically(roulette, iteration=0)
+    
     if not prize:
-        logger.error(f"No se encontró premio disponible para ruleta {roulette.id}")
+        logger.error(f"No se pudo asignar premio para ruleta {roulette.id}")
         roulette.reconcile_completion(by_user=admin_user)
-        return {"success": False, "message": "No se encontró un premio disponible para asignar.", "error_code": "NO_PRIZE_FOUND"}
+        return {
+            "success": False,
+            "message": "No se encontró un premio disponible para asignar.",
+            "error_code": "NO_PRIZE_FOUND"
+        }
 
-    # Reducir stock del premio
-    new_stock = int(prize.stock) - 1
-    prize.stock = new_stock if new_stock >= 0 else 0
-    if prize.stock <= 0 and prize.is_active:
-        prize.is_active = False
-    prize.save(update_fields=["stock", "is_active"])
-    
-    logger.info(f"Premio {prize.id} ({prize.name}) asignado. Stock restante: {prize.stock}")
-    
-    # ============================================================
-    # CRÍTICO: Asignar el premio específico a la participación
-    # ============================================================
+    # Asignar premio a participación ganadora
     winner.won_prize = prize
     winner.prize_position = prize.display_order or 1
     winner.is_winner = True
@@ -226,58 +189,15 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
     )
 
     # ============================================================
-    # NOTIFICACIÓN RETARDADA CON CELERY
+    # USAR HELPER CENTRALIZADO PARA NOTIFICACIONES
     # ============================================================
-    try:
-        notify_flag = True
-        if settings_obj:
-            notify_flag = bool(settings_obj.notify_on_draw)
-        
-        winner_email = getattr(winner.user, 'email', None)
-        
-        if not winner_email or not winner_email.strip():
-            logger.warning(
-                f"Ganador {winner.user.username} (ID: {winner.user.id}) no tiene email configurado."
-            )
-        elif not notify_flag:
-            logger.info(
-                f"Notificaciones deshabilitadas en la configuración de la ruleta {roulette.id}."
-            )
-        elif notify_flag and winner_email:
-            # Importar la tarea de Celery
-            from notifications.tasks import send_winner_notification_delayed
-            
-            delay_seconds = getattr(settings, 'WINNER_NOTIFICATION_DELAY', 300)
-            
-            logger.info(f"Programando notificación retardada (+{delay_seconds}s) para: {winner_email}")
-            
-            # Preparar datos para la tarea
-            task_data = {
-                "user_id": winner.user.id,
-                "roulette_name": roulette.name,
-                "prize_name": prize.name if prize else "Premio especial",
-                "prize_description": prize.description if prize else None,
-                "prize_image_url": _build_absolute_image_url(prize.image) if prize and prize.image else None,
-                "prize_rank": getattr(prize, 'display_order', None) if prize else None,
-                "pickup_instructions": getattr(prize, 'pickup_instructions', None) if prize else None,
-                "roulette_id": roulette.id,
-                "prize_id": prize.id if prize else None,
-                "notify_admins": True
-            }
-            
-            # Programar tarea con retraso
-            task = send_winner_notification_delayed.apply_async(
-                kwargs=task_data,
-                countdown=delay_seconds
-            )
-            
-            logger.info(f"Tarea programada: {task.id} (Envío en ~{delay_seconds/60:.1f} min)")
-                
-    except Exception as e:
-        logger.error(
-            f"Excepción al programar notificación para ruleta {roulette.id}: {str(e)}", 
-            exc_info=True
-        )
+    _schedule_winner_notifications(
+        roulette=roulette,
+        winner_participation=winner,
+        prize=prize,
+        iteration=0,
+        is_first_winner=True
+    )
 
     # Decidir posible cierre SOLO si ya no se puede continuar
     roulette.reconcile_completion(by_user=admin_user)

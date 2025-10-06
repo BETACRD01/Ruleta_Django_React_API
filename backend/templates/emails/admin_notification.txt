@@ -1,0 +1,290 @@
+# ==============================================================================
+# FILE 1: templates/emails/admin_notification.txt
+# ==============================================================================
+
+{{ brand_name }}
+NOTIFICACIÓN ADMINISTRATIVA
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Estimado {{ admin_name }},
+
+{{ notification_message }}
+
+DETALLES:
+- Tipo: {{ notification_type_display }}
+- Prioridad: {{ priority_display }}
+- Fecha: {{ created_at }}
+
+{% if notification_url %}Ver notificación: {{ notification_url }}{% endif %}
+{% if admin_dashboard_url %}Panel admin: {{ admin_dashboard_url }}{% endif %}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{{ brand_name }}
+Sistema de Notificaciones Administrativas
+
+© {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.
+
+
+# ==============================================================================
+# FILE 2: templates/emails/admin_notification.html
+# ==============================================================================
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notificación Administrativa - {{ brand_name }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        
+        .email-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border: 1px solid #ddd;
+        }
+        
+        .header {
+            background: #6c757d;
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .header h2 {
+            font-size: 18px;
+            font-weight: normal;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .admin-badge {
+            display: inline-block;
+            background: #6c757d;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+        
+        .greeting {
+            margin-bottom: 20px;
+        }
+        
+        .message-box {
+            background: #f8f9fa;
+            padding: 20px;
+            margin: 25px 0;
+            border-left: 4px solid #6c757d;
+            border-radius: 4px;
+        }
+        
+        .message-box p {
+            font-size: 15px;
+            line-height: 1.7;
+        }
+        
+        .details-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 25px 0;
+        }
+        
+        .details-table td {
+            padding: 12px;
+            border: 1px solid #ddd;
+        }
+        
+        .details-table td:first-child {
+            background: #f8f9fa;
+            font-weight: bold;
+            width: 30%;
+        }
+        
+        .priority-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .priority-urgent {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .priority-high {
+            background: #ffc107;
+            color: #333;
+        }
+        
+        .priority-normal {
+            background: #28a745;
+            color: white;
+        }
+        
+        .priority-low {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .button-container {
+            text-align: center;
+            margin: 30px 0;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 14px 32px;
+            margin: 8px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 15px;
+            transition: opacity 0.3s;
+        }
+        
+        .btn:hover {
+            opacity: 0.8;
+        }
+        
+        .btn-primary {
+            background: #6c757d;
+            color: white !important;
+        }
+        
+        .footer {
+            background: #f0f0f0;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            border-top: 1px solid #ddd;
+        }
+        
+        .footer p {
+            margin: 8px 0;
+        }
+        
+        .footer a {
+            color: #6c757d;
+            text-decoration: none;
+        }
+        
+        @media (max-width: 768px) {
+            .content {
+                padding: 20px;
+            }
+            
+            .details-table td {
+                display: block;
+                width: 100% !important;
+            }
+            
+            .details-table td:first-child {
+                border-bottom: none;
+            }
+            
+            .btn {
+                display: block;
+                margin: 10px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="email-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>{{ brand_name }}</h1>
+            <h2>Notificación Administrativa</h2>
+        </div>
+        
+        <!-- Content -->
+        <div class="content">
+            <div class="admin-badge">Panel de Administración</div>
+            
+            <div class="greeting">
+                <p><strong>Estimado {{ admin_name }},</strong></p>
+            </div>
+
+            <!-- Message Box -->
+            <div class="message-box">
+                <p>{{ notification_message }}</p>
+            </div>
+
+            <!-- Details Table -->
+            <table class="details-table">
+                <tr>
+                    <td>Tipo de Notificación:</td>
+                    <td>{{ notification_type_display }}</td>
+                </tr>
+                <tr>
+                    <td>Prioridad:</td>
+                    <td>
+                        <span class="priority-badge priority-{{ priority_display|lower }}">
+                            {{ priority_display }}
+                        </span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Fecha y Hora:</td>
+                    <td>{{ created_at }}</td>
+                </tr>
+            </table>
+
+            <!-- Action Buttons -->
+            {% if notification_url or admin_dashboard_url %}
+            <div class="button-container">
+                {% if notification_url %}
+                <a href="{{ notification_url }}" class="btn btn-primary">Ver Notificación</a>
+                {% endif %}
+                {% if admin_dashboard_url %}
+                <a href="{{ admin_dashboard_url }}" class="btn btn-primary">Panel Admin</a>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            <p><strong>{{ brand_name }}</strong></p>
+            <p>Sistema de Notificaciones Administrativas</p>
+            {% if site_url %}
+            <p><a href="{{ site_url }}">{{ site_url }}</a></p>
+            {% endif %}
+            <p style="margin-top: 10px;">&copy; {% now "Y" %} {{ brand_name }}. Todos los derechos reservados.</p>
+            <p style="margin-top: 10px; font-size: 11px; color: #999;">
+                Este es un correo automático del sistema de administración.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

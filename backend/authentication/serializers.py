@@ -7,7 +7,7 @@ from typing import Optional
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -149,17 +149,24 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 
         user = User.objects.create_user(password=password, **validated_data)
 
-        profile, _ = UserProfile.objects.get_or_create(user=user)
+        try:
+            profile, _ = UserProfile.objects.get_or_create(user=user)
 
-        update_fields = []
-        if phone and profile.phone != phone:
-            profile.phone = phone
-            update_fields.append("phone")
-        if accept_terms and profile.terms_accepted_at is None:
-            profile.terms_accepted_at = timezone.now()
-            update_fields.append("terms_accepted_at")
-        if update_fields:
-            profile.save(update_fields=update_fields)
+            update_fields = []
+            if phone and profile.phone != phone:
+                profile.phone = phone
+                update_fields.append("phone")
+            if accept_terms and profile.terms_accepted_at is None:
+                profile.terms_accepted_at = timezone.now()
+                update_fields.append("terms_accepted_at")
+            if update_fields:
+                profile.save(update_fields=update_fields)
+        except IntegrityError:
+            # Si falla por teléfono duplicado, eliminar el usuario creado
+            user.delete()
+            raise serializers.ValidationError(
+                {"phone": "Este número de teléfono ya está registrado."}
+            )
 
         return user
 
@@ -253,32 +260,52 @@ class UserProfileUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError("Este nombre de usuario ya está en uso.")
         return value
 
-    def validate_phone(self, value):
-        if not value:
-            return value
-        
-        user = self.context['request'].user
-        raw = value.strip()
-        
-        if not raw.startswith("+"):
-            suggested = _format_e164_or_none(raw, _default_region_from_settings())
-            if suggested:
+    def validate_avatar(self, value):
+        """Valida tamaño y tipo de archivo del avatar"""
+        if value:
+            # Validar tamaño (5MB máximo)
+            max_size = 5 * 1024 * 1024  # 5MB
+            if value.size > max_size:
                 raise serializers.ValidationError(
-                    f"Incluye el código de país. Sugerencia: {suggested}"
+                    f"El avatar no puede exceder 5MB. Tamaño actual: {value.size / (1024*1024):.2f}MB"
                 )
-            raise serializers.ValidationError(
-                "Incluye el código de país en formato internacional (E.164). Ej: +5939XXXXXXXX"
-            )
+            
+            # Validar tipo de archivo
+            allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+            if value.content_type not in allowed_types:
+                raise serializers.ValidationError(
+                    "Formato no permitido. Use: JPG, PNG, GIF o WEBP"
+                )
         
-        normalized = _format_e164_or_none(raw, None)
-        if not normalized:
-            raise serializers.ValidationError("Número de teléfono inválido.")
-        
-        if UserProfile.objects.exclude(user=user).filter(phone=normalized).exists():
-            raise serializers.ValidationError("Este número de teléfono ya está registrado.")
-        
-        return normalized
+        return value
 
+    def validate_phone(self, value):
+     if not value:  # Permitir vacío en updates
+        return value
+    
+     user = self.context['request'].user
+     raw = value.strip()
+    
+     if not raw.startswith("+"):
+        suggested = _format_e164_or_none(raw, _default_region_from_settings())
+        if suggested:
+            raise serializers.ValidationError(
+                f"Incluye el código de país. Sugerencia: {suggested}"
+            )
+        raise serializers.ValidationError(
+            "Incluye el código de país en formato internacional (E.164). Ej: +5939XXXXXXXX"
+        )
+    
+     normalized = _format_e164_or_none(raw, None)
+     if not normalized:
+        raise serializers.ValidationError("Número de teléfono inválido.")
+    
+     if UserProfile.objects.exclude(user=user).filter(phone=normalized).exists():
+        raise serializers.ValidationError("Este número de teléfono ya está registrado.")
+    
+     return normalized
+
+    @transaction.atomic
     def update(self, instance, validated_data):
         # Actualizar campos de User
         if 'username' in validated_data:
@@ -292,22 +319,18 @@ class UserProfileUpdateSerializer(serializers.Serializer):
         # Actualizar o crear perfil
         profile, _ = UserProfile.objects.get_or_create(user=instance)
         
-        # Avatar
+        # Avatar - Borrar anterior si se está actualizando
         if 'avatar' in validated_data:
-            profile.avatar = validated_data['avatar']
-        
+          profile.avatar = validated_data['avatar']
         # Phone
         if 'phone' in validated_data:
             profile.phone = validated_data['phone']
-        
         # Bio
         if 'bio' in validated_data:
             profile.bio = validated_data['bio']
-        
         # Birth date
         if 'birth_date' in validated_data:
             profile.birth_date = validated_data['birth_date']
-        
         profile.save()
         return instance
 

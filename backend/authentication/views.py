@@ -7,6 +7,7 @@ from rest_framework.authentication import TokenAuthentication, SessionAuthentica
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.views import APIView
 
+from django.core.signing import TimestampSigner, BadSignature
 from django.contrib.auth import login, logout
 from django.core.mail import send_mail
 from django.conf import settings
@@ -19,11 +20,15 @@ from django.shortcuts import render
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.utils.http import urlsafe_base64_decode
-from django.utils.encoding import force_str
+
+from dj_rest_auth.registration.views import SocialLoginView
+from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
+from allauth.socialaccount.providers.oauth2.client import OAuth2Client
+from django.conf import settings
 
 import secrets
 import logging
+from django.core.cache import cache
 
 from .models import User, PasswordResetRequest, UserProfile
 from .serializers import (
@@ -151,7 +156,7 @@ class LoginView(APIView):
                     "authToken",
                     token.key,
                     max_age=60 * 60 * 24 * 7,  # 7 días
-                    secure=False,  # Cambiar a True en producción con HTTPS
+                    secure=getattr(settings, 'SESSION_COOKIE_SECURE', False),
                     httponly=False,
                     samesite="Lax",
                 )
@@ -229,9 +234,18 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         return UserProfileSerializer
     
     def update(self, request, *args, **kwargs):
-        """Override para logging mejorado"""
+        """Override para logging mejorado y gestión segura de avatares"""
         partial = kwargs.pop('partial', True)
         instance = self.get_object()
+        
+        # Guardar referencia al avatar anterior ANTES de actualizar
+        old_avatar = None
+        try:
+            if 'avatar' in request.data and hasattr(instance, 'profile') and instance.profile.avatar:
+                old_avatar = instance.profile.avatar
+        except UserProfile.DoesNotExist:
+            pass
+        
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         
         if not serializer.is_valid():
@@ -241,10 +255,27 @@ class ProfileView(generics.RetrieveUpdateAPIView):
                 "errors": serializer.errors
             }, status=status.HTTP_400_BAD_REQUEST)
         
-        self.perform_update(serializer)
-        logger.info(f"Perfil actualizado: {instance.email}")
-        
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            # Actualizar en transacción
+            with transaction.atomic():
+                self.perform_update(serializer)
+            
+            # Solo eliminar archivo antiguo si la actualización fue exitosa
+            if old_avatar and 'avatar' in request.data:
+                try:
+                    old_avatar.delete(save=False)
+                except Exception as e:
+                    logger.warning(f"No se pudo eliminar avatar antiguo: {e}")
+            
+            logger.info(f"Perfil actualizado: {instance.email}")
+            return Response(serializer.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            logger.error(f"Error actualizando perfil de {instance.email}: {e}", exc_info=True)
+            return Response({
+                "success": False,
+                "errors": {"detail": "Error al actualizar el perfil"}
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     def partial_update(self, request, *args, **kwargs):
         """PATCH request"""
@@ -488,7 +519,7 @@ def user_info(request):
 def validate_reset_token(request):
     """
     Valida un token de restablecimiento de contraseña.
-    Retorna si es válido y el email enmascarado del usuario.
+    Retorna únicamente si el token es válido.
     """
     token = request.data.get("token")
     
@@ -502,14 +533,9 @@ def validate_reset_token(request):
         reset_request = PasswordResetRequest.objects.get(token=token)
         
         if reset_request.is_valid():
-            # Enmascarar email para privacidad
-            email = reset_request.user.email
-            masked = email[:3] + "***@" + email.split("@", 1)[1]
-            
             return Response({
                 "valid": True, 
-                "message": "Token válido", 
-                "email": masked
+                "message": "Token válido"
             })
         
         return Response({
@@ -525,26 +551,30 @@ def validate_reset_token(request):
 
 
 # ============================================================================
-# VISTAS DE GESTIÓN DE NOTIFICACIONES
+# VISTAS DE GESTIÓN DE NOTIFICACIONES (CON TOKENS FIRMADOS)
 # ============================================================================
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
-def unsubscribe_notifications(request, user_id_b64):
+def unsubscribe_notifications(request, signed_token):
     """
     Permite a los usuarios darse de baja de notificaciones por email.
+    Usa tokens firmados para seguridad (válidos por 30 días).
+    
     GET: Muestra página de confirmación
     POST: Procesa la baja
     """
     try:
-        user_id = force_str(urlsafe_base64_decode(user_id_b64))
+        # Validar token firmado
+        signer = TimestampSigner()
+        user_id = signer.unsign(signed_token, max_age=2592000)  # 30 días
         user = User.objects.get(id=user_id)
         
         if request.method == "POST":
             user.receive_notifications = False
             user.save(update_fields=['receive_notifications'])
             
-            logger.info(f"Usuario dado de baja de notificaciones: user_id={user.id}")
+            logger.info(f"Usuario dado de baja de notificaciones: user_id={user.id}, email={user.email}")
             
             return JsonResponse({
                 "success": True,
@@ -553,43 +583,58 @@ def unsubscribe_notifications(request, user_id_b64):
             })
         
         # GET: Mostrar página de confirmación
-        # Construir URL de resubscribe
+        # Generar nuevo token para resubscribe
+        resubscribe_token = signer.sign(str(user.id))
         resubscribe_url = request.build_absolute_uri(
-            request.path.replace('/unsubscribe/', '/resubscribe/')
+            f"/api/auth/resubscribe/{resubscribe_token}/"
         )
         
         context = {
             "user": user,
             "email": user.email,
             "first_name": user.first_name or user.username,
-            "is_subscribed": user.receive_notifications,  # Detecta si está suscrito
-            "user_id_b64": user_id_b64,
-            "resubscribe_url": resubscribe_url,  # URL para reactivar
+            "is_subscribed": user.receive_notifications,
+            "signed_token": signed_token,
+            "resubscribe_url": resubscribe_url,
         }
         return render(request, "emails/unsubscribe.html", context)
         
-    except (TypeError, ValueError, OverflowError, User.DoesNotExist) as e:
-        logger.error(f"Link de baja inválido: {e}")
-        return HttpResponse("Link de baja inválido o expirado", status=400)
+    except BadSignature:
+        logger.error(f"Token de baja inválido o expirado: {signed_token[:20]}...")
+        return HttpResponse(
+            "Link de baja inválido o expirado (válido por 30 días). "
+            "Por favor solicita un nuevo link desde tu perfil.",
+            status=400
+        )
+    except User.DoesNotExist:
+        logger.error(f"Usuario no encontrado para token de baja")
+        return HttpResponse("Usuario no encontrado", status=404)
+    except Exception as e:
+        logger.error(f"Error en unsubscribe: {e}", exc_info=True)
+        return HttpResponse("Error procesando solicitud", status=500)
 
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
-def resubscribe_notifications(request, user_id_b64):
+def resubscribe_notifications(request, signed_token):
     """
     Permite a los usuarios volver a suscribirse a notificaciones.
+    Usa tokens firmados para seguridad (válidos por 30 días).
+    
     GET: Muestra página de confirmación
     POST: Procesa la suscripción
     """
     try:
-        user_id = force_str(urlsafe_base64_decode(user_id_b64))
+        # Validar token firmado
+        signer = TimestampSigner()
+        user_id = signer.unsign(signed_token, max_age=2592000)  # 30 días
         user = User.objects.get(id=user_id)
         
         if request.method == "POST":
             user.receive_notifications = True
             user.save(update_fields=['receive_notifications'])
             
-            logger.info(f"Usuario re-suscrito a notificaciones: user_id={user.id}")
+            logger.info(f"Usuario re-suscrito a notificaciones: user_id={user.id}, email={user.email}")
             
             return JsonResponse({
                 "success": True,
@@ -598,21 +643,198 @@ def resubscribe_notifications(request, user_id_b64):
             })
         
         # GET: Mostrar página de confirmación
-        # Construir URL de unsubscribe
+        # Generar nuevo token para unsubscribe
+        unsubscribe_token = signer.sign(str(user.id))
         unsubscribe_url = request.build_absolute_uri(
-            request.path.replace('/resubscribe/', '/unsubscribe/')
+            f"/api/auth/unsubscribe/{unsubscribe_token}/"
         )
         
         context = {
             "user": user,
             "email": user.email,
             "first_name": user.first_name or user.username,
-            "is_subscribed": user.receive_notifications,  # Detecta si está suscrito
-            "user_id_b64": user_id_b64,
-            "unsubscribe_url": unsubscribe_url,  # URL para desactivar
+            "is_subscribed": user.receive_notifications,
+            "signed_token": signed_token,
+            "unsubscribe_url": unsubscribe_url,
         }
         return render(request, "emails/resubscribe.html", context)
         
-    except (TypeError, ValueError, OverflowError, User.DoesNotExist) as e:
-        logger.error(f"Link de suscripción inválido: {e}")
-        return HttpResponse("Link de suscripción inválido o expirado", status=400)
+    except BadSignature:
+        logger.error(f"Token de suscripción inválido o expirado: {signed_token[:20]}...")
+        return HttpResponse(
+            "Link de suscripción inválido o expirado (válido por 30 días). "
+            "Por favor solicita un nuevo link desde tu perfil.",
+            status=400
+        )
+    except User.DoesNotExist:
+        logger.error(f"Usuario no encontrado para token de suscripción")
+        return HttpResponse("Usuario no encontrado", status=404)
+    except Exception as e:
+        logger.error(f"Error en resubscribe: {e}", exc_info=True)
+        return HttpResponse("Error procesando solicitud", status=500)
+    
+# authentication/views.py
+
+@api_view(["POST"])
+@permission_classes([permissions.AllowAny])
+@authentication_classes([])
+def check_email_exists(request):
+    email = request.data.get("email", "").strip().lower()
+    ip = request.META.get('REMOTE_ADDR')
+    
+    # Rate limit: máximo 10 consultas por IP cada 5 minutos
+    cache_key = f"email_check_{ip}"
+    attempts = cache.get(cache_key, 0)
+    
+    if attempts >= 10:
+        logger.warning(f"Rate limit excedido para IP {ip} en check_email")
+        return Response(
+            {"error": "Demasiadas consultas. Intenta en unos minutos."},
+            status=status.HTTP_429_TOO_MANY_REQUESTS
+        )
+    
+    cache.set(cache_key, attempts + 1, 300)  # 5 minutos
+    
+    exists = User.objects.filter(email__iexact=email).exists()
+    
+    return Response({
+        "exists": exists,
+        "message": "Email encontrado" if exists else "Email no registrado"
+    })
+# autentificacion GoogleOAuth2A
+class GoogleLogin(SocialLoginView):
+    """
+    Vista para manejar login con Google
+    """
+    adapter_class = GoogleOAuth2Adapter
+    callback_url = settings.GOOGLE_OAUTH_CALLBACK_URL  # URL del frontend
+    client_class = OAuth2Client
+
+# ============================================================================
+# GOOGLE OAUTH LOGIN (Para @react-oauth/google)
+# ============================================================================
+
+import requests as http_requests
+
+@api_view(['POST'])
+@permission_classes([permissions.AllowAny])
+@authentication_classes([])
+def google_oauth_login(request):
+    """
+    Endpoint para autenticación con Google OAuth usando access_token.
+    Compatible con @react-oauth/google del frontend.
+    """
+    try:
+        access_token = request.data.get('access_token')
+        
+        if not access_token:
+            return Response({
+                'success': False,
+                'error': 'No se proporcionó el token de acceso'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Obtener información del usuario desde Google
+        try:
+            user_info_response = http_requests.get(
+                'https://www.googleapis.com/oauth2/v3/userinfo',
+                headers={'Authorization': f'Bearer {access_token}'},
+                timeout=10
+            )
+            user_info_response.raise_for_status()
+        except http_requests.RequestException as e:
+            logger.error(f"Error validando token de Google: {str(e)}")
+            return Response({
+                'success': False,
+                'error': 'Token de Google inválido o expirado'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        user_info = user_info_response.json()
+        
+        # Extraer datos del usuario
+        email = user_info.get('email')
+        first_name = user_info.get('given_name', '')
+        last_name = user_info.get('family_name', '')
+        
+        if not email:
+            return Response({
+                'success': False,
+                'error': 'No se pudo obtener el email del usuario'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verificar email verificado
+        if not user_info.get('email_verified', False):
+            return Response({
+                'success': False,
+                'error': 'El email de Google no está verificado'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Buscar o crear usuario
+        with transaction.atomic():
+            user, created = User.objects.get_or_create(
+                email=email,
+                defaults={
+                    'username': email.split('@')[0],
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'is_active': True,
+                    'is_email_verified': True,
+                }
+            )
+            
+            # Actualizar datos si el usuario ya existía
+            if not created:
+                if first_name:
+                    user.first_name = first_name
+                if last_name:
+                    user.last_name = last_name
+                user.is_email_verified = True
+                user.save()
+            else:
+                # Enviar email de bienvenida para nuevos usuarios
+                try:
+                    send_welcome_email(user)
+                    logger.info(f"Email de bienvenida enviado: {email}")
+                except Exception as e:
+                    logger.error(f"Error enviando email de bienvenida: {e}")
+            
+            # Crear o recuperar token
+            token, _ = Token.objects.get_or_create(user=user)
+            
+            # Actualizar last_login
+            user.last_login = timezone.now()
+            user.save(update_fields=['last_login'])
+            
+            logger.info(f"Login con Google exitoso: {email} (nuevo={created})")
+            
+            # Obtener teléfono del perfil
+            phone = None
+            try:
+                phone = getattr(user.profile, 'phone', None)
+            except UserProfile.DoesNotExist:
+                pass
+            
+            return Response({
+                'success': True,
+                'message': 'Inicio de sesión exitoso',
+                'tokens': {
+                    'access': token.key,
+                    'refresh': token.key,
+                },
+                'user': {
+                    'id': user.id,
+                    'email': user.email,
+                    'username': user.username,
+                    'first_name': user.first_name,
+                    'last_name': user.last_name,
+                    'role': user.role,
+                    'is_admin': user.is_admin(),
+                    'profile': {'phone': phone} if phone else None,
+                }
+            }, status=status.HTTP_200_OK)
+            
+    except Exception as e:
+        logger.error(f"Error en Google OAuth: {str(e)}", exc_info=True)
+        return Response({
+            'success': False,
+            'error': 'Error interno del servidor'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

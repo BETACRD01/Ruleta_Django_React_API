@@ -434,7 +434,6 @@ function InfoSidebar() {
         <div className="space-y-3 sm:space-y-4">
           {[
             { icon: Clock, text: "Sorteos automáticos programados" },
-            { icon: Shield, text: "Verificación blockchain" },
             { icon: Bell, text: "Notificaciones push en tiempo real" },
             { icon: Award, text: "Sistema de recompensas" },
           ].map((item, i) => (
@@ -480,7 +479,7 @@ export default function Home() {
         <div className="text-center mb-8 sm:mb-12 lg:mb-16">
           <h1 className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black mb-4 sm:mb-6 leading-tight px-4">
             <span className="text-[#0b56a7]">Bienvenido a </span>
-            <span className="text-[#D62829] inline-block animate-pulse">Hayu 24</span>
+            <span className="text-[#D62829] inline-block animate-pulse">Hayu24</span>
           </h1>
 
           <div className="w-24 sm:w-32 h-1.5 sm:h-2 bg-gradient-to-r from-[#0b56a7] to-[#D62829] rounded-full mx-auto mb-6 sm:mb-8" />

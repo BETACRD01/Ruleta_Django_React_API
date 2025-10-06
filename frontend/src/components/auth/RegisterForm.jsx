@@ -1,5 +1,5 @@
 // src/components/auth/RegisterForm.jsx
-import React from "react";
+import React, { useState, useCallback } from "react";
 import { Phone, FileCheck, ExternalLink, Eye, EyeOff } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthNotifications } from "../../contexts/NotificationContext";
@@ -8,37 +8,74 @@ import { AuthAPI } from "../../config/api";
 import { validatePhone } from "./utils/phoneValidation";
 import logo from "../../assets/HAYU24_original.png";
 
+// Importar el botón de Google
+import GoogleLoginButton from "./GoogleLoginButton";
+
 const authAPI = new AuthAPI();
 
+// ============================================================================
+// CONSTANTES
+// ============================================================================
+const INITIAL_FORM_STATE = {
+  email: "",
+  password: "",
+  confirmPassword: "",
+  username: "",
+  firstName: "",
+  lastName: "",
+  phone: "",
+  accept_terms: false,
+};
+
+// ============================================================================
+// UTILIDADES DE ALMACENAMIENTO
+// ============================================================================
+const TokenStorage = {
+  save: (tokens, user) => {
+    const { access, refresh } = tokens;
+    const tokenKeys = ['token', 'auth_token', 'authToken', 'access_token'];
+    tokenKeys.forEach(key => localStorage.setItem(key, access));
+    localStorage.setItem('refresh_token', refresh);
+    localStorage.setItem('user', JSON.stringify(user));
+  }
+};
+
+// ============================================================================
+// COMPONENTE PRINCIPAL
+// ============================================================================
 const RegisterForm = ({ onBackToLogin }) => {
+  // ---------------------------------------------------------------------------
+  // HOOKS Y ESTADO
+  // ---------------------------------------------------------------------------
   const navigate = useNavigate();
   const { login: ctxLogin } = useAuth() || {};
+  const { handleRegisterSuccess, handleAuthError } = useAuthNotifications() || {
+    handleRegisterSuccess: () => {},
+    handleAuthError: () => {},
+  };
 
-  const goBackToLogin = React.useCallback(() => {
+  const [formData, setFormData] = useState(INITIAL_FORM_STATE);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [phoneError, setPhoneError] = useState("");
+  const [suggestedPhone, setSuggestedPhone] = useState("");
+
+  const isLoading = loading || googleLoading;
+
+  // ---------------------------------------------------------------------------
+  // NAVEGACIÓN
+  // ---------------------------------------------------------------------------
+  const goBackToLogin = useCallback(() => {
     if (typeof onBackToLogin === "function") onBackToLogin();
     else navigate("/login");
   }, [onBackToLogin, navigate]);
 
-  const [formData, setFormData] = React.useState({
-    email: "",
-    password: "",
-    confirmPassword: "",
-    username: "",
-    firstName: "",
-    lastName: "",
-    phone: "",
-    accept_terms: false,
-  });
-  const [showPassword, setShowPassword] = React.useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState("");
-  const [phoneError, setPhoneError] = React.useState("");
-  const [suggestedPhone, setSuggestedPhone] = React.useState("");
-
-  const { handleRegisterSuccess, handleAuthError } =
-    useAuthNotifications() || { handleRegisterSuccess: () => {}, handleAuthError: () => {} };
-
+  // ---------------------------------------------------------------------------
+  // MANEJADORES DE FORMULARIO
+  // ---------------------------------------------------------------------------
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
@@ -56,6 +93,9 @@ const RegisterForm = ({ onBackToLogin }) => {
     setSuggestedPhone("");
   };
 
+  // ---------------------------------------------------------------------------
+  // REGISTRO TRADICIONAL
+  // ---------------------------------------------------------------------------
   const handleRegister = async (e) => {
     e.preventDefault();
 
@@ -130,16 +170,7 @@ const RegisterForm = ({ onBackToLogin }) => {
         goBackToLogin();
       }
 
-      setFormData({
-        email: "",
-        password: "",
-        confirmPassword: "",
-        username: "",
-        firstName: "",
-        lastName: "",
-        phone: "",
-        accept_terms: false,
-      });
+      setFormData(INITIAL_FORM_STATE);
     } catch (err) {
       let display = err?.message || "Error al registrarse";
 
@@ -165,8 +196,79 @@ const RegisterForm = ({ onBackToLogin }) => {
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // REGISTRO CON GOOGLE
+  // ---------------------------------------------------------------------------
+  const handleGoogleSuccess = async (accessToken) => {
+    setGoogleLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/auth/google/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ access_token: accessToken }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || `Error del servidor: ${response.status}`);
+      }
+
+      if (data.success && data.tokens?.access) {
+        // Guardar tokens
+        TokenStorage.save(data.tokens, data.user);
+
+        // Actualizar contexto
+        try {
+          await ctxLogin?.({
+            token: data.tokens.access,
+            user: data.user,
+            skipApiCall: true
+          });
+        } catch (contextError) {
+          console.warn("Contexto no actualizado, pero tokens guardados:", contextError);
+        }
+
+        // Mostrar éxito
+        const userName = data.user?.first_name || data.user?.email?.split('@')[0] || 'Usuario';
+        handleRegisterSuccess?.({ 
+          user: data.user,
+          message: `¡Bienvenido ${userName}! Tu cuenta ha sido creada exitosamente.`
+        });
+
+        // Redirigir
+        setTimeout(() => {
+          window.location.href = "/";
+        }, 100);
+
+      } else {
+        throw new Error(data.error || "Respuesta inválida del servidor");
+      }
+
+    } catch (err) {
+      console.error("Error en Google Register:", err);
+      setError(err.message || "Error al registrarse con Google. Por favor intenta nuevamente.");
+      handleAuthError?.(err, "registro con Google");
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  const handleGoogleError = useCallback((error) => {
+    console.error("Error en Google OAuth:", error);
+    setError("No se pudo conectar con Google. Por favor intenta nuevamente.");
+    setGoogleLoading(false);
+  }, []);
+
+  // ---------------------------------------------------------------------------
+  // VALIDACIÓN DE CAMPOS
+  // ---------------------------------------------------------------------------
   const isDisabled =
-    loading ||
+    isLoading ||
     !formData.email ||
     !formData.password ||
     !formData.username ||
@@ -175,9 +277,13 @@ const RegisterForm = ({ onBackToLogin }) => {
     !formData.phone ||
     !formData.accept_terms;
 
+  // ---------------------------------------------------------------------------
+  // RENDER
+  // ---------------------------------------------------------------------------
   return (
     <div className="w-full max-w-[min(420px,100%)] bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl p-6 sm:p-8 border border-white/20">
-      {/* Cabecera con logo */}
+      
+      {/* HEADER CON LOGO */}
       <div className="text-center mb-8">
         <div className="mx-auto mb-4 flex items-center justify-center">
           <img
@@ -185,11 +291,14 @@ const RegisterForm = ({ onBackToLogin }) => {
             alt="HAYU24"
             className="h-16 sm:h-20 w-auto object-contain"
             onError={(e) => {
-              e.currentTarget.style.display = 'none';
+              e.currentTarget.style.display = "none";
             }}
           />
         </div>
-        <h2 className="font-bold mb-2" style={{ color: "#0b56a7", fontSize: "clamp(1.25rem, 1vw + 1rem, 1.75rem)" }}>
+        <h2
+          className="font-bold mb-2"
+          style={{ color: "#0b56a7", fontSize: "clamp(1.25rem, 1vw + 1rem, 1.75rem)" }}
+        >
           Crear Cuenta
         </h2>
         <p className="text-gray-600" style={{ fontSize: "clamp(.9rem, .5vw + .7rem, 1rem)" }}>
@@ -197,15 +306,39 @@ const RegisterForm = ({ onBackToLogin }) => {
         </p>
       </div>
 
-      {/* Errores globales */}
+      {/* MENSAJES DE ERROR */}
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
           <p className="text-red-700 text-sm">{error}</p>
         </div>
       )}
 
-      {/* FORMULARIO REGISTRO */}
+      {/* REGISTRO RÁPIDO CON GOOGLE */}
+      <div className="mb-6">
+        <GoogleLoginButton
+          onSuccess={handleGoogleSuccess}
+          onError={handleGoogleError}
+          loading={isLoading}
+          buttonText="Registrarse con Google"
+        />
+
+        {/* DIVISOR */}
+        <div className="relative my-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-300"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-4 bg-white text-gray-500 font-medium">
+              O regístrate con tu correo
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* FORMULARIO TRADICIONAL */}
       <form className="space-y-5" onSubmit={handleRegister}>
+        
+        {/* NOMBRE Y APELLIDO */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -216,9 +349,9 @@ const RegisterForm = ({ onBackToLogin }) => {
               name="firstName"
               value={formData.firstName}
               onChange={handleInputChange}
-              placeholder="Tu nombre"
+              placeholder="Lucas"
               className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={loading}
+              disabled={isLoading}
               required
             />
           </div>
@@ -231,14 +364,15 @@ const RegisterForm = ({ onBackToLogin }) => {
               name="lastName"
               value={formData.lastName}
               onChange={handleInputChange}
-              placeholder="Tu apellido"
+              placeholder="Mojoara"
               className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={loading}
+              disabled={isLoading}
               required
             />
           </div>
         </div>
 
+        {/* USUARIO */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Usuario <span className="text-red-500">*</span>
@@ -248,13 +382,14 @@ const RegisterForm = ({ onBackToLogin }) => {
             name="username"
             value={formData.username}
             onChange={handleInputChange}
-            placeholder="usuario123"
+            placeholder="lucas.mojoara"
             className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-            disabled={loading}
+            disabled={isLoading}
             required
           />
         </div>
 
+        {/* EMAIL */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Correo electrónico <span className="text-red-500">*</span>
@@ -264,13 +399,14 @@ const RegisterForm = ({ onBackToLogin }) => {
             name="email"
             value={formData.email}
             onChange={handleInputChange}
-            placeholder="tu@email.com"
+            placeholder="lucas.mojoara@example.com"
             className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-            disabled={loading}
+            disabled={isLoading}
             required
           />
         </div>
 
+        {/* TELÉFONO */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             <div className="flex items-center gap-2">
@@ -285,9 +421,11 @@ const RegisterForm = ({ onBackToLogin }) => {
             onChange={handleInputChange}
             placeholder="+593987654321"
             className={`w-full px-4 py-3 rounded-xl border-2 ${
-              phoneError ? "border-red-300 focus:border-red-500" : "border-gray-200 focus:border-[#389fae]"
+              phoneError
+                ? "border-red-300 focus:border-red-500"
+                : "border-gray-200 focus:border-[#389fae]"
             } focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white`}
-            disabled={loading}
+            disabled={isLoading}
             required
             aria-invalid={!!phoneError}
           />
@@ -308,6 +446,7 @@ const RegisterForm = ({ onBackToLogin }) => {
           )}
         </div>
 
+        {/* CONTRASEÑA */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Contraseña <span className="text-red-500">*</span>
@@ -320,7 +459,7 @@ const RegisterForm = ({ onBackToLogin }) => {
               onChange={handleInputChange}
               placeholder="••••••••••"
               className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={loading}
+              disabled={isLoading}
               required
             />
             <button
@@ -328,8 +467,13 @@ const RegisterForm = ({ onBackToLogin }) => {
               onClick={() => setShowPassword((v) => !v)}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-[#389fae] transition-colors"
               aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              tabIndex={-1}
             >
-              {showPassword ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
+              {showPassword ? (
+                <EyeOff className="h-5 w-5" aria-hidden="true" />
+              ) : (
+                <Eye className="h-5 w-5" aria-hidden="true" />
+              )}
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
@@ -338,6 +482,7 @@ const RegisterForm = ({ onBackToLogin }) => {
           </p>
         </div>
 
+        {/* CONFIRMAR CONTRASEÑA */}
         <div>
           <label className="block text-sm font-semibold text-gray-700 mb-2">
             Confirmar contraseña <span className="text-red-500">*</span>
@@ -350,7 +495,7 @@ const RegisterForm = ({ onBackToLogin }) => {
               onChange={handleInputChange}
               placeholder="••••••••••"
               className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={loading}
+              disabled={isLoading}
               required
             />
             <button
@@ -358,12 +503,18 @@ const RegisterForm = ({ onBackToLogin }) => {
               onClick={() => setShowConfirmPassword((v) => !v)}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 hover:text-[#389fae] transition-colors"
               aria-label={showConfirmPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              tabIndex={-1}
             >
-              {showConfirmPassword ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
+              {showConfirmPassword ? (
+                <EyeOff className="h-5 w-5" aria-hidden="true" />
+              ) : (
+                <Eye className="h-5 w-5" aria-hidden="true" />
+              )}
             </button>
           </div>
         </div>
 
+        {/* TÉRMINOS Y CONDICIONES */}
         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-5 transition-all duration-200 hover:shadow-md">
           <label className="flex items-start gap-3 cursor-pointer">
             <input
@@ -373,7 +524,7 @@ const RegisterForm = ({ onBackToLogin }) => {
               onChange={handleInputChange}
               className="w-5 h-5 border-2 border-blue-300 rounded focus:ring-2 mt-0.5"
               style={{ "--tw-ring-color": "#389fae", accentColor: "#389fae" }}
-              disabled={loading}
+              disabled={isLoading}
               required
             />
             <div className="flex-1">
@@ -384,7 +535,8 @@ const RegisterForm = ({ onBackToLogin }) => {
                 </span>
               </div>
               <p className="text-xs text-blue-700 leading-relaxed">
-                Al registrarte en <span className="font-semibold text-blue-800">HAYU24</span>, aceptas nuestros{" "}
+                Al registrarte en <span className="font-semibold text-blue-800">HAYU24</span>,
+                aceptas nuestros{" "}
                 <Link
                   to="/terminos"
                   target="_blank"
@@ -394,13 +546,15 @@ const RegisterForm = ({ onBackToLogin }) => {
                   términos de servicio y política de privacidad
                   <ExternalLink className="h-2.5 w-2.5 ml-0.5" />
                 </Link>
-                . Confirmas que la información proporcionada es <span className="font-semibold">veraz</span> y que eres{" "}
+                . Confirmas que la información proporcionada es{" "}
+                <span className="font-semibold">veraz</span> y que eres{" "}
                 <span className="font-semibold">mayor de edad</span>.
               </p>
             </div>
           </label>
         </div>
 
+        {/* BOTÓN SUBMIT */}
         <button
           type="submit"
           disabled={isDisabled}
@@ -410,9 +564,16 @@ const RegisterForm = ({ onBackToLogin }) => {
           {loading ? "Creando cuenta..." : "Crear cuenta"}
         </button>
 
+        {/* LINK A LOGIN */}
         <p className="text-center text-gray-600 text-sm">
           ¿Ya tienes cuenta?{" "}
-          <button type="button" onClick={goBackToLogin} className="font-semibold hover:underline" style={{ color: "#0b56a7" }}>
+          <button
+            type="button"
+            onClick={goBackToLogin}
+            className="font-semibold hover:underline transition-colors"
+            style={{ color: "#0b56a7" }}
+            disabled={isLoading}
+          >
             Inicia sesión
           </button>
         </p>

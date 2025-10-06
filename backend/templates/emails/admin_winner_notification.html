@@ -5,12 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Detalles del sorteo - {{ roulette_name }}</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: Arial, Helvetica, sans-serif;
             background: #f5f5f5;
@@ -18,52 +13,29 @@
             line-height: 1.6;
             color: #333;
         }
-        
         .email-container {
             max-width: 800px;
             margin: 0 auto;
-            background: white;
+            background: #ffffff;
             border: 1px solid #ddd;
         }
-        
         .header {
             background: #4a90e2;
-            color: white;
+            color: #ffffff;
             padding: 20px;
             text-align: center;
         }
-        
-        .header h1 {
-            font-size: 24px;
-            margin-bottom: 10px;
-        }
-        
-        .header h2 {
-            font-size: 18px;
-            font-weight: normal;
-        }
-        
-        .content {
-            padding: 30px;
-        }
-        
-        .greeting {
-            margin-bottom: 20px;
-            font-size: 15px;
-        }
-        
-        .info-text {
-            margin-bottom: 30px;
-            line-height: 1.8;
-        }
-        
+        .header h1 { font-size: 24px; margin-bottom: 10px; }
+        .header h2 { font-size: 18px; font-weight: normal; }
+        .content { padding: 30px; }
+        .greeting { margin-bottom: 20px; font-size: 15px; }
+        .info-text { margin-bottom: 30px; line-height: 1.8; }
         .winner-table {
             width: 100%;
             border-collapse: collapse;
             margin: 30px 0;
             border: 1px solid #ddd;
         }
-        
         .winner-table th {
             background: #f8f9fa;
             padding: 12px;
@@ -71,185 +43,65 @@
             border: 1px solid #ddd;
             font-weight: bold;
         }
-        
-        .winner-table td {
-            padding: 12px;
-            border: 1px solid #ddd;
-        }
-        
+        .winner-table td { padding: 12px; border: 1px solid #ddd; }
         .prize-section {
             background: #f8f9fa;
             padding: 20px;
             margin: 20px 0;
             border-left: 4px solid #4a90e2;
         }
-        
-        .prize-section h3 {
-            margin-bottom: 15px;
-            color: #2c3e50;
-        }
-        
+        .prize-section h3 { margin-bottom: 15px; color: #2c3e50; }
         .prize-content {
-            display: grid;
-            grid-template-columns: 200px 1fr;
-            gap: 25px;
-            align-items: start;
+            display: grid; grid-template-columns: 200px 1fr; gap: 25px; align-items: start;
         }
-        
         .prize-image {
-            width: 100%;
-            height: 200px;
-            object-fit: cover;
-            border-radius: 8px;
+            width: 100%; height: 200px; object-fit: cover; border-radius: 8px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
-        
-        .prize-details {
-            min-width: 0;
-        }
-        
-        .prize-details p {
-            margin: 0 0 15px 0;
-            line-height: 1.7;
-        }
-        
-        .prize-details p:last-child {
-            margin-bottom: 0;
-        }
-        
+        .prize-details { min-width: 0; }
+        .prize-details p { margin: 0 0 15px 0; line-height: 1.7; }
+        .prize-details p:last-child { margin-bottom: 0; }
         .summary-section {
-            background: #e8f4f8;
-            padding: 20px;
-            margin: 30px 0;
-            border-radius: 4px;
+            background: #e8f4f8; padding: 20px; margin: 30px 0; border-radius: 4px;
         }
-        
-        .summary-section h3 {
-            margin-bottom: 15px;
-            color: #2c3e50;
-        }
-        
+        .summary-section h3 { margin-bottom: 15px; color: #2c3e50; }
         .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-top: 15px;
+            display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 15px;
         }
-        
-        .summary-item {
-            display: flex;
-            align-items: flex-start;
-            gap: 8px;
-        }
-        
-        .summary-item strong {
-            min-width: 140px;
-            color: #555;
-        }
-        
+        .summary-item { display: flex; align-items: flex-start; gap: 8px; }
+        .summary-item strong { min-width: 160px; color: #555; }
         .next-steps {
-            margin: 30px 0;
-            padding: 20px;
-            background: #fff9e6;
-            border-left: 4px solid #f39c12;
+            margin: 30px 0; padding: 20px; background: #fff9e6; border-left: 4px solid #f39c12;
         }
-        
-        .next-steps h3 {
-            margin-bottom: 15px;
-            color: #2c3e50;
-        }
-        
-        .next-steps ol {
-            margin-left: 20px;
-        }
-        
-        .next-steps li {
-            margin: 10px 0;
-            line-height: 1.6;
-        }
-        
+        .next-steps h3 { margin-bottom: 15px; color: #2c3e50; }
+        .next-steps ol { margin-left: 20px; }
+        .next-steps li { margin: 10px 0; line-height: 1.6; }
         .actions {
-            text-align: center;
-            margin: 30px 0;
-            padding: 20px;
-            background: #f8f9fa;
+            text-align: center; margin: 30px 0; padding: 20px; background: #f8f9fa;
         }
-        
         .btn {
-            display: inline-block;
-            padding: 12px 24px;
-            margin: 5px;
-            text-decoration: none;
-            border-radius: 4px;
-            font-weight: 600;
-            transition: opacity 0.3s;
+            display: inline-block; padding: 12px 24px; margin: 5px; text-decoration: none;
+            border-radius: 4px; font-weight: 600; transition: opacity 0.3s;
         }
-        
-        .btn:hover {
-            opacity: 0.8;
-        }
-        
-        .btn-primary {
-            background: #4a90e2;
-            color: white !important;
-        }
-        
-        .btn-secondary {
-            background: #6c757d;
-            color: white !important;
-        }
-        
+        .btn:hover { opacity: 0.85; }
+        .btn-primary { background: #4a90e2; color: #ffffff !important; }
+        .btn-secondary { background: #6c757d; color: #ffffff !important; }
         .footer-message {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f8f9fa;
-            border-top: 2px dotted #ddd;
-            text-align: center;
+            margin-top: 30px; padding: 20px; background: #f8f9fa; border-top: 2px dotted #ddd; text-align: center;
         }
-        
         .footer {
-            background: #f0f0f0;
-            padding: 20px;
-            text-align: center;
-            font-size: 12px;
-            color: #666;
-            border-top: 1px solid #ddd;
+            background: #f0f0f0; padding: 20px; text-align: center; font-size: 12px; color: #666; border-top: 1px solid #ddd;
         }
-        
-        .social-links {
-            margin: 20px 0;
-            text-align: center;
-        }
-        
+        .social-links { margin: 20px 0; text-align: center; }
         .legal-text {
-            margin-top: 20px;
-            padding: 15px;
-            border: 1px dotted #ccc;
-            font-size: 11px;
-            line-height: 1.6;
+            margin-top: 20px; padding: 15px; border: 1px dotted #ccc; font-size: 11px; line-height: 1.6;
         }
-        
         @media (max-width: 768px) {
-            .content {
-                padding: 20px;
-            }
-            
-            .prize-content {
-                grid-template-columns: 1fr;
-            }
-            
-            .prize-image {
-                height: 180px;
-            }
-            
-            .summary-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .btn {
-                display: block;
-                margin: 10px 0;
-            }
+            .content { padding: 20px; }
+            .prize-content { grid-template-columns: 1fr; }
+            .prize-image { height: 180px; }
+            .summary-grid { grid-template-columns: 1fr; }
+            .btn { display: block; margin: 10px 0; }
         }
     </style>
 </head>
@@ -264,12 +116,12 @@
         <!-- Content -->
         <div class="content">
             <div class="greeting">
-                <p><strong>Â¡Estimado/a, {% if admin_name %}{{ admin_name }}{% else %}Administrador{% endif %}!</strong></p>
+                <p><strong>¡Estimado/a, {% if admin_name %}{{ admin_name }}{% else %}Administrador{% endif %}!</strong></p>
             </div>
 
             <div class="info-text">
                 <p>Queremos informarte que se ha culminado la rifa <strong>{{ roulette_name }}</strong> con el sorteo realizado en la fecha: <strong>{% now "Y-m-d H:i:s" %}</strong></p>
-                <p>A continuaciÃ³n describimos los detalles:</p>
+                <p>A continuación describimos los detalles:</p>
             </div>
 
             <!-- Winner Table -->
@@ -278,7 +130,7 @@
                     <tr>
                         <th>Nombre del ganador</th>
                         <th>Lugar del premio</th>
-                        <th>DescripciÃ³n</th>
+                        <th>Descripción</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -293,17 +145,14 @@
             {% if prize_description or prize_image_url or pickup_instructions %}
             <div class="prize-section">
                 <h3>Detalles del Premio</h3>
-                
                 <div class="prize-content">
                     {% if prize_image_url %}
                     <img src="{{ prize_image_url }}" alt="{{ prize_name }}" class="prize-image">
                     {% endif %}
-                    
                     <div class="prize-details">
                         {% if prize_description %}
-                        <p><strong>DescripciÃ³n:</strong><br>{{ prize_description }}</p>
+                        <p><strong>Descripción:</strong><br>{{ prize_description }}</p>
                         {% endif %}
-                        
                         {% if pickup_instructions %}
                         <p><strong>Instrucciones para entregar el premio:</strong><br>{{ pickup_instructions }}</p>
                         {% endif %}
@@ -317,60 +166,31 @@
                 <h3>Resumen del Sorteo</h3>
                 <div class="summary-grid">
                     <div class="summary-item">
-                        <strong>âœ" Ganador seleccionado:</strong>
+                        <strong>✔️ Ganador seleccionado:</strong>
                         <span>{{ user_full_name }}</span>
                     </div>
                     <div class="summary-item">
-                        <strong>âï¸ Hora del sorteo:</strong>
+                        <strong>🕐 Hora del sorteo:</strong>
                         <span>{% now "H:i" %}</span>
                     </div>
                     <div class="summary-item">
-                        <strong>ðŸ"¬ NotificaciÃ³n enviada:</strong>
-                        <span>SÃ­ (al email del ganador)</span>
+                        <strong>✉️ Notificación enviada:</strong>
+                        <span>Sí (al email del ganador)</span>
                     </div>
                     <div class="summary-item">
-                        <strong>ðŸ… Ranking del premio:</strong>
+                        <strong>🏅 Ranking del premio:</strong>
                         <span>{{ prize_rank_label }}</span>
                     </div>
                     <div class="summary-item">
-                        <strong>ðŸŽ¯ Estado:</strong>
+                        <strong>🎯 Estado:</strong>
                         <span>Pendiente de entrega</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Next Steps -->
-            <div class="next-steps">
-                <h3>ðŸ'¡ PrÃ³ximos Pasos Recomendados</h3>
-                <ol>
-                    <li>Verificar recepciÃ³n del email por parte del ganador</li>
-                    <li>Confirmar instrucciones de entrega del premio</li>
-                    <li>Actualizar estado del sorteo en el sistema</li>
-                    <li>Documentar la entrega del premio</li>
-                    <li>Preparar el siguiente sorteo (si aplica)</li>
-                    {% if support_email %}
-                    <li>Soporte disponible para el ganador en: <a href="mailto:{{ support_email }}" style="color: #4a90e2;">{{ support_email }}</a></li>
-                    {% endif %}
-                </ol>
-            </div>
-
-            <!-- Actions -->
-            <div class="actions">
-                <p style="margin-bottom: 15px;"><strong>Acciones rÃ¡pidas</strong></p>
-                {% if roulette_url %}
-                <a href="{{ roulette_url }}" class="btn btn-primary">ðŸŽ¡ Ver Ruleta Completa</a>
-                {% endif %}
-                {% if prize_url %}
-                <a href="{{ prize_url }}" class="btn btn-secondary">âš™ï¸ Gestionar Premios</a>
-                {% endif %}
-                {% if site_url %}
-                <a href="{{ site_url }}/admin" class="btn btn-secondary">ðŸ  Panel de AdministraciÃ³n</a>
-                {% endif %}
-            </div>
-
             <!-- Footer Message -->
             <div class="footer-message">
-                <p><strong>Â¡Gracias por gestionar el sorteo con {{ brand_name }}!</strong></p>
+                <p><strong>¡Gracias por gestionar el sorteo con {{ brand_name }}!</strong></p>
                 {% if site_url %}
                 <p style="margin-top: 10px;">
                     <a href="{{ site_url }}/admin" style="color: #4a90e2; text-decoration: none;">Ingresar al sistema</a>
@@ -378,37 +198,40 @@
                 {% endif %}
             </div>
 
-            <!-- Social Links -->
+            <!-- Social Links (actualizado) -->
             <div style="text-align: center; margin: 30px 0;">
-                <p style="margin-bottom: 15px;"><strong>SÃ­guenos en nuestras redes sociales</strong></p>
+                <p style="margin-bottom: 15px;"><strong>Síguenos en nuestras redes sociales</strong></p>
                 <div class="social-links">
-                    <a href="https://facebook.com/tupagina" style="display: inline-block; margin: 0 8px; text-decoration: none;">
-                        <img src="https://img.icons8.com/color/48/facebook-new.png" alt="Facebook" style="width: 40px; height: 40px; border-radius: 50%;">
+                    <!-- Facebook -->
+                    <a href="https://www.facebook.com/DigitalEducasOficial" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/color/48/facebook-new.png" alt="Facebook Digital Educas" style="width: 40px; height: 40px; border-radius: 50%;">
                     </a>
-                    <a href="https://instagram.com/tupagina" style="display: inline-block; margin: 0 8px; text-decoration: none;">
-                        <img src="https://img.icons8.com/fluency/48/instagram-new.png" alt="Instagram" style="width: 40px; height: 40px; border-radius: 50%;">
+                    <!-- Instagram -->
+                    <a href="https://www.instagram.com/digitaleducas/#2" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/fluency/48/instagram-new.png" alt="Instagram Digital Educas" style="width: 40px; height: 40px; border-radius: 50%;">
                     </a>
-                    <a href="https://twitter.com/tupagina" style="display: inline-block; margin: 0 8px; text-decoration: none;">
-                        <img src="https://img.icons8.com/ios-filled/50/twitterx--v1.png" alt="Twitter" style="width: 40px; height: 40px; border-radius: 50%;">
+                    <!-- X / Twitter -->
+                    <a href="https://x.com/digital_educas" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/ios-filled/50/twitterx--v1.png" alt="X (Twitter) Digital Educas" style="width: 40px; height: 40px; border-radius: 50%;">
                     </a>
-                    <a href="https://tiktok.com/@tupagina" style="display: inline-block; margin: 0 8px; text-decoration: none;">
-                        <img src="https://img.icons8.com/fluency/48/tiktok.png" alt="TikTok" style="width: 40px; height: 40px; border-radius: 50%;">
+                    <!-- YouTube -->
+                    <a href="https://www.youtube.com/DigitalEducas" style="display: inline-block; margin: 0 8px; text-decoration: none;">
+                        <img src="https://img.icons8.com/color/48/youtube-play.png" alt="YouTube Digital Educas" style="width: 40px; height: 40px; border-radius: 50%;">
                     </a>
                 </div>
             </div>
 
             <!-- Legal Text -->
             <div class="legal-text">
-                <p>La informaciÃ³n enviada desde este correo electrÃ³nico cumple con todas las normas legales establecidas en LA LEY DE COMERCIO ELECTRÃ"NICO, FIRMAS ELECTRÃ"NICAS, MENSAJES DE DATOS y su Reglamento General, vigente en el Ecuador.</p>
-                
-                <p style="margin-top: 10px;"><strong>Nota de descargo:</strong> La informaciÃ³n contenida en este correo es confidencial y solo puede ser utilizada por el individuo o la compaÃ±Ã­a a las cuales estÃ¡ dirigido. Esta informaciÃ³n no debe ser distribuida en copia total o parcialmente por ningÃºn medio sin la autorizaciÃ³n de {{ brand_name }}. La organizaciÃ³n no asume responsabilidad sobre informaciÃ³n u opiniones, criterios u opiniones que estÃ©n relacionadas con este asunto o propiedad de {{ brand_name }}.</p>
+                <p>La información enviada desde este correo electrónico cumple con todas las normas legales establecidas en la LEY DE COMERCIO ELECTRÓNICO, FIRMAS ELECTRÓNICAS, MENSAJES DE DATOS y su Reglamento General, vigente en el Ecuador.</p>
+                <p style="margin-top: 10px;"><strong>Nota de descargo:</strong> La información contenida en este correo es confidencial y solo puede ser utilizada por el individuo o la compañía a las cuales está dirigido. Esta información no debe ser distribuida en copia total o parcialmente por ningún medio sin la autorización de {{ brand_name }}. La organización no asume responsabilidad sobre información u opiniones, criterios u opiniones que estén relacionadas con este asunto o propiedad de {{ brand_name }}.</p>
             </div>
         </div>
         
         <!-- Footer -->
         <div class="footer">
             <p><strong>{{ brand_name }}</strong></p>
-            <p>Este correo ha sido enviado de forma automÃ¡tica y no requiere respuesta</p>
+            <p>Este correo ha sido enviado de forma automática y no requiere respuesta</p>
             {% if site_url %}
             <p><a href="{{ site_url }}" style="color: #4a90e2;">{{ site_url }}</a></p>
             {% endif %}

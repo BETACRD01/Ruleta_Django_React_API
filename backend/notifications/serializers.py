@@ -9,14 +9,14 @@ from .models import (
     NotificationTemplate
 )
 from django.contrib.auth import get_user_model
+from django.utils.html import strip_tags
+from rest_framework.exceptions import ValidationError
 
 User = get_user_model()
 
 class NotificationSerializer(serializers.ModelSerializer):
-    """
-    Serializer principal para notificaciones
-    """
-    user_name = serializers.CharField(source='user.username', read_only=True)
+    """Serializer principal para notificaciones con sanitización"""
+    user_name = serializers.CharField(source='user.username', read_only=True, allow_null=True)
     notification_type_display = serializers.CharField(
         source='get_notification_type_display', 
         read_only=True
@@ -77,11 +77,29 @@ class NotificationSerializer(serializers.ModelSerializer):
             return False
         from django.utils import timezone
         return obj.expires_at < timezone.now()
+    
+    def to_representation(self, instance):
+        """Sanitizar output para prevenir XSS"""
+        data = super().to_representation(instance)
+        
+        # Sanitizar campos de texto (strip tags HTML)
+        if data.get('title'):
+            data['title'] = strip_tags(data['title'])[:200]
+        
+        if data.get('message'):
+            data['message'] = strip_tags(data['message'])[:5000]
+        
+        # Limitar tamaño de extra_data en response
+        if data.get('extra_data') and isinstance(data['extra_data'], dict):
+            import json
+            if len(json.dumps(data['extra_data'])) > 50000:
+                data['extra_data'] = {'_truncated': True}
+        
+        return data
 
 class NotificationCreateSerializer(serializers.ModelSerializer):
-    """
-    Serializer para crear notificaciones (uso interno/admin)
-    """
+    """Serializer para crear notificaciones con validación estricta"""
+    
     class Meta:
         model = Notification
         fields = [
@@ -98,33 +116,101 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
             'expires_at',
         ]
     
+    def validate_title(self, value):
+        """Validar título"""
+        if not value or not value.strip():
+            raise ValidationError("El título no puede estar vacío")
+        
+        if len(value) > 200:
+            raise ValidationError("El título no puede exceder 200 caracteres")
+        
+        # Strip tags para prevenir XSS
+        clean_value = strip_tags(value).strip()
+        if not clean_value:
+            raise ValidationError("El título no puede contener solo HTML")
+        
+        return clean_value
+    
+    def validate_message(self, value):
+        """Validar mensaje"""
+        if not value or not value.strip():
+            raise ValidationError("El mensaje no puede estar vacío")
+        
+        if len(value) > 5000:
+            raise ValidationError("El mensaje no puede exceder 5000 caracteres")
+        
+        clean_value = strip_tags(value).strip()
+        if not clean_value:
+            raise ValidationError("El mensaje no puede contener solo HTML")
+        
+        return clean_value
+    
     def validate_notification_type(self, value):
-        """Validar que el tipo de notificación sea válido"""
-        if value not in NotificationType.values:
-            raise serializers.ValidationError(
-                f"Tipo de notificación inválido. Opciones válidas: {NotificationType.values}"
+        """Validar tipo de notificación"""
+        valid_types = [choice[0] for choice in NotificationType.choices]
+        if value not in valid_types:
+            raise ValidationError(
+                f"Tipo inválido. Opciones: {', '.join(valid_types)}"
             )
         return value
     
+    def validate_priority(self, value):
+        """Validar prioridad"""
+        if value not in ['low', 'normal', 'high', 'urgent']:
+            raise ValidationError("Prioridad inválida")
+        return value
+    
+    def validate_roulette_id(self, value):
+        """Validar roulette_id"""
+        if value is not None and value < 1:
+            raise ValidationError("roulette_id debe ser positivo")
+        return value
+    
+    def validate_participation_id(self, value):
+        """Validar participation_id"""
+        if value is not None and value < 1:
+            raise ValidationError("participation_id debe ser positivo")
+        return value
+    
+    def validate_extra_data(self, value):
+        """Validar extra_data"""
+        if value:
+            import json
+            try:
+                serialized = json.dumps(value)
+                if len(serialized) > 10000:
+                    raise ValidationError("extra_data demasiado grande (max 10KB)")
+            except (TypeError, ValueError) as e:
+                raise ValidationError(f"extra_data no serializable: {str(e)}")
+        
+        return value or {}
+    
     def validate(self, data):
-        """Validaciones adicionales"""
-        # Si es notificación pública, no debe tener usuario asignado
+        """Validaciones cruzadas"""
+        # Si es pública, no debe tener usuario
         if data.get('is_public') and data.get('user'):
-            raise serializers.ValidationError(
-                "Las notificaciones públicas no pueden tener un usuario asignado"
+            raise ValidationError(
+                "Las notificaciones públicas no pueden tener usuario asignado"
             )
         
-        # Si no es pública ni de admin, debe tener usuario asignado
-        if not data.get('is_public') and not data.get('is_admin_only') and not data.get('user'):
-            raise serializers.ValidationError(
-                "Las notificaciones privadas deben tener un usuario asignado"
+        # Si no es pública ni admin, debe tener usuario
+        if not data.get('is_public') and not data.get('is_admin_only'):
+            if not data.get('user'):
+                raise ValidationError(
+                    "Las notificaciones privadas deben tener usuario asignado"
+                )
+        
+        # Admin-only no puede tener usuario asignado
+        if data.get('is_admin_only') and data.get('user'):
+            raise ValidationError(
+                "Las notificaciones admin-only no pueden tener usuario asignado"
             )
         
-        # Validar fecha de expiración
+        # Validar expiración
         if data.get('expires_at'):
             from django.utils import timezone
             if data['expires_at'] <= timezone.now():
-                raise serializers.ValidationError(
+                raise ValidationError(
                     "La fecha de expiración debe ser futura"
                 )
         
@@ -187,10 +273,10 @@ class PublicNotificationSerializer(serializers.ModelSerializer):
         """Obtener nombre de la ruleta desde extra_data"""
         return obj.extra_data.get('roulette_name', '')
 
+# REEMPLAZAR AdminNotificationSerializer en backend/notifications/serializers.py
+
 class AdminNotificationSerializer(serializers.ModelSerializer):
-    """
-    Serializer para notificaciones de administrador
-    """
+    """Serializer admin con query optimizado"""
     notification_type_display = serializers.CharField(
         source='get_notification_type_display', 
         read_only=True
@@ -201,6 +287,7 @@ class AdminNotificationSerializer(serializers.ModelSerializer):
     )
     time_since_created = serializers.SerializerMethodField()
     winner_email = serializers.SerializerMethodField()
+    is_read_by_me = serializers.SerializerMethodField()
     
     class Meta:
         model = Notification
@@ -212,7 +299,7 @@ class AdminNotificationSerializer(serializers.ModelSerializer):
             'message',
             'priority',
             'priority_display',
-            'is_read',
+            'is_read_by_me',
             'roulette_id',
             'extra_data',
             'created_at',
@@ -221,15 +308,41 @@ class AdminNotificationSerializer(serializers.ModelSerializer):
         ]
     
     def get_time_since_created(self, obj):
-        """Calcular tiempo transcurrido desde la creación"""
         from django.utils import timezone
         from django.utils.timesince import timesince
-        
         return timesince(obj.created_at, timezone.now())
     
     def get_winner_email(self, obj):
-        """Obtener email del ganador desde extra_data (solo para admin)"""
-        return obj.extra_data.get('winner_email', '')
+        """Email del ganador (sanitizado)"""
+        email = obj.extra_data.get('winner_email', '')
+        if not email:
+            return ''
+        
+        # Ofuscar parcialmente para logs
+        if '@' in email:
+            local, domain = email.split('@', 1)
+            return f"{local[:2]}***@{domain}"
+        return '***'
+    
+    def get_is_read_by_me(self, obj):
+        """
+        Verifica si admin actual ha leído esta notificación.
+        OPTIMIZADO: usa annotate en queryset si está disponible.
+        """
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+        
+        # Si viene de annotate en la view, usar ese valor
+        if hasattr(obj, 'is_read_by_me'):
+            return obj.is_read_by_me
+        
+        # Fallback: query individual (evitar en producción)
+        from .models import NotificationReadStatus
+        return NotificationReadStatus.objects.filter(
+            notification=obj,
+            user=request.user
+        ).exists()
 
 class RealTimeMessageSerializer(serializers.ModelSerializer):
     """
@@ -279,21 +392,25 @@ class NotificationStatsSerializer(serializers.Serializer):
         return data
 
 class BulkNotificationMarkReadSerializer(serializers.Serializer):
-    """
-    Serializer para marcar múltiples notificaciones como leídas
-    """
+    """Serializer para marcar múltiples notificaciones con límites"""
     notification_ids = serializers.ListField(
-        child=serializers.IntegerField(min_value=1),
+        child=serializers.IntegerField(min_value=1, max_value=2147483647),
         min_length=1,
-        max_length=50,
-        help_text="Lista de IDs de notificaciones a marcar como leídas"
+        max_length=100,  # Aumentado de 50 a 100
+        help_text="Lista de IDs de notificaciones (max 100)"
     )
     
     def validate_notification_ids(self, value):
-        """Validar que los IDs sean únicos"""
+        """Validar unicidad y rango"""
         if len(value) != len(set(value)):
-            raise serializers.ValidationError("Los IDs de notificaciones deben ser únicos")
-        return value
+            raise ValidationError("Los IDs deben ser únicos")
+        
+        # Validar que no haya IDs negativos o 0
+        if any(id_val < 1 for id_val in value):
+            raise ValidationError("Todos los IDs deben ser positivos")
+        
+        return list(set(value))  # Eliminar duplicados por seguridad
+
 
 class AdminNotificationPreferenceSerializer(serializers.ModelSerializer):
     """
@@ -342,19 +459,37 @@ class NotificationTemplateSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 class WinnerAnnouncementSerializer(serializers.Serializer):
-    """
-    Serializer para crear anuncio completo de ganador
-    """
-    winner_user_id = serializers.IntegerField()
-    roulette_name = serializers.CharField(max_length=200)
-    roulette_id = serializers.IntegerField()
-    total_participants = serializers.IntegerField(min_value=1)
-    prize_details = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    """Serializer para anuncio de ganador con validaciones"""
+    winner_user_id = serializers.IntegerField(min_value=1)
+    roulette_name = serializers.CharField(min_length=1, max_length=200)
+    roulette_id = serializers.IntegerField(min_value=1)
+    total_participants = serializers.IntegerField(min_value=1, max_value=1000000)
+    prize_details = serializers.CharField(
+        max_length=1000,  # Aumentado de 500
+        required=False, 
+        allow_blank=True
+    )
+    
+    def validate_roulette_name(self, value):
+        """Sanitizar nombre de ruleta"""
+        clean_value = strip_tags(value).strip()
+        if not clean_value:
+            raise ValidationError("El nombre de la ruleta no puede estar vacío")
+        return clean_value
+    
+    def validate_prize_details(self, value):
+        """Sanitizar detalles del premio"""
+        if value:
+            clean_value = strip_tags(value).strip()
+            return clean_value
+        return ''
     
     def validate_winner_user_id(self, value):
-        """Validar que el usuario ganador existe"""
+        """Validar que el usuario ganador existe y está activo"""
         try:
-            User.objects.get(pk=value)
+            user = User.objects.get(pk=value)
+            if not user.is_active:
+                raise ValidationError("El usuario ganador no está activo")
             return value
         except User.DoesNotExist:
-            raise serializers.ValidationError("Usuario ganador no existe")
+            raise ValidationError("Usuario ganador no existe")

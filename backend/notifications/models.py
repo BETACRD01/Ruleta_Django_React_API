@@ -47,11 +47,11 @@ class Notification(models.Model):
     )
     is_read = models.BooleanField(
         default=False,
-        help_text="Indica si la notificación ha sido leída"
+        help_text="Indica si la notificación ha sido leída (solo para notificaciones con user)"
     )
     is_admin_only = models.BooleanField(
         default=False,
-        help_text="Si es True, solo visible para administradores"
+        help_text="Si es True, solo visible para administradores (estado de lectura en NotificationReadStatus)"
     )
     priority = models.CharField(
         max_length=10,
@@ -132,10 +132,46 @@ class Notification(models.Model):
         return f"{self.title} - {recipient}"
     
     def mark_as_read(self) -> None:
-        """Marcar notificación como leída"""
-        if not self.is_read:
+        """Marcar notificación como leída (solo para notificaciones con user)"""
+        if not self.is_read and self.user:
             self.is_read = True
             self.save(update_fields=['is_read', 'updated_at'])
+
+
+# ============================================================================
+# NUEVO: MODELO PARA ESTADO DE LECTURA POR ADMIN
+# ============================================================================
+
+class NotificationReadStatus(models.Model):
+    """
+    Rastrea qué admins han leído qué notificaciones admin-only.
+    Permite que cada admin tenga su propio estado de lectura independiente.
+    """
+    notification = models.ForeignKey(
+        Notification,
+        on_delete=models.CASCADE,
+        related_name='read_statuses'
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='notification_read_statuses'
+    )
+    read_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'notification_read_statuses'
+        unique_together = ('notification', 'user')
+        indexes = [
+            models.Index(fields=['notification', 'user']),
+            models.Index(fields=['user', 'read_at']),
+        ]
+        verbose_name = 'Estado de Lectura'
+        verbose_name_plural = 'Estados de Lectura'
+    
+    def __str__(self):
+        return f"{self.user.username} - Notification {self.notification.id}"
+
 
 class AdminNotificationPreference(models.Model):
     """

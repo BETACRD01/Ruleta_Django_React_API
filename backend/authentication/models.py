@@ -130,9 +130,9 @@ class UserProfile(models.Model):
         unique=True,
         verbose_name="Teléfono",
         help_text="Formato válido: +5939XXXXXXXX o 09XXXXXXXX",
-        blank=True,
-        null=True,
-    )
+        blank=False,  # Cambiado
+        null=False,   # Cambiado
+)
     avatar = models.ImageField(
         upload_to="avatars/",
         blank=True,

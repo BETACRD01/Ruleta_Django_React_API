@@ -1,12 +1,14 @@
-// src/App.jsx - ACTUALIZADO con PreferencesProvider y nuevas rutas
+// src/App.jsx
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { PreferencesProvider } from './contexts/PreferencesContext';
 import './styles/darkTheme.css';
-import Page from './pages/page';           
-import Layout from './components/Layout';  
+
+// Pages & Components
+import Page from './pages/page';
+import Layout from './components/Layout';
 import AdminDashboard from './components/AdminDashboard';
 import UserDashboard from './components/UserDashboard';
 import TermsPage from './pages/TermsPage';
@@ -15,29 +17,43 @@ import SupportPage from './pages/SupportPage';
 import PasswordResetForm from './components/auth/PasswordResetForm';
 import RouletteParticipate from './components/user/Ruletas Disponibles/RouletteParticipate';
 
-// --- Guards simples ---
+// ============================================================================
+// PROTECTED ROUTE GUARD
+// ============================================================================
 const RequireAuth = ({ children }) => {
   const { user, loading } = useAuth();
-  if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-4 text-lg text-gray-600">Cargando sistema...</p>
+  
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-lg text-gray-600">Cargando sistema...</p>
+        </div>
       </div>
-    </div>
-  );
+    );
+  }
+  
   return user ? children : <Navigate to="/" replace />;
 };
 
+// ============================================================================
+// APP ROUTES
+// ============================================================================
 const AppContent = () => {
   const { user, isAdmin } = useAuth();
   
   return (
     <Routes>
-      {/* Página raíz: Page contiene Home + Login/Register */}
-      <Route path="/" element={user ? <Navigate to="/dashboard" replace /> : <Page />} />
+      {/* ===== PUBLIC ROUTES ===== */}
       
-      {/* Ruta para reset password */}
+      {/* Home: Redirige a dashboard si está autenticado */}
+      <Route 
+        path="/" 
+        element={user ? <Navigate to="/dashboard" replace /> : <Page />} 
+      />
+      
+      {/* Password Reset */}
       <Route 
         path="/reset-password" 
         element={
@@ -47,12 +63,14 @@ const AppContent = () => {
         } 
       />
       
-      {/* Páginas públicas */}
+      {/* Info Pages */}
       <Route path="/terminos" element={<TermsPage />} />
       <Route path="/mision-vision" element={<MissionVisionPage />} />
       <Route path="/soporte" element={<SupportPage />} />
       
-      {/* Dashboard por rol */}
+      {/* ===== PROTECTED ROUTES ===== */}
+      
+      {/* Dashboard - Redirect by role */}
       <Route
         path="/dashboard"
         element={
@@ -64,7 +82,7 @@ const AppContent = () => {
         }
       />
       
-      {/* Pantalla de participación */}
+      {/* Roulette Participation */}
       <Route
         path="/ruletas/:id/participar"
         element={
@@ -76,12 +94,15 @@ const AppContent = () => {
         }
       />
       
-      {/* Fallback */}
+      {/* ===== FALLBACK ===== */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 };
 
+// ============================================================================
+// MAIN APP COMPONENT
+// ============================================================================
 const App = () => {
   return (
     <div className="App">

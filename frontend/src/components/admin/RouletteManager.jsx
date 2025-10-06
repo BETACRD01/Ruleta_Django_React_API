@@ -10,52 +10,66 @@ import PrizePanel from "../admin/Gestión de Ruletas/PrizePanel";
 /* ===========================
    COMPONENTE CRONÓMETRO PARA TARJETAS
    =========================== */
-const RouletteCountdown = ({ targetDate, label, type = "end" }) => {
+const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
     hours: 0,
     minutes: 0,
     seconds: 0,
-    isExpired: false,
-    isActive: false
+    phase: 'inactive' // 'waiting', 'active', 'expired', 'inactive'
   });
 
   useEffect(() => {
-    if (!targetDate) {
-      setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: false, isActive: false });
+    if (!endDate) {
+      setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, phase: 'inactive' });
       return;
     }
 
     const updateTimer = () => {
       const now = new Date().getTime();
-      const target = new Date(targetDate).getTime();
-      const difference = target - now;
+      const start = startDate ? new Date(startDate).getTime() : 0;
+      const end = new Date(endDate).getTime();
 
-      if (difference <= 0) {
-        setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, isExpired: true, isActive: false });
+      // FASE 1: Esperando inicio (si hay fecha de inicio y aún no ha llegado)
+      if (startDate && now < start) {
+        const difference = start - now;
+        const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+
+        setTimeLeft({ days, hours, minutes, seconds, phase: 'waiting' });
         return;
       }
 
-      const days = Math.floor(difference / (1000 * 60 * 60 * 24));
-      const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
-      const seconds = Math.floor((difference % (1000 * 60)) / 1000);
+      // FASE 2: Activo (entre inicio y fin)
+      const difference = end - now;
+      
+      if (difference > 0) {
+        const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((difference % (1000 * 60)) / 1000);
 
-      setTimeLeft({ days, hours, minutes, seconds, isExpired: false, isActive: true });
+        setTimeLeft({ days, hours, minutes, seconds, phase: 'active' });
+        return;
+      }
+      // FASE 3: Expirado
+       setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, phase: 'expired' });
     };
 
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
 
     return () => clearInterval(interval);
-  }, [targetDate]);
+  }, [startDate, endDate]);
 
-  if (!timeLeft.isActive && !timeLeft.isExpired) {
+  if (timeLeft.phase === 'inactive') {
     return null;
   }
 
   const getStyles = () => {
-    if (timeLeft.isExpired) {
+    if (timeLeft.phase === 'expired') {
       return {
         container: "bg-red-50 border-red-200",
         text: "text-red-800",
@@ -63,19 +77,56 @@ const RouletteCountdown = ({ targetDate, label, type = "end" }) => {
       };
     }
     
+    if (timeLeft.phase === 'waiting') {
+      return {
+        container: "bg-blue-50 border-blue-200",
+        text: "text-blue-800",
+        badge: "bg-blue-100 text-blue-700"
+      };
+    }
+
+    // Para fase activa, determinar urgencia
+    const totalMinutes = timeLeft.days * 24 * 60 + timeLeft.hours * 60 + timeLeft.minutes;
+    
+    if (totalMinutes < 60) { // Menos de 1 hora
+      return {
+        container: "bg-red-50 border-red-200",
+        text: "text-red-800",
+        badge: "bg-red-100 text-red-700"
+      };
+    }
+    
+    if (totalMinutes < 1440) { // Menos de 24 horas
+      return {
+        container: "bg-orange-50 border-orange-200",
+        text: "text-orange-800",
+        badge: "bg-orange-100 text-orange-700"
+      };
+    }
+    
     if (type === "draw") {
       return {
         container: "bg-purple-50 border-purple-200",
-        text: "text-purple-800", 
+        text: "text-purple-800",
         badge: "bg-purple-100 text-purple-700"
       };
     }
     
     return {
-      container: "bg-blue-50 border-blue-200",
-      text: "text-blue-800",
-      badge: "bg-blue-100 text-blue-700"
+      container: "bg-green-50 border-green-200",
+      text: "text-green-800",
+      badge: "bg-green-100 text-green-700"
     };
+  };
+
+  const getMessage = () => {
+    if (timeLeft.phase === 'expired') {
+      return type === "draw" ? "Sorteo vencido" : "Participación cerrada";
+    }
+    if (timeLeft.phase === 'waiting') {
+      return type === "draw" ? "Sorteo inicia en" : "Participación inicia en";
+    }
+    return type === "draw" ? "Sorteo en" : "Cierra en";
   };
 
   const styles = getStyles();
@@ -84,10 +135,12 @@ const RouletteCountdown = ({ targetDate, label, type = "end" }) => {
     <div className={`p-3 rounded-lg border ${styles.container}`}>
       <div className={`flex items-center text-xs font-medium ${styles.text} mb-2`}>
         <Clock className="h-3 w-3 mr-1" />
-        {label}
+        {label || getMessage()}
       </div>
-      {timeLeft.isExpired ? (
-        <div className="text-sm font-bold text-red-600">¡Tiempo terminado!</div>
+      {timeLeft.phase === 'expired' ? (
+        <div className="text-sm font-bold text-red-600">
+          {type === "draw" ? "¡Ejecutar sorteo!" : "¡Cerrado!"}
+        </div>
       ) : (
         <div className="flex flex-wrap gap-1">
           {timeLeft.days > 0 && (
@@ -109,7 +162,6 @@ const RouletteCountdown = ({ targetDate, label, type = "end" }) => {
     </div>
   );
 };
-
 /* ===========================
    Enlaces clicables (vista)
    =========================== */
@@ -846,25 +898,37 @@ const RouletteManager = ({ onRefetchDashboard }) => {
                         {r.name || "Sin título"}
                       </h3>
 
-                      {/* CRONÓMETROS EN LAS TARJETAS */}
-                      {showTimer && (
-                        <div className="mb-4 space-y-2">
-                          {r.participation_end && (
-                            <RouletteCountdown
-                              targetDate={r.participation_end}
-                              label="Fin de participación"
-                              type="end"
-                            />
-                          )}
-                          {r.scheduled_date && (
-                            <RouletteCountdown
-                              targetDate={r.scheduled_date}
-                              label="Sorteo programado"
-                              type="draw"
-                            />
-                          )}
-                        </div>
-                      )}
+                       {/* CRONÓMETROS Y FECHAS EN LAS TARJETAS */}
+{showTimer && (
+  <div className="mb-4 space-y-2">
+    {/* Cronómetro de participación */}
+    {r.participation_end && (
+      <RouletteCountdown
+        startDate={r.participation_start}
+        endDate={r.participation_end}
+        label={null}
+        type="end"
+      />
+    )}
+    
+    {/* Fecha del sorteo (estática, sin cronómetro) */}
+    {r.scheduled_date && (
+      <div className="p-3 rounded-lg border bg-purple-50 border-purple-200">
+        <div className="flex items-center text-xs font-medium text-purple-800 mb-2">
+          <Calendar className="h-3 w-3 mr-1" />
+          Fecha del sorteo
+        </div>
+        <div className="text-sm font-bold text-purple-700">
+          {formatDate(r.scheduled_date)}
+        </div>
+        <div className="text-xs text-purple-600 mt-1">
+          Ejecutar manualmente
+        </div>
+      </div>
+    )}
+  </div>
+)}
+                      
 
                       {/* Descripción con enlaces clicables + Ver más - CORREGIDA */}
                       {r.description && (
