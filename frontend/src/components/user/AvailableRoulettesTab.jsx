@@ -3,7 +3,7 @@ import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom';
 import { 
   RefreshCcw, AlertTriangle, Users, Play, X, Download, Clock, Timer, 
-  ChevronDown, ChevronUp, Trophy, Calendar, CalendarCheck, CalendarX2, Lock
+  ChevronDown, ChevronUp, Trophy, Calendar, CalendarCheck, CalendarX2, Lock, CheckCircle
 } from 'lucide-react';
 import { EmptyState } from '../UI';
 import {
@@ -13,6 +13,7 @@ import {
   isAuthenticated,
   API_URL,
 } from '../../config/api';
+import '../../styles/ckeditor-custom.css';
 
 /* =========================
    Helpers
@@ -48,32 +49,70 @@ const getParticipantsCount = (r) =>
 const toArray = (res) => (Array.isArray(res?.results) ? res.results : Array.isArray(res) ? res : []);
 
 /* =========================
-   Verificar si la participación está abierta
+   ✅ LÓGICA CORREGIDA DE ESTADOS
    ========================= */
+
+// ✅ Verificar si el SORTEO está completado (ganador seleccionado)
+const isRouletteDrawn = (r) => {
+  return Boolean(r?.is_drawn || r?.drawn_at || r?.winner_id);
+};
+
+// ✅ Verificar si la PARTICIPACIÓN está cerrada (fecha expirada)
+const isParticipationClosed = (r) => {
+  const participationEnd = getParticipationEnd(r);
+  if (!participationEnd) return false;
+  return new Date(participationEnd) <= new Date();
+};
+
+// ✅ Verificar si la participación está abierta
 const isParticipationOpen = (roulette) => {
   const now = new Date();
   const participationStart = getParticipationStart(roulette);
   const participationEnd = getParticipationEnd(roulette);
   
-  // Si no hay fecha de inicio, está abierta (asumimos que siempre está disponible)
   if (!participationStart) {
-    // Pero si hay fecha de fin, verificar que no haya expirado
     if (participationEnd) {
       return new Date(participationEnd) > now;
     }
     return true;
   }
   
-  // Si hay fecha de inicio, verificar que ya haya comenzado
   const hasStarted = new Date(participationStart) <= now;
   
-  // Si hay fecha de fin, verificar que no haya expirado
   if (participationEnd) {
     const hasNotEnded = new Date(participationEnd) > now;
     return hasStarted && hasNotEnded;
   }
   
   return hasStarted;
+};
+
+/* =========================
+   ✅ ESTADOS CORREGIDOS
+   ========================= */
+const getRouletteState = (r) => {
+  if (isRouletteDrawn(r)) {
+    return 'completed';
+  }
+  
+  if (r?.status === 'cancelled') {
+    return 'cancelled';
+  }
+  
+  if (isParticipationClosed(r)) {
+    return 'waiting_draw';
+  }
+  
+  if (isParticipationOpen(r)) {
+    return 'active';
+  }
+  
+  const participationStart = getParticipationStart(r);
+  if (participationStart && new Date(participationStart) > new Date()) {
+    return 'scheduled';
+  }
+  
+  return 'draft';
 };
 
 /* =========================
@@ -96,26 +135,6 @@ const formatDate = (dateString) => {
     return null;
   }
 };
-
-/* =========================
-   Lógica de estado de ruleta
-   ========================= */
-const getRouletteState = (r) => {
-  if (
-    r?.status === 'cancelled' ||
-    r?.status === 'completed' ||
-    r?.is_drawn ||
-    r?.drawn_at
-  ) return 'completed';
-
-  if (r?.status === 'active') return 'active';
-  if (r?.status === 'scheduled') return 'scheduled';
-
-  return 'completed';
-};
-
-const isRouletteCompleted = (r) => getRouletteState(r) === 'completed';
-const isRouletteActive = (r) => getRouletteState(r) === 'active';
 
 /* =========================
    Cronómetro
@@ -181,25 +200,6 @@ const CountdownTimer = ({ endDate, onComplete, className = "" }) => {
       </div>
     </div>
   );
-};
-
-/* =========================
-   Linkify
-   ========================= */
-const LINK_COLOR_CLASS = "text-blue-600 underline hover:text-blue-800 hover:no-underline transition-colors";
-const escapeHtml = (s = "") =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-const autoLinkHTML = (plainText = "") => {
-  const text = escapeHtml(plainText);
-  const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
-  let html = text.replace(emailRegex, (m) => `<a href="mailto:${m}" class="${LINK_COLOR_CLASS}">${m}</a>`);
-  const urlRegex = /\b((https?:\/\/|www\.)[^\s<]+)\b/gi;
-  html = html.replace(urlRegex, (m) => {
-    const href = m.startsWith("http") ? m : `https://${m}`;
-    return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${LINK_COLOR_CLASS}">${m}</a>`;
-  });
-  return html.replace(/\n/g, "<br/>");
 };
 
 /* =========================
@@ -326,22 +326,48 @@ const ImageLightbox = ({ open, src, alt = '', onClose }) => {
 };
 
 /* =========================
-   Descripción expandible
+   Descripción expandible CON RENDERIZADO HTML
    ========================= */
 const ExpandableDescription = ({ description, maxLength = 150, className = "" }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   
   if (!description) return null;
   
-  const shouldTruncate = description.length > maxLength;
-  const displayText = isExpanded || !shouldTruncate ? description : description.substring(0, maxLength) + '...';
+  // Crear un elemento temporal para extraer texto plano del HTML
+  const getPlainText = (html) => {
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    return temp.textContent || temp.innerText || '';
+  };
+  
+  const plainText = getPlainText(description);
+  const shouldTruncate = plainText.length > maxLength;
+  
+  // Truncar el HTML de manera segura
+  const getTruncatedHTML = (html, maxLen) => {
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    const text = temp.textContent || temp.innerText || '';
+    
+    if (text.length <= maxLen) return html;
+    
+    // Crear versión truncada simple
+    const truncatedText = text.substring(0, maxLen) + '...';
+    const wrapper = document.createElement('div');
+    wrapper.textContent = truncatedText;
+    return wrapper.innerHTML;
+  };
+  
+  const displayHTML = isExpanded || !shouldTruncate 
+    ? description 
+    : getTruncatedHTML(description, maxLength);
   
   return (
     <div className={`relative ${className}`}>
       <div
-        className="text-sm text-gray-700 leading-relaxed"
+        className="prose prose-sm max-w-none text-sm text-gray-700 leading-relaxed"
         style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-        dangerouslySetInnerHTML={{ __html: autoLinkHTML(displayText) }}
+        dangerouslySetInnerHTML={{ __html: displayHTML }}
       />
       
       {shouldTruncate && (
@@ -368,26 +394,56 @@ const ExpandableDescription = ({ description, maxLength = 150, className = "" })
 };
 
 /* =========================
-   Badge de estado
+   ✅ Badge de estado CORREGIDO
    ========================= */
 const StatusBadge = ({ roulette, className = "" }) => {
   const state = getRouletteState(roulette);
   const participantsCount = getParticipantsCount(roulette);
 
   const getStatusInfo = () => {
-    if (state === 'completed') {
-      return { color: 'bg-green-100 text-green-800 border-green-200', text: 'Completada' };
+    switch(state) {
+      case 'completed':
+        return { 
+          color: 'bg-green-100 text-green-800 border-green-200', 
+          text: '✓ Sorteo Realizado'
+        };
+      
+      case 'waiting_draw':
+        return { 
+          color: 'bg-orange-100 text-orange-800 border-orange-200', 
+          text: '⏳ Esperando Sorteo'
+        };
+      
+      case 'active':
+        if (participantsCount === 0) {
+          return { 
+            color: 'bg-yellow-100 text-yellow-800 border-yellow-200', 
+            text: '⚠️ Sin participantes'
+          };
+        }
+        return { 
+          color: 'bg-blue-100 text-blue-800 border-blue-200', 
+          text: '🎯 Abierta'
+        };
+      
+      case 'scheduled':
+        return { 
+          color: 'bg-purple-100 text-purple-800 border-purple-200', 
+          text: '📅 Próximamente'
+        };
+      
+      case 'cancelled':
+        return { 
+          color: 'bg-red-100 text-red-800 border-red-200', 
+          text: '❌ Cancelada'
+        };
+      
+      default:
+        return { 
+          color: 'bg-gray-100 text-gray-800 border-gray-200', 
+          text: '📝 Borrador'
+        };
     }
-    if (state === 'active') {
-      if (participantsCount === 0) {
-        return { color: 'bg-yellow-100 text-yellow-800 border-yellow-200', text: 'Sin participantes' };
-      }
-      return { color: 'bg-blue-100 text-blue-800 border-blue-200', text: 'Activa' };
-    }
-    if (state === 'scheduled') {
-      return { color: 'bg-purple-100 text-purple-800 border-purple-200', text: 'Programada' };
-    }
-    return { color: 'bg-gray-100 text-gray-800 border-gray-200', text: 'Inactiva' };
   };
 
   const { color, text } = getStatusInfo();
@@ -411,12 +467,10 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
   const hasStarted = !participationStart || new Date(participationStart) <= now;
   const hasEnded = participationEnd && new Date(participationEnd) <= now;
   
-  // Mostrar cronómetro solo si ya comenzó y no ha terminado
   const showCountdown = hasStarted && !hasEnded && participationEnd;
   
   return (
     <div className={`space-y-2 ${className}`}>
-      {/* Inicio de participación */}
       {participationStart && (
         <div className="flex items-start gap-2 text-xs">
           <Calendar className={`h-4 w-4 flex-shrink-0 mt-0.5 ${hasStarted ? 'text-green-500' : 'text-blue-500'}`} />
@@ -428,7 +482,6 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
                 <span className="ml-2 text-blue-600 font-medium">(Próximamente)</span>
               )}
             </div>
-            {/* Cronómetro para inicio si aún no ha comenzado */}
             {!hasStarted && (
               <div className="mt-1">
                 <CountdownTimer
@@ -442,7 +495,6 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
         </div>
       )}
       
-      {/* Fin de participación con cronómetro */}
       {participationEnd && (
         <div className="flex items-start gap-2 text-xs">
           <CalendarX2 className={`h-4 w-4 flex-shrink-0 mt-0.5 ${hasEnded ? 'text-red-500' : 'text-orange-500'}`} />
@@ -451,7 +503,6 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
               <span className="font-medium text-gray-700">Cierre:</span>
               <span className="ml-1 text-gray-600">{formatDate(participationEnd)}</span>
             </div>
-            {/* Solo mostrar cronómetro si ya comenzó y no ha terminado */}
             {showCountdown && (
               <div className="mt-1">
                 <CountdownTimer
@@ -461,7 +512,6 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
                 />
               </div>
             )}
-            {/* Mensaje si aún no comienza */}
             {!hasStarted && !hasEnded && (
               <span className="text-gray-500 text-xs mt-1 block">
                 (Esperando inicio de participación)
@@ -471,7 +521,6 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
         </div>
       )}
       
-      {/* Fecha del sorteo (estática, sin cronómetro) */}
       {scheduledDate && (
         <div className="flex items-start gap-2 text-xs">
           <CalendarCheck className="h-4 w-4 flex-shrink-0 mt-0.5 text-purple-500" />
@@ -483,7 +532,6 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
         </div>
       )}
       
-      {/* Mensaje si no hay fechas configuradas */}
       {!participationStart && !participationEnd && !scheduledDate && (
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <Clock className="h-4 w-4" />
@@ -509,7 +557,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
   const busyRef = useRef(null);
   const [lightbox, setLightbox] = useState({ open: false, src: '', alt: '' });
 
-  // Force re-render cada segundo para actualizar el estado de los botones
   useEffect(() => {
     const interval = setInterval(() => {
       forceUpdate(prev => prev + 1);
@@ -567,8 +614,14 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
     const list = Array.isArray(roulettes) ? roulettes : [];
 
     const filtered = list.filter((r) => {
-      if (filterStatus === 'active') return isRouletteActive(r);
-      if (filterStatus === 'completed') return isRouletteCompleted(r);
+      const state = getRouletteState(r);
+      
+      if (filterStatus === 'active') {
+        return state === 'active' || state === 'scheduled';
+      }
+      if (filterStatus === 'completed') {
+        return state === 'completed';
+      }
       return true;
     });
 
@@ -580,7 +633,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
 
   return (
     <div className="space-y-6">
-      {/* Filtros simplificados */}
       <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-wrap">
@@ -592,7 +644,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              Activas
+              Disponibles
             </button>
             <button
               onClick={() => setFilterStatus('completed')}
@@ -619,7 +671,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
         </div>
       </div>
 
-      {/* Errores */}
       {pageError && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="flex items-start gap-3">
@@ -638,7 +689,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
         </div>
       )}
 
-      {/* Estado de carga */}
       {loading && (
         <div className="py-12 text-center">
           <div className="inline-flex items-center gap-3 text-gray-600">
@@ -648,7 +698,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
         </div>
       )}
 
-      {/* Contenido principal */}
       {!loading && filteredRoulettes.length === 0 ? (
         <EmptyState
           icon={Trophy}
@@ -659,26 +708,53 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredRoulettes.map((r) => {
             const participating = isParticipating(r.id);
-            const isCompleted = isRouletteCompleted(r);
+            const state = getRouletteState(r);
+            const isCompleted = state === 'completed';
+            const isWaitingDraw = state === 'waiting_draw';
             const participationOpen = isParticipationOpen(r);
-            const participationStart = getParticipationStart(r);
             
-            const ctaDisabled = busyRef.current === r.id || (!isCompleted && !participationOpen);
-            
+            let ctaDisabled = false;
             let ctaLabel = 'Participar Ahora';
+            let ctaStyle = 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-sm hover:shadow-md transform hover:scale-105';
+            let CtaIcon = Play;
+            
             if (isCompleted) {
-              ctaLabel = 'Ver Resultados';
-            } else if (!participationOpen && participationStart) {
+              ctaLabel = 'Ver Ganador';
+              ctaStyle = 'bg-green-600 hover:bg-green-700 text-white shadow-sm';
+              CtaIcon = Trophy;
+              ctaDisabled = false;
+            } else if (isWaitingDraw) {
+              ctaLabel = 'Participación Cerrada';
+              ctaStyle = 'bg-orange-100 text-orange-700 border border-orange-200 cursor-not-allowed';
+              CtaIcon = Lock;
+              ctaDisabled = true;
+            } else if (state === 'scheduled') {
               ctaLabel = 'Próximamente';
-            } else if (participating) {
-              ctaLabel = 'Ya participas — Entrar';
+              ctaStyle = 'bg-purple-100 text-purple-700 border border-purple-200 cursor-not-allowed';
+              CtaIcon = Calendar;
+              ctaDisabled = true;
+            } else if (state === 'cancelled') {
+              ctaLabel = 'Ruleta Cancelada';
+              ctaStyle = 'bg-red-100 text-red-700 border border-red-200 cursor-not-allowed';
+              CtaIcon = X;
+              ctaDisabled = true;
+            } else if (participationOpen) {
+              if (participating) {
+                ctaLabel = 'Ya participas — Entrar';
+                ctaStyle = 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50';
+                CtaIcon = CheckCircle;
+              } else {
+                ctaLabel = 'Participar Ahora';
+                ctaStyle = 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-sm hover:shadow-md transform hover:scale-105';
+                CtaIcon = Play;
+              }
+              ctaDisabled = false;
+            } else {
+              ctaLabel = 'No Disponible';
+              ctaStyle = 'bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed';
+              CtaIcon = Lock;
+              ctaDisabled = true;
             }
-
-            const gridCtaClass = ctaDisabled
-              ? 'pointer-events-none bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed'
-              : participating
-                ? 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50'
-                : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-sm hover:shadow-md transform hover:scale-105';
 
             const cardImg = r.image_url || resolveImageUrl(r);
 
@@ -687,7 +763,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                 key={r.id}
                 className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200 flex flex-col h-full group"
               >
-                {/* Portada */}
                 <button
                   type="button"
                   className="w-full cursor-zoom-in relative overflow-hidden"
@@ -701,7 +776,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                       className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     
-                    {/* Badge de estado */}
                     <div className="absolute top-3 left-3">
                       <StatusBadge 
                         roulette={r}
@@ -709,19 +783,17 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                       />
                     </div>
                     
-                    {/* Badge de participación bloqueada */}
-                    {!isCompleted && !participationOpen && participationStart && (
+                    {(state === 'scheduled' || isWaitingDraw) && (
                       <div className="absolute top-3 right-3">
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 rounded-full shadow-lg backdrop-blur-sm">
                           <Lock className="w-3 h-3" />
-                          Bloqueada
+                          {state === 'scheduled' ? 'Bloqueada' : 'Cerrada'}
                         </span>
                       </div>
                     )}
                   </AspectBox>
                 </button>
 
-                {/* Contenido */}
                 <div className="p-5 flex flex-col gap-3 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
@@ -731,7 +803,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                     </div>
                   </div>
 
-                  {/* Descripción */}
                   {r.description && (
                     <ExpandableDescription 
                       description={r.description} 
@@ -740,25 +811,34 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                     />
                   )}
 
-                  {/* Información de fechas */}
                   <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
                     <DateInfoPanel roulette={r} />
                   </div>
 
-                  {/* Alerta si está bloqueada */}
-                  {!isCompleted && !participationOpen && participationStart && (
-                    <div className="bg-amber-50 border-l-4 border-amber-400 p-3 rounded-r-lg">
+                  {isWaitingDraw && (
+                    <div className="bg-orange-50 border-l-4 border-orange-400 p-3 rounded-r-lg">
                       <div className="flex items-start gap-2">
-                        <Lock className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
-                        <div className="text-xs text-amber-800">
+                        <Clock className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                        <div className="text-xs text-orange-800">
                           <p className="font-medium">Participación cerrada</p>
+                          <p className="mt-1">El administrador ejecutará el sorteo próximamente</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {state === 'scheduled' && (
+                    <div className="bg-purple-50 border-l-4 border-purple-400 p-3 rounded-r-lg">
+                      <div className="flex items-start gap-2">
+                        <Calendar className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
+                        <div className="text-xs text-purple-800">
+                          <p className="font-medium">Participación próximamente</p>
                           <p className="mt-1">Espera a que inicie para poder participar</p>
                         </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Participantes */}
                   <div className="flex items-center text-sm text-gray-600">
                     <span className="inline-flex items-center gap-1.5">
                       <Users className="h-4 w-4 text-blue-500" />
@@ -766,14 +846,13 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                     </span>
                   </div>
 
-                  {/* CTA */}
                   <div className="mt-auto pt-2">
-                    {!isCompleted && !participationOpen ? (
+                    {ctaDisabled ? (
                       <button
                         disabled
-                        className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${gridCtaClass}`}
+                        className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${ctaStyle}`}
                       >
-                        <Lock className="h-4 w-4" />
+                        <CtaIcon className="h-4 w-4" />
                         {ctaLabel}
                       </button>
                     ) : (
@@ -785,16 +864,12 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                             setPageError('Debes iniciar sesión para participar.');
                             return;
                           }
-                          if (ctaDisabled) {
-                            e.preventDefault();
-                            return;
-                          }
                           busyRef.current = r.id;
                           setTimeout(() => {
                             if (busyRef.current === r.id) busyRef.current = null;
                           }, 300);
                         }}
-                        className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${gridCtaClass}`}
+                        className={`w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-semibold transition-all duration-200 ${ctaStyle}`}
                       >
                         {busyRef.current === r.id ? (
                           <>
@@ -803,7 +878,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                           </>
                         ) : (
                           <>
-                            <Play className="h-4 w-4" />
+                            <CtaIcon className="h-4 w-4" />
                             {ctaLabel}
                           </>
                         )}
@@ -817,7 +892,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
         </div>
       )}
 
-      {/* Lightbox */}
       <ImageLightbox
         open={lightbox.open}
         src={lightbox.src}

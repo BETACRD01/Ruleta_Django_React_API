@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Plus, Search, RefreshCcw, Edit, Trash2, Users, Calendar,
-  Gift, Layout, Image as ImageIcon, X, AlertCircle, Clock
+  Gift, Layout, Image as ImageIcon, X, AlertCircle, Clock, Trophy
 } from "lucide-react";
 import { RoulettesAPI, getGlobalAuthToken } from "../../config/api";
 import RouletteModal from "../admin/Gestión de Ruletas/RouletteModal.jsx";
 import PrizePanel from "../admin/Gestión de Ruletas/PrizePanel";
+import '../../styles/ckeditor-custom.css';
 
 /* ===========================
    COMPONENTE CRONÓMETRO PARA TARJETAS
@@ -16,7 +17,7 @@ const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
     hours: 0,
     minutes: 0,
     seconds: 0,
-    phase: 'inactive' // 'waiting', 'active', 'expired', 'inactive'
+    phase: 'inactive'
   });
 
   useEffect(() => {
@@ -30,7 +31,6 @@ const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
       const start = startDate ? new Date(startDate).getTime() : 0;
       const end = new Date(endDate).getTime();
 
-      // FASE 1: Esperando inicio (si hay fecha de inicio y aún no ha llegado)
       if (startDate && now < start) {
         const difference = start - now;
         const days = Math.floor(difference / (1000 * 60 * 60 * 24));
@@ -42,7 +42,6 @@ const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
         return;
       }
 
-      // FASE 2: Activo (entre inicio y fin)
       const difference = end - now;
       
       if (difference > 0) {
@@ -54,8 +53,8 @@ const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
         setTimeLeft({ days, hours, minutes, seconds, phase: 'active' });
         return;
       }
-      // FASE 3: Expirado
-       setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, phase: 'expired' });
+      
+      setTimeLeft({ days: 0, hours: 0, minutes: 0, seconds: 0, phase: 'expired' });
     };
 
     updateTimer();
@@ -71,9 +70,9 @@ const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
   const getStyles = () => {
     if (timeLeft.phase === 'expired') {
       return {
-        container: "bg-red-50 border-red-200",
-        text: "text-red-800",
-        badge: "bg-red-100 text-red-700"
+        container: "bg-orange-50 border-orange-200",
+        text: "text-orange-800",
+        badge: "bg-orange-100 text-orange-700"
       };
     }
     
@@ -85,10 +84,9 @@ const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
       };
     }
 
-    // Para fase activa, determinar urgencia
     const totalMinutes = timeLeft.days * 24 * 60 + timeLeft.hours * 60 + timeLeft.minutes;
     
-    if (totalMinutes < 60) { // Menos de 1 hora
+    if (totalMinutes < 60) {
       return {
         container: "bg-red-50 border-red-200",
         text: "text-red-800",
@@ -96,7 +94,7 @@ const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
       };
     }
     
-    if (totalMinutes < 1440) { // Menos de 24 horas
+    if (totalMinutes < 1440) {
       return {
         container: "bg-orange-50 border-orange-200",
         text: "text-orange-800",
@@ -121,7 +119,7 @@ const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
 
   const getMessage = () => {
     if (timeLeft.phase === 'expired') {
-      return type === "draw" ? "Sorteo vencido" : "Participación cerrada";
+      return type === "draw" ? "Sorteo vencido" : "⏳ Esperando sorteo";
     }
     if (timeLeft.phase === 'waiting') {
       return type === "draw" ? "Sorteo inicia en" : "Participación inicia en";
@@ -138,8 +136,8 @@ const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
         {label || getMessage()}
       </div>
       {timeLeft.phase === 'expired' ? (
-        <div className="text-sm font-bold text-red-600">
-          {type === "draw" ? "¡Ejecutar sorteo!" : "¡Cerrado!"}
+        <div className="text-sm font-bold text-orange-600">
+          {type === "draw" ? "¡Ejecutar sorteo!" : "¡Cerrado - Ejecutar sorteo!"}
         </div>
       ) : (
         <div className="flex flex-wrap gap-1">
@@ -161,27 +159,6 @@ const RouletteCountdown = ({ startDate, endDate, label, type = "end" }) => {
       )}
     </div>
   );
-};
-/* ===========================
-   Enlaces clicables (vista)
-   =========================== */
-const LINK_COLOR_CLASS = "text-blue-600 underline hover:no-underline";
-const escapeHtml = (s = "") =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-const autoLinkHTML = (plainText = "") => {
-  const text = escapeHtml(plainText);
-  const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
-  let html = text.replace(emailRegex, (m) => {
-    const href = `mailto:${m}`;
-    return `<a href="${href}" class="${LINK_COLOR_CLASS}">${m}</a>`;
-  });
-  const urlRegex = /\b((https?:\/\/|www\.)[^\s<]+)\b/gi;
-  html = html.replace(urlRegex, (m) => {
-    const href = m.startsWith("http") ? m : `https://${m}`;
-    return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${LINK_COLOR_CLASS}">${m}</a>`;
-  });
-  return html.replace(/\n/g, "<br/>");
 };
 
 // Instancia de API con token
@@ -213,14 +190,13 @@ const RouletteManager = ({ onRefetchDashboard }) => {
   const [prizeContext, setPrizeContext] = useState({ rouletteId: null, data: [], rouletteName: "" });
   const [prizeLoading, setPrizeLoading] = useState(false);
 
-  // Descripciones expandidas por tarjeta - CORREGIDO
+  // Descripciones expandidas por tarjeta
   const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());
 
   // -------------------- Helpers para imágenes --------------------
   const getImageUrl = (roulette) => {
     if (!roulette) return null;
     
-    // Priorizar campos que devuelve la API
     const possibleFields = [
       'cover_image_url',
       'cover_image', 
@@ -232,16 +208,13 @@ const RouletteManager = ({ onRefetchDashboard }) => {
     for (const field of possibleFields) {
       const url = roulette[field];
       if (url && typeof url === 'string' && url.trim() !== '' && url !== 'null') {
-        // Si es una URL relativa, construir URL completa
         if (url.startsWith('/media/') || url.startsWith('/static/')) {
           const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
           return `${baseURL.replace('/api', '')}${url}`;
         }
-        // Si es URL completa, usarla directamente
         if (url.startsWith('http')) {
           return url;
         }
-        // Si es otro formato válido
         return url;
       }
     }
@@ -255,8 +228,7 @@ const RouletteManager = ({ onRefetchDashboard }) => {
     const participationEnd = roulette.participation_end ? new Date(roulette.participation_end).getTime() : null;
     const scheduledDate = roulette.scheduled_date ? new Date(roulette.scheduled_date).getTime() : null;
     
-    // Mostrar solo si hay fechas futuras o recién pasadas (menos de 1 hora)
-    const recentThreshold = 60 * 60 * 1000; // 1 hora
+    const recentThreshold = 60 * 60 * 1000;
     
     return (
       (participationEnd && participationEnd > (now - recentThreshold)) ||
@@ -273,32 +245,23 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       const params = { page, page_size: pageSize };
       if (status) params.status = status;
 
-      console.log("Cargando ruletas con params:", params);
       const res = await api.getRoulettes(params);
       
-      console.log("Respuesta API:", res);
-      
-      // Manejo mejorado de la respuesta
       let list = [];
       let totalCount = 0;
       
       if (res) {
         if (Array.isArray(res.results)) {
-          // Respuesta paginada
           list = res.results;
           totalCount = res.count || list.length;
         } else if (Array.isArray(res)) {
-          // Respuesta directa como array
           list = res;
           totalCount = list.length;
         } else if (res.data && Array.isArray(res.data)) {
-          // Respuesta envuelta
           list = res.data;
           totalCount = res.total || res.count || list.length;
         }
       }
-      
-      console.log("Procesadas", list.length, "ruletas de", totalCount, "total");
       
       setItems(list);
       setCount(totalCount);
@@ -338,7 +301,7 @@ const RouletteManager = ({ onRefetchDashboard }) => {
     return configs[st] || { label: st || "—", class: "bg-gray-50 text-gray-700 border-gray-200", dot: "bg-gray-400" };
   };
 
-  // -------------------- Funciones para "Ver más" - CORREGIDAS --------------------
+  // -------------------- Funciones para "Ver más" --------------------
   const toggleDescription = (rouletteId) => {
     setExpandedDescriptions(prev => {
       const newSet = new Set(prev);
@@ -389,19 +352,14 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       setError("");
       
       const api = createAPIInstance();
-      console.log("Cargando detalle de ruleta:", id);
-      
       const detail = await api.getRoulette(id);
-      console.log("Detalle cargado:", detail);
       
       if (!detail) {
         throw new Error("No se pudo obtener el detalle de la ruleta");
       }
       
       const imageUrl = getImageUrl(detail);
-      console.log("URL de imagen detectada:", imageUrl);
       
-      // Mejor mapeo de campos
       const editingData = {
         id: detail.id,
         name: detail.name || "",
@@ -410,13 +368,11 @@ const RouletteManager = ({ onRefetchDashboard }) => {
         participation_start: detail.participation_start || "",
         participation_end: detail.participation_end || "",
         scheduled_date: detail.scheduled_date || "",
-        cover_image: null, // Siempre null para archivos nuevos
-        cover_preview: "", // Se llenará con archivos nuevos
-        cover_url: imageUrl || "", // URL existente
-        cover_delete: false, // Flag para eliminar
+        cover_image: null,
+        cover_preview: "",
+        cover_url: imageUrl || "",
+        cover_delete: false,
       };
-      
-      console.log("Datos de edición preparados:", editingData);
       
       setEditing(editingData);
       setModalOpen(true);
@@ -440,34 +396,23 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       
       const api = createAPIInstance();
       
-      console.log("Guardando ruleta con payload:", payload);
-      
       let updatedOrCreated;
       const isUpdate = payload?.id || editing?.id;
       
       if (isUpdate) {
         const id = payload?.id ?? editing.id;
-        console.log("Actualizando ruleta ID:", id);
         updatedOrCreated = await api.updateRoulette(id, payload);
       } else {
-        console.log("Creando nueva ruleta");
         updatedOrCreated = await api.createRoulette(payload);
       }
 
-      console.log("Resultado de guardado:", updatedOrCreated);
-
-      // Merge optimista mejorado
       if (updatedOrCreated?.id) {
         setItems((prevItems) => {
           const existingIndex = prevItems.findIndex((x) => x.id === updatedOrCreated.id);
           
           if (existingIndex === -1) {
-            // Nuevo elemento, agregar al inicio
-            console.log("Agregando nueva ruleta a la lista");
             return [updatedOrCreated, ...prevItems];
           } else {
-            // Elemento existente, actualizar
-            console.log("Actualizando ruleta existente en la lista");
             const newItems = [...prevItems];
             newItems[existingIndex] = { 
               ...prevItems[existingIndex], 
@@ -478,25 +423,19 @@ const RouletteManager = ({ onRefetchDashboard }) => {
         });
       }
 
-      // Refetch completo para asegurar consistencia
       await load();
       
-      // Notificar al componente padre
       if (typeof onRefetchDashboard === 'function') {
         onRefetchDashboard();
       }
 
-      // Cerrar modal
       setModalOpen(false);
       setEditing(null);
       
-      console.log("Guardado completado exitosamente");
     } catch (e) {
       console.error("Error guardando ruleta:", e);
       const errorMessage = e?.message || "No se pudo guardar la ruleta";
       setError(errorMessage);
-      
-      // Re-lanzar el error para que el modal pueda manejarlo
       throw new Error(errorMessage);
     } finally {
       setLoading(false);
@@ -524,20 +463,13 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       
       const api = createAPIInstance();
       
-      console.log(`Eliminando ruleta ID: ${id}, Force: ${isCompleted}`);
-      
       await api.deleteRoulette(id, { force: isCompleted });
       
-      console.log("Ruleta eliminada exitosamente");
-      
-      // Remover de la lista local inmediatamente
       setItems((prevItems) => prevItems.filter((item) => item.id !== id));
       setCount((prevCount) => Math.max(0, prevCount - 1));
       
-      // Recargar para asegurar consistencia
       await load();
       
-      // Notificar al componente padre
       if (typeof onRefetchDashboard === 'function') {
         onRefetchDashboard();
       }
@@ -577,12 +509,8 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       setPrizeLoading(true);
       
       const api = createAPIInstance();
-      console.log("Cargando premios para ruleta:", rouletteId);
-      
       const res = await api.listPrizes(rouletteId);
-      console.log("Premios cargados:", res);
       
-      // Manejo mejorado de la respuesta de premios
       let prizesList = [];
       if (res) {
         if (Array.isArray(res.results)) {
@@ -598,8 +526,6 @@ const RouletteManager = ({ onRefetchDashboard }) => {
         ...ctx, 
         data: prizesList 
       }));
-      
-      console.log("Premios procesados:", prizesList.length);
       
     } catch (e) {
       console.error("Error cargando premios:", e);
@@ -620,12 +546,7 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       setPrizeLoading(true);
       
       const api = createAPIInstance();
-      console.log("Creando premio:", payload);
-      
       await api.addPrize(prizeContext.rouletteId, payload);
-      console.log("Premio creado exitosamente");
-      
-      // Recargar premios
       await fetchPrizes(prizeContext.rouletteId);
       
     } catch (e) {
@@ -646,12 +567,7 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       setPrizeLoading(true);
       
       const api = createAPIInstance();
-      console.log("Actualizando premio:", prizeId, payload);
-      
       await api.updatePrize(prizeContext.rouletteId, prizeId, payload);
-      console.log("Premio actualizado exitosamente");
-      
-      // Recargar premios
       await fetchPrizes(prizeContext.rouletteId);
       
     } catch (e) {
@@ -676,12 +592,7 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       setPrizeLoading(true);
       
       const api = createAPIInstance();
-      console.log("Eliminando premio:", prizeId);
-      
       await api.deletePrize(prizeContext.rouletteId, prizeId);
-      console.log("Premio eliminado exitosamente");
-      
-      // Recargar premios
       await fetchPrizes(prizeContext.rouletteId);
       
     } catch (e) {
@@ -848,7 +759,7 @@ const RouletteManager = ({ onRefetchDashboard }) => {
           </div>
         )}
 
-        {/* GRID de ruletas CON CRONÓMETROS */}
+        {/* GRID de ruletas */}
         {!loading && filtered.length > 0 && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -859,6 +770,7 @@ const RouletteManager = ({ onRefetchDashboard }) => {
                 const showSeeMore = shouldShowSeeMore(r.description);
                 const scheduledDate = formatDate(r.scheduled_date);
                 const showTimer = shouldShowTimer(r);
+                const isDrawn = Boolean(r.is_drawn || r.drawn_at || r.winner_id);
                 
                 return (
                   <div 
@@ -873,7 +785,6 @@ const RouletteManager = ({ onRefetchDashboard }) => {
                           alt={r.name || 'Ruleta'} 
                           className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
                           onError={(e) => {
-                            console.warn("Error cargando imagen:", img);
                             e.target.style.display = 'none';
                             e.target.parentElement.querySelector('.fallback-icon').style.display = 'flex';
                           }}
@@ -890,6 +801,14 @@ const RouletteManager = ({ onRefetchDashboard }) => {
                         <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${st.dot}`} />
                         {st.label}
                       </div>
+                      
+                      {/* Badge si sorteo completado */}
+                      {isDrawn && (
+                        <div className="absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-medium border bg-green-100 text-green-800 border-green-200 backdrop-blur-sm">
+                          <Trophy className="inline-block w-3 h-3 mr-1" />
+                          Sorteado
+                        </div>
+                      )}
                     </div>
 
                     {/* Body */}
@@ -898,48 +817,57 @@ const RouletteManager = ({ onRefetchDashboard }) => {
                         {r.name || "Sin título"}
                       </h3>
 
-                       {/* CRONÓMETROS Y FECHAS EN LAS TARJETAS */}
-{showTimer && (
-  <div className="mb-4 space-y-2">
-    {/* Cronómetro de participación */}
-    {r.participation_end && (
-      <RouletteCountdown
-        startDate={r.participation_start}
-        endDate={r.participation_end}
-        label={null}
-        type="end"
-      />
-    )}
-    
-    {/* Fecha del sorteo (estática, sin cronómetro) */}
-    {r.scheduled_date && (
-      <div className="p-3 rounded-lg border bg-purple-50 border-purple-200">
-        <div className="flex items-center text-xs font-medium text-purple-800 mb-2">
-          <Calendar className="h-3 w-3 mr-1" />
-          Fecha del sorteo
-        </div>
-        <div className="text-sm font-bold text-purple-700">
-          {formatDate(r.scheduled_date)}
-        </div>
-        <div className="text-xs text-purple-600 mt-1">
-          Ejecutar manualmente
-        </div>
-      </div>
-    )}
-  </div>
-)}
+                      {/* CRONÓMETROS Y FECHAS EN LAS TARJETAS */}
+                      {showTimer && !isDrawn && (
+                        <div className="mb-4 space-y-2">
+                          {/* Cronómetro de participación */}
+                          {r.participation_end && (
+                            <RouletteCountdown
+                              startDate={r.participation_start}
+                              endDate={r.participation_end}
+                              label={null}
+                              type="end"
+                            />
+                          )}
+                          
+                          {/* Fecha del sorteo (estática, sin cronómetro) */}
+                          {r.scheduled_date && (
+                            <div className="p-3 rounded-lg border bg-purple-50 border-purple-200">
+                              <div className="flex items-center text-xs font-medium text-purple-800 mb-2">
+                                <Calendar className="h-3 w-3 mr-1" />
+                                Fecha del sorteo
+                              </div>
+                              <div className="text-sm font-bold text-purple-700">
+                                {formatDate(r.scheduled_date)}
+                              </div>
+                              <div className="text-xs text-purple-600 mt-1">
+                                Ejecutar manualmente
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       
+                      {/* Mensaje si sorteo completado */}
+                      {isDrawn && (
+                        <div className="mb-4 p-3 rounded-lg border bg-green-50 border-green-200">
+                          <div className="flex items-center text-xs font-medium text-green-800">
+                            <Trophy className="h-3 w-3 mr-1" />
+                            Sorteo completado - Ya hay ganador
+                          </div>
+                        </div>
+                      )}
 
-                      {/* Descripción con enlaces clicables + Ver más - CORREGIDA */}
+                      {/* Descripción con HTML renderizado + Ver más */}
                       {r.description && (
                         <div className="mb-4">
                           <div
-                            className={`text-sm text-gray-700 leading-relaxed ${
+                            className={`text-sm text-gray-700 leading-relaxed prose prose-sm max-w-none ${
                               !isExpanded && showSeeMore ? "line-clamp-3" : ""
                             }`}
                             style={{ overflowWrap: "anywhere" }}
                             dangerouslySetInnerHTML={{ 
-                              __html: autoLinkHTML(r.description) 
+                              __html: r.description 
                             }}
                           />
                           {showSeeMore && (
@@ -1037,7 +965,7 @@ const RouletteManager = ({ onRefetchDashboard }) => {
         onClose={() => { 
           setModalOpen(false); 
           setEditing(null); 
-          setError(""); // Limpiar errores al cerrar
+          setError("");
         }}
         editing={editing}
         setEditing={setEditing}
@@ -1050,7 +978,7 @@ const RouletteManager = ({ onRefetchDashboard }) => {
         isOpen={prizePanelOpen}
         onClose={() => {
           setPrizePanelOpen(false);
-          setError(""); // Limpiar errores al cerrar
+          setError("");
         }}
         prizeContext={prizeContext}
         prizeLoading={prizeLoading}

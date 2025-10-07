@@ -105,7 +105,7 @@ export default function Page() {
 
       <footer className="border-t border-gray-200 bg-gray-100">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid gap-6 sm:flex sm:items-center sm:justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
             <div className="flex items-center gap-3">
               <img src={logo} alt="Hayu24" className="h-8 w-auto object-contain" draggable="false" />
               <div className="text-sm">
@@ -114,7 +114,7 @@ export default function Page() {
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-4 sm:gap-6 text-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-sm">
               <Link to="/terminos" className="text-gray-600 hover:text-red-600 font-medium transition-colors duration-200">
                 Términos y Condiciones
               </Link>

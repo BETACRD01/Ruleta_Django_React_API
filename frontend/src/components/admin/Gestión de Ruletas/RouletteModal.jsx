@@ -1,18 +1,19 @@
 /* ================================
    IMPORTS Y DEPENDENCIAS
 ================================ */
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   X, Upload, ImageIcon, Trash2, Save, Calendar,
-  AlertCircle, Info, Clock, FileText, Eye, Timer, CalendarCheck
+  AlertCircle, Info, Clock, Timer, CalendarCheck
 } from "lucide-react";
+import '../../../styles/ckeditor-custom.css';
+import CKEditorWrapper from '../../CKEditorWrapper';
 
 /* ================================
    CONSTANTES Y CONFIGURACIONES
 ================================ */
 const MAX_MB = 5;
 const ALLOWED = [".jpg", ".jpeg", ".png", ".webp"];
-const LINK_COLOR_CLASS = "text-blue-600 underline hover:no-underline";
 
 const DEFAULT_EDITING = {
   id: null,
@@ -29,8 +30,9 @@ const DEFAULT_EDITING = {
 };
 
 /* ================================
-   FUNCIONES AUXILIARES DE FECHAS
+   ✅ FUNCIONES DE FECHAS
 ================================ */
+
 const formatDate = (dateString) => {
   if (!dateString) return "";
   try {
@@ -49,37 +51,40 @@ const formatDate = (dateString) => {
   }
 };
 
-// ✅ CORREGIDO: Convierte fecha ISO a formato datetime-local para el input
 const formatDateTimeLocal = (dateString) => {
   if (!dateString) return "";
   try {
     const date = new Date(dateString);
     if (isNaN(date.getTime())) return "";
 
-    // Ajustar a zona horaria local
-    const offset = date.getTimezoneOffset();
-    const localDate = new Date(date.getTime() - (offset * 60 * 1000));
-    
-    // Formato ISO sin timezone (YYYY-MM-DDTHH:mm)
-    return localDate.toISOString().slice(0, 16);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
   } catch {
     return "";
   }
 };
 
-// ✅ CORREGIDO: Convierte datetime-local a formato ISO para Django
 const parseDateTimeLocal = (dateTimeLocalString) => {
   if (!dateTimeLocalString) return null;
   try {
-    // El input datetime-local da formato "YYYY-MM-DDTHH:mm"
-    const localDate = new Date(dateTimeLocalString);
+    const [datePart, timePart] = dateTimeLocalString.split('T');
+    if (!datePart || !timePart) return null;
     
-    // Verificar que la fecha es válida
+    const [year, month, day] = datePart.split('-').map(Number);
+    const [hours, minutes] = timePart.split(':').map(Number);
+    
+    const localDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
+    
     if (isNaN(localDate.getTime())) return null;
     
-    // Retornar en formato ISO (lo que espera Django)
     return localDate.toISOString();
-  } catch {
+  } catch (error) {
+    console.error('Error parsing datetime-local:', error);
     return null;
   }
 };
@@ -95,21 +100,21 @@ const ScheduledDateDisplay = ({ targetDate, label = "Fecha programada", classNam
   const isPast = date < now;
 
   return (
-    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium border ${
+    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border ${
       isPast 
-        ? "bg-gray-100 text-gray-700 border-gray-300" 
-        : "bg-purple-100 text-purple-800 border-purple-200"
+        ? "bg-gray-50 text-gray-700 border-gray-300" 
+        : "bg-blue-50 text-blue-700 border-blue-200"
     } ${className}`}>
       <CalendarCheck className="w-4 h-4" />
       <span className="text-xs font-medium">{label}:</span>
-      <span className="font-bold">{formatDate(targetDate)}</span>
+      <span className="font-semibold">{formatDate(targetDate)}</span>
       {isPast && <span className="text-xs">(Ya pasó)</span>}
     </div>
   );
 };
 
 /* =========================
-   Cronómetro MEJORADO con 3 fases
+   Cronómetro con 3 fases
    ========================= */
 const CountdownTimer = ({ startDate, endDate, onComplete, className = "" }) => {
   const [timeLeft, setTimeLeft] = useState({
@@ -167,18 +172,18 @@ const CountdownTimer = ({ startDate, endDate, onComplete, className = "" }) => {
 
   const getUrgencyStyles = () => {
     if (timeLeft.phase === 'expired') {
-      return "bg-red-100 text-red-800 border-red-200";
+      return "bg-red-50 text-red-700 border-red-200";
     }
     
     if (timeLeft.phase === 'waiting') {
-      return "bg-blue-100 text-blue-800 border-blue-200";
+      return "bg-blue-50 text-blue-700 border-blue-200";
     }
 
     const totalMinutes = timeLeft.days * 24 * 60 + timeLeft.hours * 60 + timeLeft.minutes;
     
-    if (totalMinutes < 60) return "bg-red-100 text-red-800 border-red-200";
-    if (totalMinutes < 1440) return "bg-orange-100 text-orange-800 border-orange-200";
-    return "bg-green-100 text-green-800 border-green-200";
+    if (totalMinutes < 60) return "bg-red-50 text-red-700 border-red-200";
+    if (totalMinutes < 1440) return "bg-orange-50 text-orange-700 border-orange-200";
+    return "bg-green-50 text-green-700 border-green-200";
   };
 
   const getMessage = () => {
@@ -188,7 +193,7 @@ const CountdownTimer = ({ startDate, endDate, onComplete, className = "" }) => {
   };
 
   return (
-    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium border ${getUrgencyStyles()} ${className}`}>
+    <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border ${getUrgencyStyles()} ${className}`}>
       {timeLeft.phase === 'expired' ? (
         <>
           <Timer className="w-4 h-4" />
@@ -199,154 +204,12 @@ const CountdownTimer = ({ startDate, endDate, onComplete, className = "" }) => {
           <Clock className="w-4 h-4" />
           <span className="text-xs font-medium">{getMessage()}:</span>
           <div className="flex items-center gap-1">
-            {timeLeft.days > 0 && <span className="font-bold">{timeLeft.days}d</span>}
-            {(timeLeft.days > 0 || timeLeft.hours > 0) && <span className="font-bold">{timeLeft.hours}h</span>}
-            <span className="font-bold">{timeLeft.minutes}m</span>
-            <span className="font-bold">{timeLeft.seconds}s</span>
+            {timeLeft.days > 0 && <span className="font-semibold">{timeLeft.days}d</span>}
+            {(timeLeft.days > 0 || timeLeft.hours > 0) && <span className="font-semibold">{timeLeft.hours}h</span>}
+            <span className="font-semibold">{timeLeft.minutes}m</span>
+            <span className="font-semibold">{timeLeft.seconds}s</span>
           </div>
         </>
-      )}
-    </div>
-  );
-};
-
-/* ================================
-   HELPERS DE TEXTO Y ENLACES
-================================ */
-const escapeHtml = (s = "") =>
-  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-const autoLinkHTML = (plainText) => {
-  if (!plainText) return "";
-  const text = escapeHtml(plainText);
-
-  const urlRegex = /\b((https?:\/\/|www\.)[^\s<]+)\b/gi;
-  const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
-
-  let html = text.replace(emailRegex, (m) => {
-    const href = `mailto:${m}`;
-    return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${LINK_COLOR_CLASS}">${m}</a>`;
-  });
-
-  html = html.replace(urlRegex, (m) => {
-    const href = m.startsWith("http") ? m : `https://${m}`;
-    return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="${LINK_COLOR_CLASS}">${m}</a>`;
-  });
-
-  html = html.replace(/\n/g, "<br/>");
-  return html;
-};
-
-/* ================================
-   EDITOR DE TEXTO CON VISTA PREVIA
-================================ */
-const SimpleTextEditor = ({
-  value,
-  onChange,
-  placeholder,
-  disabled,
-  maxLength,
-  validationError,
-  onValidationChange,
-}) => {
-  const [isFocused, setIsFocused] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
-  const [preview, setPreview] = useState("");
-
-  const handleChange = useCallback(
-    (e) => {
-      const newValue = e.target.value;
-      if (maxLength && newValue.length > maxLength) {
-        onValidationChange?.(true);
-        return;
-      } else {
-        onValidationChange?.(false);
-      }
-      onChange(newValue);
-    },
-    [onChange, maxLength, onValidationChange]
-  );
-
-  useEffect(() => {
-    setPreview(autoLinkHTML(value || ""));
-  }, [value]);
-
-  const togglePreview = () => setShowPreview((p) => !p);
-
-  return (
-    <div
-      className={`bg-white rounded-lg border-2 transition-colors duration-200 ${
-        isFocused
-          ? "border-blue-500 ring-2 ring-blue-200"
-          : validationError
-          ? "border-red-300"
-          : "border-gray-300"
-      }`}
-    >
-      <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 flex items-center justify-between">
-        <div className="flex items-center text-xs text-gray-600">
-          <FileText className="h-3 w-3 mr-1" />
-          Los enlaces y correos se detectan automáticamente
-        </div>
-        <button
-          type="button"
-          onClick={togglePreview}
-          className="flex items-center text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded transition-colors"
-        >
-          <Eye className="h-3 w-3 mr-1" />
-          {showPreview ? "Ocultar" : "Vista previa"}
-        </button>
-      </div>
-
-      {showPreview ? (
-        <div className="p-3">
-          <div className="flex items-center text-xs text-gray-600 mb-2">
-            <Eye className="h-3 w-3 mr-1" />
-            Vista previa con enlaces detectados
-          </div>
-          <div
-            className="min-h-[200px] px-4 py-4 bg-gray-50 rounded-md text-sm border"
-            style={{ lineHeight: "1.6" }}
-            dangerouslySetInnerHTML={{ __html: preview }}
-          />
-          {maxLength && (
-            <div className="mt-1 text-right text-xs text-gray-400">
-              {(value?.length || 0)}/{maxLength}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="p-3">
-          <textarea
-            value={value || ""}
-            onChange={handleChange}
-            onFocus={() => setIsFocused(true)}
-            onBlur={() => setIsFocused(false)}
-            className={`w-full px-4 py-4 border-0 focus:ring-0 focus:outline-none resize-none min-h-[200px] ${
-              validationError ? "bg-red-50" : "bg-white"
-            }`}
-            placeholder={placeholder || "Escribe aquí tu descripción..."}
-            disabled={disabled}
-            style={{
-              fontFamily:
-                'system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif',
-              fontSize: "14px",
-              lineHeight: "1.6",
-            }}
-          />
-          {maxLength && (
-            <div className="mt-1 text-right text-xs text-gray-400">
-              {(value?.length || 0)}/{maxLength}
-            </div>
-          )}
-        </div>
-      )}
-
-      {validationError && (
-        <div className="border-t border-gray-200 bg-red-50 px-4 py-2 flex items-center">
-          <AlertCircle className="h-3 w-3 mr-1 text-red-500" />
-          <span className="text-xs text-red-600">Límite de caracteres excedido</span>
-        </div>
       )}
     </div>
   );
@@ -448,34 +311,20 @@ const RouletteModal = ({
       errors.scheduled_date = "El sorteo debe ser después del cierre de participación (mínimo 1 minuto)";
     }
 
-    // ✅ VALIDACIÓN MEJORADA: Más flexible para edición
     const now = new Date();
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-    // Solo validar fechas muy antiguas si estamos creando una nueva ruleta
-    if (participationStart && !currentEditing.id) {
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-      
-      if (participationStart < oneMonthAgo) {
-        errors.participation_start = "Para ruletas nuevas, la fecha de inicio no puede ser más de 1 mes en el pasado";
+    if (!currentEditing.id) {
+      if (participationStart && participationStart < oneWeekAgo) {
+        errors.participation_start = "Para ruletas nuevas, la fecha de inicio no puede ser más de 1 semana en el pasado";
       }
-    }
 
-    if (participationEnd && !currentEditing.id) {
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-      
-      if (participationEnd < oneMonthAgo) {
-        errors.participation_end = "Para ruletas nuevas, la fecha de fin no puede ser más de 1 mes en el pasado";
+      if (participationEnd && participationEnd < oneWeekAgo) {
+        errors.participation_end = "Para ruletas nuevas, la fecha de fin no puede ser más de 1 semana en el pasado";
       }
-    }
 
-    if (scheduledDate && !currentEditing.id) {
-      const oneMonthAgo = new Date();
-      oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-      
-      if (scheduledDate < oneMonthAgo) {
-        errors.scheduled_date = "Para ruletas nuevas, la fecha del sorteo no puede ser más de 1 mes en el pasado";
+      if (scheduledDate && scheduledDate < oneWeekAgo) {
+        errors.scheduled_date = "Para ruletas nuevas, la fecha del sorteo no puede ser más de 1 semana en el pasado";
       }
     }
 
@@ -573,7 +422,6 @@ const RouletteModal = ({
     return null;
   };
 
-  // ✅ FUNCIÓN handleSave VERIFICADA
   const handleSave = () => {
     if (!validateAndFocus()) return;
 
@@ -582,7 +430,6 @@ const RouletteModal = ({
       name: currentEditing.name?.trim(),
       description: currentEditing.description || "",
       status: currentEditing.status,
-      // ✅ Conversión correcta a formato ISO
       participation_start: currentEditing.participation_start
         ? parseDateTimeLocal(currentEditing.participation_start)
         : null,
@@ -640,38 +487,39 @@ const RouletteModal = ({
   const previewSrc = getPreviewSrc();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full max-w-7xl bg-white rounded-2xl shadow-2xl overflow-hidden max-h-[95vh] overflow-y-auto">
-        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 py-5 flex items-center justify-between sticky top-0 z-10">
+      <div className="relative w-full max-w-5xl bg-white rounded-xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-slate-700 to-slate-800 px-6 py-4 flex items-center justify-between border-b border-slate-600">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+            <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center">
               <Save className="h-5 w-5 text-white" />
             </div>
             <div>
-              <h3 className="text-xl font-semibold text-white">
-                {currentEditing.id ? "Editar Ruleta" : "Crear Nueva Ruleta"}
+              <h3 className="text-lg font-semibold text-white">
+                {currentEditing.id ? "Editar Ruleta" : "Nueva Ruleta"}
               </h3>
-              <p className="text-blue-100 text-sm">
-                {currentEditing.id ? `ID: ${currentEditing.id}` : "Formulario de creación"}
+              <p className="text-slate-300 text-sm">
+                {currentEditing.id ? `ID: ${currentEditing.id}` : "Completa los datos"}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2">
             {currentEditing.id && currentStatus && (
               <div
-                className={`px-3 py-1 rounded-full text-xs font-medium ${
+                className={`px-2.5 py-1 rounded-md text-xs font-medium ${
                   currentStatus.color === "text-green-600"
-                    ? "bg-green-100 text-green-800"
+                    ? "bg-green-100 text-green-700"
                     : currentStatus.color === "text-blue-600"
-                    ? "bg-blue-100 text-blue-800"
+                    ? "bg-blue-100 text-blue-700"
                     : currentStatus.color === "text-purple-600"
-                    ? "bg-purple-100 text-purple-800"
+                    ? "bg-purple-100 text-purple-700"
                     : currentStatus.color === "text-red-600"
-                    ? "bg-red-100 text-red-800"
-                    : "bg-gray-100 text-gray-800"
+                    ? "bg-red-100 text-red-700"
+                    : "bg-gray-100 text-gray-700"
                 }`}
               >
                 {currentStatus.label}
@@ -680,7 +528,7 @@ const RouletteModal = ({
 
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-white/20 text-white transition-colors duration-200"
+              className="p-2 rounded-lg hover:bg-white/10 text-white transition-colors"
               disabled={loading}
             >
               <X className="h-5 w-5" />
@@ -688,38 +536,30 @@ const RouletteModal = ({
           </div>
         </div>
 
+        {/* Error */}
         {error && (
-          <div className="mx-6 mt-4 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
-            <div className="flex items-start space-x-3">
+          <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <div className="flex items-start space-x-2">
               <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <h4 className="text-sm font-bold text-red-800 mb-1">Error al procesar la solicitud</h4>
-                <p className="text-sm text-red-700">{error}</p>
-                <p className="text-xs text-red-600 mt-2">Verifica los datos ingresados y vuelve a intentarlo</p>
+                <h4 className="text-sm font-semibold text-red-800">Error</h4>
+                <p className="text-sm text-red-700 mt-1">{error}</p>
               </div>
             </div>
           </div>
         )}
 
-        <div className="p-6">
-          <div className="bg-slate-50 rounded-xl p-6 mb-6 border border-slate-200">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h4 className="text-xl font-bold text-slate-800 mb-1">Información Básica</h4>
-                <p className="text-sm text-slate-600">Datos principales de la ruleta</p>
-              </div>
-              <div className="text-xs text-slate-500 bg-white px-3 py-1 rounded-full">
-                Campos obligatorios (*)
-              </div>
-            </div>
+        {/* Contenido scrollable */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          
+          {/* Información Básica */}
+          <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
+            <h4 className="text-base font-semibold text-gray-900 mb-4">Información Básica</h4>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="lg:col-span-1" data-field="name">
-                <label className="block text-sm font-bold text-gray-700 mb-3">
-                  Título de la Ruleta *
-                  <span className="text-xs font-normal text-gray-500 ml-2">
-                    (Nombre que verán los participantes)
-                  </span>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div data-field="name">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Título *
                 </label>
                 <input
                   value={currentEditing.name || ""}
@@ -727,185 +567,112 @@ const RouletteModal = ({
                     setEditing?.((prev) => ({ ...(prev || DEFAULT_EDITING), name: e.target.value }));
                     if (validationErrors.name) setValidationErrors((p) => ({ ...p, name: null }));
                   }}
-                  className={`w-full px-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 ${
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition ${
                     validationErrors.name
-                      ? "border-red-300 bg-red-50 focus:border-red-500 focus:ring-red-200"
-                      : "border-gray-300 hover:border-gray-400 focus:bg-white"
+                      ? "border-red-300 bg-red-50"
+                      : "border-gray-300"
                   }`}
-                  placeholder="ej: Ruleta de Navidad 2025 - ¡Grandes premios!"
+                  placeholder="ej: Ruleta de Navidad 2025"
                   maxLength={200}
                   disabled={loading}
                   required
                 />
-
-                <div className="flex items-center justify-between mt-2">
-                  {validationErrors.name && (
-                    <p className="text-sm text-red-600 flex items-center">
-                      <AlertCircle className="h-4 w-4 mr-1" />
-                      {validationErrors.name}
-                    </p>
-                  )}
-                  <span
-                    className={`text-xs ${
-                      (currentEditing.name?.length || 0) > 180
-                        ? "text-orange-600 font-medium"
-                        : "text-gray-500"
-                    }`}
-                  >
-                    {currentEditing.name?.length || 0}/200 caracteres
-                  </span>
-                </div>
+                {validationErrors.name && (
+                  <p className="text-xs text-red-600 mt-1 flex items-center">
+                    <AlertCircle className="h-3 w-3 mr-1" />
+                    {validationErrors.name}
+                  </p>
+                )}
+                <span className="text-xs text-gray-500 mt-1 block">
+                  {currentEditing.name?.length || 0}/200 caracteres
+                </span>
               </div>
 
               <div data-field="status">
-                <label className="block text-sm font-bold text-gray-700 mb-3">
-                  Estado de la Ruleta *
-                  <span className="text-xs font-normal text-gray-500 ml-2">
-                    (Define la visibilidad y comportamiento)
-                  </span>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Estado *
                 </label>
-                <div className="relative">
-                  <select
-                    value={currentEditing.status || "draft"}
-                    onChange={(e) =>
-                      setEditing?.((prev) => ({
-                        ...(prev || DEFAULT_EDITING),
-                        status: e.target.value,
-                      }))
-                    }
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none hover:border-gray-400 transition-all duration-200 appearance-none bg-white"
-                    disabled={loading}
-                  >
-                    {statusOptions.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-                    <svg
-                      className="h-4 w-4 text-gray-400"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </div>
-                </div>
+                <select
+                  value={currentEditing.status || "draft"}
+                  onChange={(e) =>
+                    setEditing?.((prev) => ({
+                      ...(prev || DEFAULT_EDITING),
+                      status: e.target.value,
+                    }))
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition bg-white"
+                  disabled={loading}
+                >
+                  {statusOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
                 {currentStatus && (
-                  <p className="mt-2 text-xs text-gray-600 bg-white px-3 py-2 rounded-lg border">
-                    <Info className="h-3 w-3 inline mr-1" />
+                  <p className="mt-2 text-xs text-gray-600 bg-white px-2 py-1.5 rounded border border-gray-200">
                     {currentStatus.description}
                   </p>
                 )}
               </div>
             </div>
 
-            <div className="mt-6" data-field="description">
-              <label className="block text-sm font-bold text-gray-700 mb-3">
-                Descripción de la Ruleta
-                <span className="text-xs font-normal text-gray-500 ml-2">
-                  (Los enlaces y correos se detectan automáticamente)
-                </span>
+            <div className="mt-4" data-field="description">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Descripción
               </label>
-
-              <SimpleTextEditor
+              <CKEditorWrapper
                 value={currentEditing.description || ""}
                 onChange={(v) => {
                   setEditing?.((prev) => ({ ...(prev || DEFAULT_EDITING), description: v }));
                   if (validationErrors.description)
                     setValidationErrors((p) => ({ ...p, description: null }));
                 }}
-                placeholder={`¡Bienvenidos a la Ruleta de Premios!
-
-Participa de forma segura y transparente. Para no perderte sorteos y resultados:
-
-YouTube: https://youtube.com/@TuCanal
-Instagram: https://instagram.com/TuCuenta
-Facebook: https://facebook.com/Tucuenta
-Contacto: contacto@tudominio.com
-
-¡Suscríbete y activa la campanita para recibir notificaciones!`}
+                placeholder="Describe tu ruleta, incluye enlaces y contactos..."
                 disabled={loading}
                 maxLength={5000}
                 validationError={validationErrors.description || descriptionValidationError}
                 onValidationChange={setDescriptionValidationError}
               />
-
-              <div className="mt-3 flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setEditing?.((prev) => ({
-                      ...(prev || DEFAULT_EDITING),
-                      description: getDefaultDescription(),
-                    }))
-                  }
-                  className="text-xs px-3 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
-                  disabled={loading}
-                >
-                  Usar plantilla
-                </button>
-              </div>
-
               {validationErrors.description && (
-                <div className="mt-3 p-4 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
-                  <div className="flex items-start space-x-2">
-                    <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-bold text-red-800">Error en la descripción</p>
-                      <p className="text-sm text-red-600 mt-1">{validationErrors.description}</p>
-                    </div>
-                  </div>
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700 flex items-start">
+                  <AlertCircle className="h-4 w-4 mr-1 flex-shrink-0 mt-0.5" />
+                  <span>{validationErrors.description}</span>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-6 mb-6 border border-slate-200">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h4 className="text-xl font-bold text-slate-800 mb-1">Imagen de Portada</h4>
-                <p className="text-sm text-slate-600">Imagen principal que representa tu ruleta</p>
-              </div>
-              <div className="text-xs text-slate-500 bg-white px-3 py-1 rounded-full">Opcional</div>
-            </div>
+          {/* Imagen de Portada */}
+          <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
+            <h4 className="text-base font-semibold text-gray-900 mb-4">Imagen de Portada</h4>
 
-            <div className="flex flex-col xl:flex-row items-start gap-6">
-              <div className="w-full xl:w-80 h-48 rounded-2xl overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center border-2 border-dashed border-gray-300 relative group">
+            <div className="flex flex-col lg:flex-row items-start gap-4">
+              <div className="w-full lg:w-64 h-40 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300">
                 {previewSrc ? (
-                  <>
-                    <img
-                      src={previewSrc}
-                      alt="Vista previa de portada"
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                      }}
-                    />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors duration-300 flex items-center justify-center">
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-white/90 px-3 py-2 rounded-lg text-sm font-medium text-gray-700">
-                        Vista previa
-                      </div>
-                    </div>
-                  </>
+                  <img
+                    src={previewSrc}
+                    alt="Vista previa"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                    }}
+                  />
                 ) : (
-                  <div className="text-gray-400 text-center p-6">
-                    <ImageIcon className="h-12 w-12 mx-auto mb-3 opacity-60" />
-                    <p className="text-sm font-medium mb-1">Sin imagen de portada</p>
-                    <p className="text-xs">Sube una imagen atractiva</p>
+                  <div className="text-gray-400 text-center p-4">
+                    <ImageIcon className="h-10 w-10 mx-auto mb-2 opacity-50" />
+                    <p className="text-xs">Sin imagen</p>
                   </div>
                 )}
               </div>
 
-              <div className="flex-1 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex-1 space-y-3">
+                <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
                     onClick={onPickFile}
                     disabled={loading}
-                    className="inline-flex items-center justify-center px-4 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-white text-sm font-bold hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 transition-all duration-200 shadow-md"
+                    className="inline-flex items-center px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition"
                   >
                     <Upload className="h-4 w-4 mr-2" />
                     {currentEditing.cover_image || currentEditing.cover_url ? "Cambiar" : "Subir"}
@@ -917,7 +684,7 @@ Contacto: contacto@tudominio.com
                       type="button"
                       onClick={clearCover}
                       disabled={loading}
-                      className="inline-flex items-center justify-center px-4 py-3 rounded-xl bg-gray-100 text-gray-700 text-sm font-bold hover:bg-gray-200 disabled:opacity-50 transition-all duration-200"
+                      className="inline-flex items-center px-4 py-2 rounded-lg bg-gray-200 text-gray-700 text-sm font-medium hover:bg-gray-300 disabled:opacity-50 transition"
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Quitar
@@ -925,14 +692,10 @@ Contacto: contacto@tudominio.com
                   )}
                 </div>
 
-                <div className="bg-white p-3 rounded-lg border text-xs text-gray-600">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <span className="font-medium">Formatos:</span> JPG, PNG, WebP
-                    </div>
-                    <div>
-                      <span className="font-medium">Max:</span> {MAX_MB} MB
-                    </div>
+                <div className="bg-white p-3 rounded border border-gray-200 text-xs text-gray-600">
+                  <div className="space-y-1">
+                    <div><span className="font-medium">Formatos:</span> JPG, PNG, WebP</div>
+                    <div><span className="font-medium">Tamaño máximo:</span> {MAX_MB} MB</div>
                   </div>
                 </div>
 
@@ -947,269 +710,166 @@ Contacto: contacto@tudominio.com
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-6 mb-6 border border-slate-200">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
-                  <Calendar className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <h4 className="text-xl font-bold text-slate-800 mb-1">Programación Temporal</h4>
-                  <p className="text-sm text-slate-600">
-                    Configura cuándo inicia, termina la participación y cuándo sortearás
-                  </p>
-                </div>
+          {/* Programación Temporal */}
+          <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-2">
+                <Calendar className="h-5 w-5 text-gray-600" />
+                <h4 className="text-base font-semibold text-gray-900">Programación Temporal</h4>
               </div>
-              <div className="text-xs text-slate-500 bg-white px-3 py-1 rounded-full">Todas opcionales</div>
+              <span className="text-xs text-gray-500 bg-white px-2 py-1 rounded border border-gray-200">
+                Opcionales
+              </span>
             </div>
 
-            <div className="mb-6 p-4 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg">
-              <div className="flex items-start space-x-3">
-                <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <h5 className="text-sm font-bold text-amber-800 mb-2">Importante sobre los sorteos</h5>
-                  <p className="text-sm text-amber-700">
-                    El sorteo <strong>NO es automático</strong>. Debes ejecutarlo manualmente desde el panel de administración 
-                    usando el botón "Ejecutar sorteo". La fecha programada es solo una referencia de cuándo planeas realizar el sorteo.
-                  </p>
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start space-x-2">
+                <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-amber-800">
+                  <strong>Importante:</strong> El sorteo NO es automático. Debes ejecutarlo manualmente desde el panel de administración.
                 </div>
               </div>
-            </div>
-
-            <div className="mb-6 space-y-3">
-              {!currentEditing.participation_start && !currentEditing.participation_end && (
-                <div className="p-3 bg-blue-50 border-l-4 border-blue-400 rounded-r-lg">
-                  <div className="flex items-start space-x-2">
-                    <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm text-blue-800">
-                      <strong>Opcional:</strong> Puedes configurar fechas de inicio y fin para controlar cuándo los usuarios pueden participar.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {currentEditing.participation_start && !currentEditing.participation_end && (
-                <div className="p-3 bg-orange-50 border-l-4 border-orange-400 rounded-r-lg">
-                  <div className="flex items-start space-x-2">
-                    <AlertCircle className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm text-orange-800">
-                      <strong>Incompleto:</strong> Has definido cuándo inicia la participación, pero falta definir cuándo cierra. 
-                      Define la fecha de fin para activar el cronómetro.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {!currentEditing.participation_start && currentEditing.participation_end && (
-                <div className="p-3 bg-orange-50 border-l-4 border-orange-400 rounded-r-lg">
-                  <div className="flex items-start space-x-2">
-                    <AlertCircle className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm text-orange-800">
-                      <strong>Incompleto:</strong> Has definido cuándo cierra la participación, pero falta definir cuándo inicia. 
-                      Define la fecha de inicio para activar el cronómetro.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {currentEditing.scheduled_date && (!currentEditing.participation_start || !currentEditing.participation_end) && (
-                <div className="p-3 bg-red-50 border-l-4 border-red-400 rounded-r-lg">
-                  <div className="flex items-start space-x-2">
-                    <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm text-red-800">
-                      <strong>Error:</strong> Para programar un sorteo, primero debes configurar las fechas de inicio y fin de participación.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {currentEditing.participation_start && 
-               currentEditing.participation_end && 
-               new Date(currentEditing.participation_start) < new Date(currentEditing.participation_end) && (
-                <div className="p-3 bg-green-50 border-l-4 border-green-400 rounded-r-lg">
-                  <div className="flex items-start space-x-2">
-                    <Clock className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm text-green-800">
-                      <strong>Configuración correcta:</strong> El cronómetro de participación está activo y funcionando.
-                      {currentEditing.scheduled_date && " El sorteo está programado correctamente."}
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
 
             {(currentEditing.participation_start || currentEditing.participation_end) && (
-              <div className="mb-6 p-4 bg-white rounded-xl border border-blue-200 shadow-sm">
-                <h5 className="text-sm font-bold text-blue-800 mb-3 flex items-center">
-                  <Clock className="h-4 w-4 mr-2" />
+              <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
+                <h5 className="text-xs font-semibold text-gray-700 mb-2 flex items-center">
+                  <Clock className="h-3.5 w-3.5 mr-1" />
                   Estado de participación
                 </h5>
-                <div className="space-y-3">
-                  {currentEditing.participation_end && currentEditing.participation_start && (
-                    <CountdownTimer
-                      startDate={currentEditing.participation_start}
-                      endDate={currentEditing.participation_end}
-                      className="block"
-                    />
-                  )}
-                </div>
+                {currentEditing.participation_end && currentEditing.participation_start && (
+                  <CountdownTimer
+                    startDate={currentEditing.participation_start}
+                    endDate={currentEditing.participation_end}
+                  />
+                )}
               </div>
             )}
 
             {currentEditing.scheduled_date && (
-              <div className="mb-6 p-4 bg-purple-50 rounded-xl border border-purple-200 shadow-sm">
-                <h5 className="text-sm font-bold text-purple-800 mb-3 flex items-center">
-                  <Calendar className="h-4 w-4 mr-2" />
-                  Fecha de sorteo programada
+              <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <h5 className="text-xs font-semibold text-blue-800 mb-2 flex items-center">
+                  <Calendar className="h-3.5 w-3.5 mr-1" />
+                  Fecha programada
                 </h5>
                 <ScheduledDateDisplay
                   targetDate={currentEditing.scheduled_date}
-                  label="Fecha del sorteo"
-                  className="block"
+                  label="Sorteo"
                 />
               </div>
             )}
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
               <div data-field="participation_start">
-                <label className="block text-sm font-bold text-gray-700 mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Inicio de Participación
-                  <span className="text-xs font-normal text-gray-500 ml-2">(Opcional)</span>
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Calendar className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    type="datetime-local"
-                    value={formatDateTimeLocal(currentEditing.participation_start)}
-                    onChange={(e) => {
-                      setEditing?.((prev) => ({
-                        ...(prev || DEFAULT_EDITING),
-                        participation_start: e.target.value,
-                      }));
-                      if (validationErrors.participation_start) {
-                        setValidationErrors((p) => ({ ...p, participation_start: null }));
-                      }
-                    }}
-                    className={`w-full pl-12 pr-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none hover:border-gray-400 transition-all duration-200 bg-white ${
-                      validationErrors.participation_start ? "border-red-300 bg-red-50" : "border-gray-300"
-                    }`}
-                    disabled={loading}
-                  />
-                </div>
+                <input
+                  type="datetime-local"
+                  value={formatDateTimeLocal(currentEditing.participation_start)}
+                  onChange={(e) => {
+                    setEditing?.((prev) => ({
+                      ...(prev || DEFAULT_EDITING),
+                      participation_start: e.target.value,
+                    }));
+                    if (validationErrors.participation_start) {
+                      setValidationErrors((p) => ({ ...p, participation_start: null }));
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition bg-white ${
+                    validationErrors.participation_start ? "border-red-300 bg-red-50" : "border-gray-300"
+                  }`}
+                  disabled={loading}
+                />
                 {validationErrors.participation_start && (
-                  <p className="mt-2 text-xs text-red-600 flex items-center bg-red-50 px-3 py-2 rounded-lg">
+                  <p className="mt-1 text-xs text-red-600 flex items-center">
                     <AlertCircle className="h-3 w-3 mr-1" />
                     {validationErrors.participation_start}
                   </p>
                 )}
-                <p className="mt-2 text-xs text-gray-500 bg-white px-3 py-2 rounded-lg">
-                  <Clock className="h-3 w-3 inline mr-1" />
-                  Cuándo ABRE la participación (hora local: {Intl.DateTimeFormat().resolvedOptions().timeZone})
+                <p className="mt-1 text-xs text-gray-500">
+                  Cuándo abre la participación
                 </p>
               </div>
 
               <div data-field="participation_end">
-                <label className="block text-sm font-bold text-gray-700 mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Fin de Participación
-                  <span className="text-xs font-normal text-gray-500 ml-2">(Opcional)</span>
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Calendar className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    type="datetime-local"
-                    value={formatDateTimeLocal(currentEditing.participation_end)}
-                    onChange={(e) => {
-                      setEditing?.((prev) => ({
-                        ...(prev || DEFAULT_EDITING),
-                        participation_end: e.target.value,
-                      }));
-                      if (validationErrors.participation_end) {
-                        setValidationErrors((p) => ({ ...p, participation_end: null }));
-                      }
-                    }}
-                    className={`w-full pl-12 pr-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none hover:border-gray-400 transition-all duration-200 bg-white ${
-                      validationErrors.participation_end ? "border-red-300 bg-red-50" : "border-gray-300"
-                    }`}
-                    disabled={loading}
-                  />
-                </div>
+                <input
+                  type="datetime-local"
+                  value={formatDateTimeLocal(currentEditing.participation_end)}
+                  onChange={(e) => {
+                    setEditing?.((prev) => ({
+                      ...(prev || DEFAULT_EDITING),
+                      participation_end: e.target.value,
+                    }));
+                    if (validationErrors.participation_end) {
+                      setValidationErrors((p) => ({ ...p, participation_end: null }));
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition bg-white ${
+                    validationErrors.participation_end ? "border-red-300 bg-red-50" : "border-gray-300"
+                  }`}
+                  disabled={loading}
+                />
                 {validationErrors.participation_end && (
-                  <p className="mt-2 text-xs text-red-600 flex items-center bg-red-50 px-3 py-2 rounded-lg">
+                  <p className="mt-1 text-xs text-red-600 flex items-center">
                     <AlertCircle className="h-3 w-3 mr-1" />
                     {validationErrors.participation_end}
                   </p>
                 )}
-                <p className="mt-2 text-xs text-gray-500 bg-white px-3 py-2 rounded-lg">
-                  <Clock className="h-3 w-3 inline mr-1" />
-                  Cuándo CIERRA la participación (hora local: {Intl.DateTimeFormat().resolvedOptions().timeZone})
+                <p className="mt-1 text-xs text-gray-500">
+                  Cuándo cierra la participación
                 </p>
               </div>
 
               <div data-field="scheduled_date">
-                <label className="block text-sm font-bold text-gray-700 mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Fecha del Sorteo
-                  <span className="text-xs font-normal text-gray-500 ml-2">(Opcional)</span>
                 </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Calendar className="h-5 w-5 text-gray-400" />
-                  </div>
-                  <input
-                    type="datetime-local"
-                    value={formatDateTimeLocal(currentEditing.scheduled_date)}
-                    onChange={(e) => {
-                      setEditing?.((prev) => ({
-                        ...(prev || DEFAULT_EDITING),
-                        scheduled_date: e.target.value,
-                      }));
-                      if (validationErrors.scheduled_date) {
-                        setValidationErrors((p) => ({ ...p, scheduled_date: null }));
-                      }
-                    }}
-                    className={`w-full pl-12 pr-4 py-3 border-2 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none hover:border-gray-400 transition-all duration-200 bg-white ${
-                      validationErrors.scheduled_date ? "border-red-300 bg-red-50" : "border-gray-300"
-                    }`}
-                    disabled={loading}
-                  />
-                </div>
+                <input
+                  type="datetime-local"
+                  value={formatDateTimeLocal(currentEditing.scheduled_date)}
+                  onChange={(e) => {
+                    setEditing?.((prev) => ({
+                      ...(prev || DEFAULT_EDITING),
+                      scheduled_date: e.target.value,
+                    }));
+                    if (validationErrors.scheduled_date) {
+                      setValidationErrors((p) => ({ ...p, scheduled_date: null }));
+                    }
+                  }}
+                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition bg-white ${
+                    validationErrors.scheduled_date ? "border-red-300 bg-red-50" : "border-gray-300"
+                  }`}
+                  disabled={loading}
+                />
                 {validationErrors.scheduled_date && (
-                  <p className="mt-2 text-xs text-red-600 flex items-center bg-red-50 px-3 py-2 rounded-lg">
+                  <p className="mt-1 text-xs text-red-600 flex items-center">
                     <AlertCircle className="h-3 w-3 mr-1" />
                     {validationErrors.scheduled_date}
                   </p>
                 )}
-                <p className="mt-2 text-xs text-gray-500 bg-white px-3 py-2 rounded-lg">
-                  <Calendar className="h-3 w-3 inline mr-1" />
-                  Cuándo EJECUTARÁS el sorteo - manual (hora local: {Intl.DateTimeFormat().resolvedOptions().timeZone})
+                <p className="mt-1 text-xs text-gray-500">
+                  Cuándo ejecutarás el sorteo (manual)
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="px-6 py-5 border-t-2 border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 flex items-center justify-between sticky bottom-0 backdrop-blur-sm">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center text-sm text-gray-500">
-              <Info className="h-4 w-4 mr-2" />
-              Los campos marcados con (*) son obligatorios
-            </div>
-
-            {!isFormValid() && (
-              <div className="flex items-center text-sm text-amber-600 bg-amber-50 px-3 py-1 rounded-full">
-                <AlertCircle className="h-4 w-4 mr-2" />
-                Faltan campos obligatorios
-              </div>
-            )}
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+          <div className="flex items-center text-xs text-gray-600">
+            <Info className="h-4 w-4 mr-1" />
+            Campos obligatorios (*)
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <button
               onClick={onClose}
-              className="px-6 py-3 rounded-xl bg-white text-gray-700 border-2 border-gray-300 hover:bg-gray-50 hover:border-gray-400 font-medium transition-all duration-200 shadow-md"
+              className="px-5 py-2 rounded-lg bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 font-medium transition text-sm"
               disabled={loading}
             >
               Cancelar
@@ -1218,17 +878,17 @@ Contacto: contacto@tudominio.com
             <button
               onClick={handleSave}
               disabled={loading || !isFormValid()}
-              className="inline-flex items-center px-8 py-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white font-bold hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transition-all duration-200 transform hover:-translate-y-0.5"
+              className="inline-flex items-center px-6 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
             >
               {loading ? (
                 <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-3"></div>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   <span>Guardando...</span>
                 </>
               ) : (
                 <>
-                  <Save className="h-5 w-5 mr-2" />
-                  <span>{currentEditing.id ? "Actualizar Ruleta" : "Crear Ruleta"}</span>
+                  <Save className="h-4 w-4 mr-2" />
+                  <span>{currentEditing.id ? "Actualizar" : "Crear"}</span>
                 </>
               )}
             </button>

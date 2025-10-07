@@ -3,13 +3,57 @@ export const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000/a
 export const WS_URL  = process.env.REACT_APP_WS_URL  || "ws://localhost:8000/ws";
 
 /* ================================
+   ✅ STORAGE COMPATIBLE (localStorage + Memoria)
+================================ */
+
+// Sistema de almacenamiento en memoria (fallback para Claude artifacts)
+class InMemoryStorage {
+  constructor() {
+    this.storage = new Map();
+  }
+
+  getItem(key) {
+    return this.storage.get(key) || null;
+  }
+
+  setItem(key, value) {
+    this.storage.set(key, value);
+  }
+
+  removeItem(key) {
+    this.storage.delete(key);
+  }
+
+  clear() {
+    this.storage.clear();
+  }
+}
+
+// Detectar si localStorage está disponible
+const isLocalStorageAvailable = () => {
+  try {
+    const test = '__storage_test__';
+    localStorage.setItem(test, test);
+    localStorage.removeItem(test);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+// ✅ Usar localStorage si está disponible, sino usar memoria
+const storage = isLocalStorageAvailable() ? localStorage : new InMemoryStorage();
+
+console.log('🔒 Sistema de almacenamiento:', isLocalStorageAvailable() ? 'localStorage' : 'InMemoryStorage (Claude mode)');
+
+/* ================================
    Token helpers (compatibles)
 ================================ */
 const LEGACY_KEYS = ["token", "auth_token", "authToken"];
 
 const readAnyToken = () => {
   for (const k of LEGACY_KEYS) {
-    const v = localStorage.getItem(k);
+    const v = storage.getItem(k);
     if (v) return v;
   }
   return null;
@@ -17,8 +61,11 @@ const readAnyToken = () => {
 
 const writeAllTokens = (token) => {
   for (const k of LEGACY_KEYS) {
-    if (token) localStorage.setItem(k, token);
-    else localStorage.removeItem(k);
+    if (token) {
+      storage.setItem(k, token);
+    } else {
+      storage.removeItem(k);
+    }
   }
 };
 
@@ -161,9 +208,7 @@ const safeStringify = (maybeObject) => {
 };
 
 /* ============================================================
-   NUEVO: normalizador de URLs de media (imágenes, archivos)
-   - Maneja relativas y absolutas y recorta el sufijo /api del
-     API_URL para construir el host correcto de media.
+   Normalizador de URLs de media (imágenes, archivos)
 ============================================================ */
 export const resolveMediaUrl = (maybeUrl) => {
   if (!maybeUrl) return null;
@@ -341,9 +386,7 @@ export class AuthAPI extends BaseAPI {
     });
     if (result?.success && result?.token) {
       this.setAuthToken(result.token);
-      this.authToken = result.token; // Actualizar instancia inmediatamente
-      
-      // Sincronizar con otras instancias globales
+      this.authToken = result.token;
       syncGlobalTokens(result.token);
     }
     return result;
@@ -357,8 +400,6 @@ export class AuthAPI extends BaseAPI {
     if (result?.success && result?.token) {
       this.setAuthToken(result.token);
       this.authToken = result.token;
-      
-      // Sincronizar con otras instancias globales
       syncGlobalTokens(result.token);
     }
     return result;
@@ -395,7 +436,6 @@ export class AuthAPI extends BaseAPI {
     
     return result;
   }
-  
 
   getUserInfo() { 
     return this.request(ENDPOINTS.AUTH.USER_INFO); 
@@ -630,18 +670,15 @@ export class NotificationAPI extends BaseAPI {
   getRealTimeMessages(params = {}) {
     const ep = `${NOTIFICATION_ENDPOINTS.REALTIME}${toQuery(params)}`;
     return this.request(ep);
-  } 
-/**
- * Actualiza el estado de envío de email de una notificación
- * Usado por el admin para marcar emails como enviados o con error
- */
+  }
+
   async updateEmailStatus(notificationId, statusData) {
-  const endpoint = `/notifications/${notificationId}/email-status/`;
-  return this.request(endpoint, {
-    method: "POST",
-    body: statusData
-  });
- }
+    const endpoint = `/notifications/${notificationId}/email-status/`;
+    return this.request(endpoint, {
+      method: "POST",
+      body: statusData
+    });
+  }
 
   async getUnreadNotifications(params = {}) {
     return this.getUserNotifications({ ...params, unread_only: true, include_stats: true });
@@ -655,9 +692,11 @@ export class NotificationAPI extends BaseAPI {
   }
 
   markSingleAsRead(id) { return this.markAsRead([id]); }
+  
   async getNotificationsByPriority(priority, params = {}) {
     return this.getUserNotifications({ ...params, priority });
   }
+  
   async hasUrgentNotifications() {
     try {
       const r = await this.getUserNotifications({ priority: "urgent", unread_only: true, page_size: 1 });
@@ -678,11 +717,14 @@ export class NotificationManager {
     this.lastCheck = null;
     this.cache = new Map();
   }
+  
   addEventListener(cb) { this.listeners.add(cb); return () => this.listeners.delete(cb); }
   addListener(cb)      { return this.addEventListener(cb); }
+  
   notifyListeners(event, data) {
     this.listeners.forEach((cb) => { try { cb(event, data); } catch (e) { console.error("Listener error:", e); } });
   }
+  
   async refresh({ silent = false } = {}) {
     try {
       const data = await this.api.getUserNotifications({ include_stats: true, unread_only: false, page_size: 20 });
@@ -694,11 +736,13 @@ export class NotificationManager {
       throw e;
     }
   }
+  
   startPolling(intervalMs = 30000) {
     if (this.isPolling) return;
     this.isPolling = true;
     this.pollInterval = setInterval(() => { this.refresh({ silent: true }).catch(() => {}); }, intervalMs);
   }
+  
   stopPolling() {
     if (this.pollInterval) clearInterval(this.pollInterval);
     this.isPolling = false;
@@ -913,8 +957,10 @@ export const notificationManager = new NotificationManager(notificationAPI);
 const initializeGlobalAPIs = () => {
   const token = readAnyToken();
   if (token) {
-    console.log('Token encontrado en localStorage, sincronizando APIs...');
+    console.log('✅ Token encontrado, sincronizando APIs...');
     syncGlobalTokens(token);
+  } else {
+    console.log('ℹ️ No hay token guardado');
   }
 };
 
@@ -975,12 +1021,10 @@ const APIClient = {
       config: {
         apiUrl: config.apiUrl || API_URL,
         hasToken: !!readAnyToken(),
+        storageType: isLocalStorageAvailable() ? 'localStorage' : 'InMemoryStorage'
       }
     };
   }
 };
 
-
-
-
-export default APIClient
+export default APIClient;

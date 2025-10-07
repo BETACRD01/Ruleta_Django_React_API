@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 from django.core.management.utils import get_random_secret_key
+from django.core.exceptions import ImproperlyConfigured
 
 # ============================================================================
 # CARGAR .env CON RUTA EXPLÍCITA
@@ -283,6 +284,21 @@ CKEDITOR_UPLOAD_PATH = "ckeditor_uploads/"
 CKEDITOR_IMAGE_BACKEND = "pillow"
 CKEDITOR_ALLOW_NONIMAGE_FILES = False
 
+# Restricciones de seguridad para uploads
+CKEDITOR_RESTRICT_BY_USER = True  # Solo el usuario puede ver sus uploads
+CKEDITOR_BROWSE_SHOW_DIRS = True
+CKEDITOR_RESTRICT_BY_DATE = True  # Organizar por fecha
+
+# Configuración de imágenes
+CKEDITOR_IMAGE_QUALITY = 85
+CKEDITOR_THUMBNAIL_SIZE = (300, 300)
+CKEDITOR_FORCE_JPEG_COMPRESSION = True
+CKEDITOR_IMAGE_MAX_SIZE = (1200, 1200)  # Max width, height
+
+# Formatos permitidos
+CKEDITOR_UPLOAD_SLUGIFY_FILENAME = True
+CKEDITOR_FILENAME_GENERATOR = 'utils.get_filename'  # Si tienes función custom
+
 CKEDITOR_CONFIGS = {
     'default': {
         'skin': 'moono-lisa',
@@ -299,11 +315,25 @@ CKEDITOR_CONFIGS = {
         'width': '100%',
         'removePlugins': 'stylesheetparser',
         'allowedContent': True,
-        'extraPlugins': 'uploadimage,autogrow',
-        'autoGrow_minHeight': 200,
-        'autoGrow_maxHeight': 600,
+        'extraPlugins': 'uploadimage',  # ✅ Removido 'autogrow'
         'removeButtons': '',
+        
+        # 🔒 Seguridad adicional
+        'disallowedContent': 'script; *[on*]',  # Bloquear scripts
+        'protectedSource': [],  # No permitir código protegido
+        
+        # 📸 Configuración de imágenes
+        'filebrowserImageBrowseUrl': '/ckeditor/browse/',
+        'filebrowserImageUploadUrl': '/ckeditor/upload/',
+        'image_previewText': ' ',  # Sin texto de preview
+        
+        # 🎨 Estilos personalizados (opcional)
+        'contentsCss': ['/static/css/ckeditor_custom.css'],
+        
+        # 📏 Límites
+        'removeDialogTabs': 'image:advanced;link:advanced',
     },
+    
     'roulette_editor': {
         'skin': 'moono-lisa',
         'toolbar': 'Minimal',
@@ -320,8 +350,51 @@ CKEDITOR_CONFIGS = {
         'removePlugins': 'stylesheetparser',
         'allowedContent': True,
         'extraPlugins': 'uploadimage',
+        
+        # 🔒 Seguridad
+        'disallowedContent': 'script; *[on*]',
+        
+        # 📸 Imágenes
+        'filebrowserImageBrowseUrl': '/ckeditor/browse/',
+        'filebrowserImageUploadUrl': '/ckeditor/upload/',
+        
+        # 📏 Más restrictivo que default
+        'removeDialogTabs': 'image:advanced;link:advanced;link:target',
+    },
+    
+    # 🆕 Configuración mínima (sin imágenes)
+    'simple': {
+        'toolbar': [
+            ['Bold', 'Italic'],
+            ['NumberedList', 'BulletedList'],
+            ['RemoveFormat']
+        ],
+        'height': 150,
+        'width': '100%',
+        'removePlugins': 'stylesheetparser,image,uploadimage',
+        'allowedContent': True,
     }
 }
+
+if 'ckeditor_uploader' in INSTALLED_APPS:
+    # Validar que Pillow esté instalado
+    try:
+        import PIL
+    except ImportError:
+        raise ImproperlyConfigured(
+            "CKEditor requiere Pillow. Instala con: pip install Pillow"
+        )
+    
+    # Validación adicional del directorio de uploads
+    import os
+    upload_path = os.path.join(MEDIA_ROOT, CKEDITOR_UPLOAD_PATH)
+    if not os.path.exists(upload_path):
+        try:
+            os.makedirs(upload_path, exist_ok=True)
+            print(f"✅ Directorio CKEditor creado: {upload_path}")
+        except Exception as e:
+            print(f"⚠️  No se pudo crear directorio CKEditor: {e}")
+
 
 # ============================================================================
 # DJANGO REST FRAMEWORK

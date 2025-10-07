@@ -74,7 +74,7 @@ class RouletteNotificationService:
                 channel_name="email",
                 recipients=list(admin_emails),
                 subject=subject,
-                template="roulette_created_admin",  # ← alineado con la plantilla de admins
+                template="roulette_created_admin",
                 context=context,
                 priority=priority,
                 fallback_channels=[]
@@ -226,6 +226,8 @@ class RouletteNotificationService:
             frontend_base = getattr(settings, "FRONTEND_BASE_URL", "http://localhost:3000")
             brand_name = getattr(settings, "BRAND_NAME", "HAYU24")
 
+            # ✅ CORREGIDO: Agregada participation_start
+            participation_start = roulette.participation_start.strftime("%d/%m/%Y %H:%M") if getattr(roulette, "participation_start", None) else None
             participation_end = roulette.participation_end.strftime("%d/%m/%Y %H:%M") if getattr(roulette, "participation_end", None) else None
             scheduled_date = roulette.scheduled_date.strftime("%d/%m/%Y %H:%M") if getattr(roulette, "scheduled_date", None) else None
 
@@ -233,6 +235,7 @@ class RouletteNotificationService:
                 "roulette_id": roulette.id,
                 "roulette_name": roulette.name,
                 "roulette_description": getattr(roulette, "description", None) or "¡Nueva oportunidad de ganar premios increíbles!",
+                "participation_start": participation_start,  # ✅ AGREGADO
                 "participation_end": participation_end,
                 "scheduled_date": scheduled_date,
                 "roulette_url": f"{frontend_base}/ruletas/{roulette.id}/participar",
@@ -248,7 +251,7 @@ class RouletteNotificationService:
                 channel_name="email",
                 recipients=user_emails,
                 subject=subject,
-                template="roulette_created",   # ← plantilla para usuarios
+                template="roulette_created",
                 context=context,
                 priority=priority,
                 fallback_channels=[]

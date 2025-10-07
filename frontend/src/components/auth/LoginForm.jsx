@@ -65,8 +65,10 @@ const LoginForm = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [formLoading, setFormLoading] = useState(false);
 
-  const loading = authLoading || googleLoading;
+  // Solo deshabilitar campos si hay cualquier tipo de carga
+  const isAnyLoading = authLoading || googleLoading || formLoading;
 
   // ---------------------------------------------------------------------------
   // MANEJADORES DE FORMULARIO
@@ -102,6 +104,7 @@ const LoginForm = () => {
     }
 
     try {
+      setFormLoading(true);
       const result = await login({
         email: formData.email,
         password: formData.password,
@@ -119,6 +122,8 @@ const LoginForm = () => {
       const msg = err?.message || "Error al iniciar sesión";
       setError(msg);
       handleAuthError?.(err, "inicio de sesión");
+    } finally {
+      setFormLoading(false);
     }
   };
 
@@ -255,7 +260,7 @@ const LoginForm = () => {
             onChange={handleInputChange}
             placeholder="usuario@example.com"
             className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#0b56a7] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-            disabled={loading}
+            disabled={isAnyLoading}
             required
             autoComplete="email"
           />
@@ -274,7 +279,7 @@ const LoginForm = () => {
               onChange={handleInputChange}
               placeholder="••••••••••"
               className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#0b56a7] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={loading}
+              disabled={isAnyLoading}
               required
               autoComplete="current-password"
             />
@@ -283,7 +288,7 @@ const LoginForm = () => {
               onClick={() => setShowPassword(v => !v)}
               className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-[#0b56a7] focus:outline-none transition-colors"
               aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-              disabled={loading}
+              disabled={isAnyLoading}
               tabIndex={-1}
             >
               {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -301,7 +306,7 @@ const LoginForm = () => {
               onChange={handleInputChange}
               className="w-4 h-4 border-2 border-gray-300 rounded focus:ring-2"
               style={{ "--tw-ring-color": "#0b56a7", accentColor: "#0b56a7" }}
-              disabled={loading}
+              disabled={isAnyLoading}
             />
             <span className="ml-2 text-sm text-gray-600">Recordarme</span>
           </label>
@@ -309,7 +314,7 @@ const LoginForm = () => {
             type="button"
             className="text-sm font-medium text-[#389fae] hover:text-[#2d7a85] disabled:opacity-50 transition-colors"
             onClick={() => setCurrentView(VIEWS.RESET)}
-            disabled={loading}
+            disabled={isAnyLoading}
           >
             ¿Olvidaste tu contraseña?
           </button>
@@ -318,10 +323,10 @@ const LoginForm = () => {
         {/* BOTÓN SUBMIT */}
         <button
           type="submit"
-          disabled={loading || !formData.email || !formData.password}
+          disabled={formLoading || !formData.email || !formData.password}
           className="w-full text-white font-bold py-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl disabled:cursor-not-allowed disabled:bg-gray-400 transform hover:scale-[1.02] active:scale-[0.98] bg-[#0b56a7] hover:bg-[#094a91]"
         >
-          {authLoading ? "Iniciando sesión..." : "Iniciar Sesión"}
+          {formLoading ? "Iniciando sesión..." : "Iniciar Sesión"}
         </button>
 
         {/* DIVISOR */}
@@ -338,7 +343,7 @@ const LoginForm = () => {
         <GoogleLoginButton
           onSuccess={handleGoogleSuccess}
           onError={handleGoogleError}
-          loading={loading}
+          loading={googleLoading}
         />
 
         {/* LINK A REGISTRO */}
@@ -348,7 +353,7 @@ const LoginForm = () => {
             type="button"
             onClick={() => setCurrentView(VIEWS.REGISTER)}
             className="font-semibold text-[#389fae] hover:text-[#2d7a85] disabled:opacity-50 transition-colors"
-            disabled={loading}
+            disabled={isAnyLoading}
           >
             Regístrate gratis
           </button>

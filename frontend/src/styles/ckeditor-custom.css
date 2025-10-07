@@ -1,0 +1,144 @@
+/* Estilos para contenido HTML de CKEditor */
+.prose {
+  color: #374151;
+  line-height: 1.6;
+}
+
+.prose p {
+  margin-bottom: 0.75em;
+}
+
+.prose p:last-child {
+  margin-bottom: 0;
+}
+
+.prose strong {
+  font-weight: 600;
+  color: #111827;
+}
+
+.prose em {
+  font-style: italic;
+}
+
+.prose u {
+  text-decoration: underline;
+}
+
+.prose a {
+  color: #2563eb;
+  text-decoration: underline;
+  transition: color 0.2s;
+}
+
+.prose a:hover {
+  color: #1d4ed8;
+  text-decoration: none;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-weight: 600;
+  margin-top: 0.75em;
+  margin-bottom: 0.5em;
+  color: #111827;
+}
+
+.prose h1 { font-size: 1.25em; }
+.prose h2 { font-size: 1.15em; }
+.prose h3 { font-size: 1.05em; }
+.prose h4 { font-size: 1em; }
+
+.prose ul, .prose ol {
+  margin-left: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+.prose ul { list-style-type: disc; }
+.prose ol { list-style-type: decimal; }
+
+.prose li {
+  margin-bottom: 0.25em;
+}
+
+.prose blockquote {
+  border-left: 3px solid #e5e7eb;
+  padding-left: 0.75em;
+  margin: 0.75em 0;
+  font-style: italic;
+  color: #6b7280;
+}
+
+/* Truncar con line-clamp - CORREGIDO */
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3; /* ✅ Propiedad estándar agregada */
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Estilos para tablas */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 0.9em;
+}
+
+.prose th, .prose td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5em;
+  text-align: left;
+}
+
+.prose th {
+  background-color: #f9fafb;
+  font-weight: 600;
+}
+
+.prose code {
+  background-color: #f3f4f6;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25em;
+  font-family: 'Courier New', monospace;
+  font-size: 0.9em;
+}
+
+.prose pre {
+  background-color: #1f2937;
+  color: #f9fafb;
+  padding: 1em;
+  border-radius: 0.5em;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.prose pre code {
+  background-color: transparent;
+  padding: 0;
+  color: inherit;
+}
+
+.prose hr {
+  border: none;
+  border-top: 2px solid #e5e7eb;
+  margin: 1.5em 0;
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5em;
+  margin: 1em 0;
+}
+
+/* Estilos específicos para el editor CKEditor */
+.ckeditor-wrapper .ck-editor__editable {
+  min-height: 200px;
+  max-height: 500px;
+}
+
+.ckeditor-wrapper .ck-editor__editable:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}

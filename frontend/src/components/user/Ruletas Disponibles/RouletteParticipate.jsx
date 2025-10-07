@@ -14,6 +14,7 @@ import {
   formatters,
   validators,
 } from '../../../config/api';
+import '../../../styles/ckeditor-custom.css';
 
 /* =========================
    Helpers
@@ -93,54 +94,6 @@ const useCountUp = (target = 0, duration = 800) => {
 };
 
 /* =========================
-   Tema por imagen
-========================= */
-const useImageTheme = (imageUrl) => {
-  const hasImage = Boolean(imageUrl);
-  const overlayCls = hasImage ? 'bg-black/70 md:bg-black/65' : 'bg-transparent';
-  const text = {
-    title: hasImage ? 'text-white' : 'text-gray-900',
-    body: hasImage ? 'text-white/95' : 'text-gray-700',
-    link: hasImage
-      ? 'text-yellow-300 hover:text-yellow-200 underline decoration-yellow-300/90 decoration-2 underline-offset-2'
-      : 'text-blue-700 hover:text-blue-900 underline decoration-blue-700/90 decoration-2 underline-offset-2',
-  };
-  return { overlayCls, text };
-};
-
-/* =========================
-   Enlaces dentro de texto
-========================= */
-const formatTextWithLinks = (text, theme = { link: 'text-blue-700 hover:text-blue-900 underline', mail: null, tel: null }) => {
-  if (!text) return null;
-  const urlClass = theme.link;
-  const mailClass = theme.mail || theme.link.replace(/blue/g, 'green');
-  const telClass = theme.tel || theme.link.replace(/blue/g, 'purple');
-
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  const emailRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
-  const phoneRegex = /(\+?[0-9]{1,4}[-.\s]?(\([0-9]{1,3}\))?[-.\s]?[0-9]{3,4}[-.\s]?[0-9]{3,4})/g;
-
-  let s = text;
-  s = s.replace(urlRegex, (url) =>
-    `<a href="${url}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 ${urlClass}">
-      <span>${url}</span>
-    </a>`
-  );
-  s = s.replace(emailRegex, (email) =>
-    `<a href="mailto:${email}" class="inline-flex items-center gap-1 ${mailClass}">
-      <span>${email}</span>
-    </a>`
-  );
-  s = s.replace(phoneRegex, (phone) =>
-    `<a href="tel:${phone.replace(/[^\d+]/g, '')}" class="inline-flex items-center gap-1 ${telClass}">
-      <span>${phone}</span>
-    </a>`
-  );
-  return s.replace(/\n/g, '<br/>');
-};
-
-/* =========================
    LIGHTBOX de imagen
 ========================= */
 const ImageLightbox = ({ src, alt, onClose }) => {
@@ -180,7 +133,6 @@ const PrizeModal = ({ open, onClose, prize }) => {
   if (!open || !prize) return null;
   const name = prize.name || prize.title || 'Premio';
   const description = prize.description || prize.desc || prize.details || '';
-  const formatted = description ? formatTextWithLinks(description, { link: 'text-blue-700 hover:text-blue-900 underline decoration-2 underline-offset-2' }) : null;
 
   return (
     <>
@@ -222,9 +174,11 @@ const PrizeModal = ({ open, onClose, prize }) => {
                 <h3 className="text-xl font-bold text-gray-900">{name}</h3>
               </div>
 
-              {formatted ? (
-                <div className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
-                     dangerouslySetInnerHTML={{ __html: formatted }} />
+              {description ? (
+                <div 
+                  className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
+                  dangerouslySetInnerHTML={{ __html: description }}
+                />
               ) : (
                 <p className="text-gray-600">Sin descripción</p>
               )}
@@ -371,7 +325,6 @@ const CompactPrizesSection = ({ prizes = [], onOpenPrize }) => {
             const prob = p.probability ?? p.chance ?? p.weight;
             const img = imgOf(p);
             const badge = posBadge(p, i);
-            const formatted = desc ? formatTextWithLinks(desc, { link: 'text-[#0b56a7] hover:text-[#207ba8] underline decoration-2 underline-offset-2' }) : null;
 
             const Icon = badge.icon;
 
@@ -405,8 +358,8 @@ const CompactPrizesSection = ({ prizes = [], onOpenPrize }) => {
 
                   <div className="flex-1 min-w-0">
                     <h4 className="font-semibold text-gray-900 text-sm truncate mb-1">{name}</h4>
-                    {formatted && (
-                      <div className="text-xs text-gray-600 line-clamp-2" dangerouslySetInnerHTML={{ __html: formatted }} />
+                    {desc && (
+                      <div className="text-xs text-gray-600 line-clamp-2 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: desc }} />
                     )}
 
                     <div className="mt-2 flex items-center gap-3 text-xs text-gray-500">
@@ -429,55 +382,77 @@ const CompactPrizesSection = ({ prizes = [], onOpenPrize }) => {
 };
 
 /* =========================
-   Hero
+   Hero ACTUALIZADO - Imagen grande sin overlay
 ========================= */
 const RouletteHeroSection = ({ roulette }) => {
-  const { overlayCls, text } = useImageTheme(roulette?.image_url);
   const [expanded, setExpanded] = useState(false);
-  const linksTheme = { link: text.link };
-  const formatted = roulette?.description ? formatTextWithLinks(roulette.description, linksTheme) : null;
+  const [showImageModal, setShowImageModal] = useState(false);
 
   return (
-    <div className="relative bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-      {roulette?.image_url && (
-        <div className="absolute inset-0">
-          <img src={roulette.image_url} alt={roulette?.name || 'Ruleta'} className="w-full h-full object-cover" />
-          <div className={`absolute inset-0 ${overlayCls}`} />
-        </div>
-      )}
+    <>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        {/* Imagen más compacta */}
+        {roulette?.image_url && (
+          <button
+            type="button"
+            onClick={() => setShowImageModal(true)}
+            className="w-full h-48 md:h-56 lg:h-64 relative group overflow-hidden"
+            title="Clic para ampliar"
+          >
+            <img 
+              src={roulette.image_url} 
+              alt={roulette?.name || 'Ruleta'} 
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" 
+            />
+            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition" />
+            <div className="absolute bottom-3 right-3 text-xs px-2 py-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 transition">
+              Clic para ampliar
+            </div>
+          </button>
+        )}
 
-      <div className="relative z-10 p-4 sm:p-6">
-        <div className="mx-auto w-full max-w-2xl">
-          <div className={roulette?.image_url ? 'bg-black/35 backdrop-blur-sm rounded-xl p-4 sm:p-5' : ''}>
-            <h1 className={`text-xl font-bold mb-3 ${text.title}`} style={{ textShadow: roulette?.image_url ? '0 1px 2px rgba(0,0,0,.55)' : 'none' }}>
-              {roulette?.name || roulette?.title || 'Ruleta de Premios'}
-            </h1>
+        {/* Contenido con fondo blanco */}
+        <div className="p-5 sm:p-6">
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
+            {roulette?.name || roulette?.title || 'Ruleta de Premios'}
+          </h1>
 
-            {formatted && (
-              <div className="mb-1">
-                <div
-                  className={`${text.body} text-[15px] leading-relaxed ${expanded ? '' : 'line-clamp-[14]'}`}
-                  style={{ textShadow: roulette?.image_url ? '0 1px 2px rgba(0,0,0,.35)' : 'none' }}
-                  dangerouslySetInnerHTML={{ __html: formatted }}
-                />
+          {roulette?.description && (
+            <div className="mb-4">
+              <div
+                className={`prose prose-sm max-w-none text-gray-700 leading-relaxed ${
+                  expanded ? '' : 'line-clamp-6'
+                }`}
+                dangerouslySetInnerHTML={{ __html: roulette.description }}
+              />
+              {roulette.description.length > 300 && (
                 <button
                   type="button"
-                  className={`mt-2 text-sm font-semibold ${text.link}`}
+                  className="mt-3 text-sm font-semibold text-blue-600 hover:text-blue-800 underline"
                   onClick={() => setExpanded((v) => !v)}
                 >
                   {expanded ? 'Ver menos' : 'Ver más'}
                 </button>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
-    </div>
+
+      {/* Lightbox para imagen */}
+      {showImageModal && (
+        <ImageLightbox
+          src={roulette?.image_url}
+          alt={roulette?.name || 'Ruleta'}
+          onClose={() => setShowImageModal(false)}
+        />
+      )}
+    </>
   );
 };
 
 /* =========================
-   Formulario ACTUALIZADO
+   Formulario
 ========================= */
 const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
   const [file, setFile] = useState(null);
@@ -670,7 +645,7 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-[#0b56a7]">{file.name}</p>
-                    <p className="text-xs text-[#207ba8]">Tamaño: {formatters.fileSize(file.size)}</p>
+                    <p className="text-xs text-[#207ba8]">Tamaño: {formatters?.fileSize ? formatters.fileSize(file.size) : `${(file.size / 1024).toFixed(2)} KB`}</p>
                   </div>
                 </div>
               </div>
@@ -722,7 +697,7 @@ const getMotivationalMessage = (participationEnd) => {
   
   // Participación cerrada
   if (remainingMinutes <= 0) {
-    return null; // No mostrar nada si está cerrado
+    return null;
   }
   
   // Menos de 5 minutos - URGENCIA MÁXIMA
@@ -896,6 +871,7 @@ const getMotivationalMessage = (participationEnd) => {
     textSize: "text-xs font-medium"
   };
 };
+
 /* =========================
    Página principal
 ========================= */

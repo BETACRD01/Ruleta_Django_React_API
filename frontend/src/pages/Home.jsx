@@ -1,11 +1,10 @@
-// src/pages/Home.jsx – Home rediseñado con identidad corporativa
+// src/pages/Home.jsx - Con estadísticas reales de la API
 import React from "react";
 import { Shield, Bell, Sparkles, Award, Trophy, Activity, Users, Gift, Clock, Star, TrendingUp, Zap, AlertCircle, X } from "lucide-react";
 import { publicAPI } from "../config/publicApi";
 import { useAuth } from "../contexts/AuthContext";
 import RouletteCard from "../components/public/RouletteCard";
 
-/* Colores Corporativos Oficiales */
 const BRAND = {
   azul: "#0b56a7",
   azulOscuro: "#003049",
@@ -70,6 +69,7 @@ function WinnersAndActivityCard() {
 
         if (isCancelled) return;
 
+        // Procesar métricas
         if (metricsResult.status === "fulfilled") {
           const m = metricsResult.value;
           setMetrics({
@@ -81,6 +81,7 @@ function WinnersAndActivityCard() {
           setServerTime(m.server_time);
         }
 
+        // Procesar ganadores
         if (winnersResult.status === "fulfilled") {
           const data = winnersResult.value;
           setWinners(
@@ -99,6 +100,7 @@ function WinnersAndActivityCard() {
           setWinners([]);
         }
 
+        // Procesar ruletas activas
         if (roulettesResult.status === "fulfilled") {
           const data = roulettesResult.value;
           const actives = Array.isArray(data.results)
@@ -126,7 +128,6 @@ function WinnersAndActivityCard() {
     return () => { isCancelled = true; };
   }, [token]);
 
-  // Auto-hide notification after 5 seconds
   React.useEffect(() => {
     if (showAuthNotice) {
       const timer = setTimeout(() => {
@@ -141,15 +142,12 @@ function WinnersAndActivityCard() {
       setShowAuthNotice(true);
       return;
     }
-    
-    // Si está autenticado, redirigir o hacer lo que necesites
     console.log("Usuario autenticado, accediendo a:", roulette);
-    // window.location.href = `/roulette/${roulette.id}`;
+    // Aquí puedes agregar navegación: window.location.href = `/roulette/${roulette.id}`;
   };
 
   return (
     <>
-      {/* Notificación flotante de autenticación - z-index y posición ajustados */}
       {showAuthNotice && (
         <div className="fixed top-20 sm:top-24 right-4 z-50 animate-slide-in max-w-[calc(100vw-2rem)] sm:max-w-sm">
           <div className="bg-gradient-to-r from-[#0b56a7] to-[#003049] text-white rounded-xl shadow-2xl border-2 border-white/20 p-4">
@@ -173,7 +171,6 @@ function WinnersAndActivityCard() {
       )}
 
       <div className="bg-white rounded-3xl shadow-2xl border border-gray-100 overflow-hidden">
-        {/* Header con gradiente corporativo */}
         <div className="bg-gradient-to-r from-[#0b56a7] to-[#003049] p-4 sm:p-6 lg:p-8">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3 sm:gap-4">
@@ -191,7 +188,7 @@ function WinnersAndActivityCard() {
             </span>
           </div>
 
-          {/* KPIs en el header */}
+          {/* KPIs desde la API */}
           <div className="grid grid-cols-2 gap-3 sm:gap-4 mt-4 sm:mt-6">
             {loading ? (
               <>
@@ -208,18 +205,17 @@ function WinnersAndActivityCard() {
               <>
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4 border border-white/20">
                   <p className="text-[10px] sm:text-xs font-semibold text-blue-100 uppercase tracking-wider mb-1">Ruletas Activas</p>
-                  <p className="text-2xl sm:text-3xl font-black text-white">{metrics.active_roulettes || 0}</p>
+                  <p className="text-2xl sm:text-3xl font-black text-white">{metrics.active_roulettes}</p>
                 </div>
                 <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 sm:p-4 border border-white/20">
                   <p className="text-[10px] sm:text-xs font-semibold text-blue-100 uppercase tracking-wider mb-1">Total Ganadores</p>
-                  <p className="text-2xl sm:text-3xl font-black text-white">{metrics.winners_total || 0}</p>
+                  <p className="text-2xl sm:text-3xl font-black text-white">{metrics.winners_total}</p>
                 </div>
               </>
             )}
           </div>
         </div>
 
-        {/* Tabs mejorados */}
         <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6">
           <div className="inline-flex bg-gray-100 rounded-xl p-1 w-full sm:w-auto overflow-x-auto">
             <button
@@ -245,7 +241,6 @@ function WinnersAndActivityCard() {
           </div>
         </div>
 
-        {/* Contenido */}
         <div className="p-4 sm:p-6 lg:p-8">
           {error && (
             <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4 sm:p-6 mb-4 sm:mb-6">
@@ -286,8 +281,8 @@ function WinnersAndActivityCard() {
                   <p className="text-sm sm:text-base text-gray-600">Vuelve pronto para participar en nuevos sorteos</p>
                 </div>
               ) : (
-                <div className="space-y-4 sm:space-y-6">
-                  {roulettes.slice(0, 3).map((roulette) => (
+                <div className="grid gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
+                  {roulettes.map((roulette) => (
                     <div
                       key={roulette.id}
                       className="transform hover:scale-[1.02] transition-all duration-300"
@@ -299,13 +294,6 @@ function WinnersAndActivityCard() {
                       />
                     </div>
                   ))}
-                  {roulettes.length > 3 && (
-                    <div className="text-center py-3 sm:py-4 bg-blue-50 rounded-xl">
-                      <p className="text-xs sm:text-sm font-semibold text-[#0b56a7]">
-                        ... y {roulettes.length - 3} ruletas más disponibles
-                      </p>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -329,7 +317,7 @@ function WinnersAndActivityCard() {
                   <p className="text-sm sm:text-base text-gray-600">Los ganadores recientes aparecerán aquí</p>
                 </div>
               ) : (
-                winners.slice(0, 5).map((winner, idx) => (
+                winners.map((winner, idx) => (
                   <div
                     key={winner.id || `winner-${idx}`}
                     className="bg-gradient-to-r from-white to-yellow-50 rounded-xl p-4 sm:p-6 border border-yellow-200 shadow-md hover:shadow-xl transition-all"
@@ -376,7 +364,7 @@ function WinnersAndActivityCard() {
   );
 }
 
-function InfoSidebar() {
+function InfoSidebar({ metrics }) {
   return (
     <div className="space-y-4 sm:space-y-6">
       {/* Cómo Funciona */}
@@ -408,7 +396,7 @@ function InfoSidebar() {
         </div>
       </div>
 
-      {/* Estadísticas */}
+      {/* Estadísticas dinámicas desde la API */}
       <div className="bg-white rounded-2xl shadow-xl border border-gray-100 p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-4 sm:mb-6">
           <div className="bg-gradient-to-br from-[#0b56a7] to-[#003049] rounded-xl p-2">
@@ -417,9 +405,24 @@ function InfoSidebar() {
           <h3 className="text-lg sm:text-xl font-black text-gray-900">Nuestra Comunidad</h3>
         </div>
         <div className="space-y-3 sm:space-y-4">
-          <StatCard icon={Users} label="Usuarios Activos" value="15K+" color={BRAND.azul} />
-          <StatCard icon={Trophy} label="Sorteos Completados" value="2.8K" color={BRAND.celeste} />
-          <StatCard icon={Gift} label="Premios Entregados" value="$125K" color={BRAND.turquesa} />
+          <StatCard 
+            icon={Users} 
+            label="Participantes Totales" 
+            value={metrics.participants_total > 0 ? `${(metrics.participants_total / 1000).toFixed(1)}K` : "0"} 
+            color={BRAND.azul} 
+          />
+          <StatCard 
+            icon={Trophy} 
+            label="Sorteos Realizados" 
+            value={metrics.roulettes_total || 0} 
+            color={BRAND.celeste} 
+          />
+          <StatCard 
+            icon={Gift} 
+            label="Ganadores Felices" 
+            value={metrics.winners_total || 0} 
+            color={BRAND.turquesa} 
+          />
         </div>
       </div>
 
@@ -435,7 +438,7 @@ function InfoSidebar() {
           {[
             { icon: Clock, text: "Sorteos automáticos programados" },
             { icon: Bell, text: "Notificaciones push en tiempo real" },
-            { icon: Award, text: "Sistema de recompensas" },
+            { icon: Award, text: "Sistema de recompensas por participación" },
           ].map((item, i) => (
             <div key={i} className="flex items-center gap-3 text-white/90">
               <item.icon className="w-4 h-4 sm:w-5 sm:h-5" />
@@ -449,6 +452,29 @@ function InfoSidebar() {
 }
 
 export default function Home() {
+  const [metrics, setMetrics] = React.useState({
+    roulettes_total: 0,
+    active_roulettes: 0,
+    winners_total: 0,
+    participants_total: 0
+  });
+
+  // Cargar métricas para el sidebar
+  React.useEffect(() => {
+    publicAPI.getPublicMetrics()
+      .then(m => {
+        setMetrics({
+          roulettes_total: m.roulettes_total || 0,
+          active_roulettes: m.active_roulettes || 0,
+          winners_total: m.winners_total || 0,
+          participants_total: m.participants_total || 0,
+        });
+      })
+      .catch(() => {
+        // Si falla, mantener valores en 0
+      });
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-gray-100">
       {/* Animación para la notificación */}
@@ -468,7 +494,7 @@ export default function Home() {
         }
       `}</style>
 
-      {/* Elementos decorativos sutiles */}
+      {/* Elementos decorativos */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none opacity-30">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-[#0b56a7] rounded-full blur-3xl" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-[#4dc9b1] rounded-full blur-3xl" />
@@ -529,7 +555,7 @@ export default function Home() {
           {/* Sidebar */}
           <div className="lg:col-span-1">
             <div className="lg:sticky lg:top-8">
-              <InfoSidebar />
+              <InfoSidebar metrics={metrics} />
             </div>
           </div>
         </div>

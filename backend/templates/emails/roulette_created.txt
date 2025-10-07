@@ -24,8 +24,58 @@ Nombre: {{ roulette_name }}
 Descripción:
 {{ roulette_description }}
 
+{% now "U" as current_timestamp %}
+{% if participation_start %}
+  {% with participation_start|date:"U" as start_ts %}
+    {% if current_timestamp < start_ts %}
+
+⏳ ESTADO: PRÓXIMAMENTE
+La participación aún no ha iniciado.
+    {% endif %}
+  {% endwith %}
+{% endif %}
+
+{% if participation_start and participation_end %}
+  {% with participation_start|date:"U" as start_ts %}
+  {% with participation_end|date:"U" as end_ts %}
+    {% if current_timestamp >= start_ts and current_timestamp < end_ts %}
+      {% with end_ts|add:"-86400" as one_day_before %}
+        {% if current_timestamp >= one_day_before %}
+
+⚡ ESTADO: ¡ÚLTIMAS HORAS!
+La participación cierra pronto. ¡No te quedes fuera!
+        {% else %}
+
+✅ ESTADO: PARTICIPACIÓN ABIERTA
+¡Participa ahora y asegura tu oportunidad!
+        {% endif %}
+      {% endwith %}
+    {% elif current_timestamp >= end_ts %}
+
+🔒 ESTADO: PARTICIPACIÓN CERRADA
+La participación ha finalizado.
+    {% endif %}
+  {% endwith %}
+  {% endwith %}
+{% elif scheduled_date %}
+  {% with scheduled_date|date:"U" as scheduled_ts %}
+    {% if current_timestamp < scheduled_ts %}
+
+📅 ESTADO: SORTEO PROGRAMADO
+Pendiente de realizar el sorteo.
+    {% else %}
+
+🎯 ESTADO: SORTEO REALIZADO
+El sorteo ya se ha completado.
+    {% endif %}
+  {% endwith %}
+{% endif %}
+
+{% if participation_start %}
+📅 Inicio de participación: {{ participation_start }}
+{% endif %}
 {% if participation_end %}
-📅 Participación hasta: {{ participation_end }}
+📅 Fin de participación: {{ participation_end }}
 {% endif %}
 {% if scheduled_date %}
 🎯 Sorteo programado: {{ scheduled_date }}
@@ -35,8 +85,22 @@ Descripción:
 🎲 PARTICIPAR AHORA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+{% if participation_start and participation_end %}
+  {% with participation_start|date:"U" as start_ts %}
+  {% with participation_end|date:"U" as end_ts %}
+    {% if current_timestamp >= start_ts and current_timestamp < end_ts %}
+Accede a la ruleta y participa ahora:
+{{ roulette_url }}
+    {% else %}
+Ver detalles de la ruleta:
+{{ roulette_url }}
+    {% endif %}
+  {% endwith %}
+  {% endwith %}
+{% else %}
 Accede a la ruleta aquí:
 {{ roulette_url }}
+{% endif %}
 
 O visita todas las ruletas disponibles:
 {{ all_roulettes_url }}
@@ -45,8 +109,24 @@ O visita todas las ruletas disponibles:
 💡 CONSEJO IMPORTANTE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+{% if participation_start and participation_end %}
+  {% with participation_start|date:"U" as start_ts %}
+  {% with participation_end|date:"U" as end_ts %}
+    {% if current_timestamp >= start_ts and current_timestamp < end_ts %}
+¡No esperes demasiado! Las plazas son limitadas y los mejores premios 
+se agotan rápido. Participa ahora mientras la ruleta está activa.
+    {% elif current_timestamp < start_ts %}
+Marca tu calendario y prepárate para participar cuando inicie la ruleta.
+¡Los primeros en participar tienen ventaja!
+    {% else %}
+Mantente atento a nuevas ruletas y oportunidades de ganar premios increíbles.
+    {% endif %}
+  {% endwith %}
+  {% endwith %}
+{% else %}
 ¡No esperes demasiado! Las plazas son limitadas y los mejores premios 
 se agotan rápido.
+{% endif %}
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

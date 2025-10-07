@@ -8,9 +8,6 @@ import { AuthAPI } from "../../config/api";
 import { validatePhone } from "./utils/phoneValidation";
 import logo from "../../assets/HAYU24_original.png";
 
-// Importar el botón de Google
-import GoogleLoginButton from "./GoogleLoginButton";
-
 const authAPI = new AuthAPI();
 
 // ============================================================================
@@ -25,19 +22,6 @@ const INITIAL_FORM_STATE = {
   lastName: "",
   phone: "",
   accept_terms: false,
-};
-
-// ============================================================================
-// UTILIDADES DE ALMACENAMIENTO
-// ============================================================================
-const TokenStorage = {
-  save: (tokens, user) => {
-    const { access, refresh } = tokens;
-    const tokenKeys = ['token', 'auth_token', 'authToken', 'access_token'];
-    tokenKeys.forEach(key => localStorage.setItem(key, access));
-    localStorage.setItem('refresh_token', refresh);
-    localStorage.setItem('user', JSON.stringify(user));
-  }
 };
 
 // ============================================================================
@@ -58,12 +42,9 @@ const RegisterForm = ({ onBackToLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [suggestedPhone, setSuggestedPhone] = useState("");
-
-  const isLoading = loading || googleLoading;
 
   // ---------------------------------------------------------------------------
   // NAVEGACIÓN
@@ -197,78 +178,10 @@ const RegisterForm = ({ onBackToLogin }) => {
   };
 
   // ---------------------------------------------------------------------------
-  // REGISTRO CON GOOGLE
-  // ---------------------------------------------------------------------------
-  const handleGoogleSuccess = async (accessToken) => {
-    setGoogleLoading(true);
-    setError("");
-
-    try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/auth/google/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ access_token: accessToken }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || `Error del servidor: ${response.status}`);
-      }
-
-      if (data.success && data.tokens?.access) {
-        // Guardar tokens
-        TokenStorage.save(data.tokens, data.user);
-
-        // Actualizar contexto
-        try {
-          await ctxLogin?.({
-            token: data.tokens.access,
-            user: data.user,
-            skipApiCall: true
-          });
-        } catch (contextError) {
-          console.warn("Contexto no actualizado, pero tokens guardados:", contextError);
-        }
-
-        // Mostrar éxito
-        const userName = data.user?.first_name || data.user?.email?.split('@')[0] || 'Usuario';
-        handleRegisterSuccess?.({ 
-          user: data.user,
-          message: `¡Bienvenido ${userName}! Tu cuenta ha sido creada exitosamente.`
-        });
-
-        // Redirigir
-        setTimeout(() => {
-          window.location.href = "/";
-        }, 100);
-
-      } else {
-        throw new Error(data.error || "Respuesta inválida del servidor");
-      }
-
-    } catch (err) {
-      console.error("Error en Google Register:", err);
-      setError(err.message || "Error al registrarse con Google. Por favor intenta nuevamente.");
-      handleAuthError?.(err, "registro con Google");
-    } finally {
-      setGoogleLoading(false);
-    }
-  };
-
-  const handleGoogleError = useCallback((error) => {
-    console.error("Error en Google OAuth:", error);
-    setError("No se pudo conectar con Google. Por favor intenta nuevamente.");
-    setGoogleLoading(false);
-  }, []);
-
-  // ---------------------------------------------------------------------------
   // VALIDACIÓN DE CAMPOS
   // ---------------------------------------------------------------------------
   const isDisabled =
-    isLoading ||
+    loading ||
     !formData.email ||
     !formData.password ||
     !formData.username ||
@@ -313,28 +226,6 @@ const RegisterForm = ({ onBackToLogin }) => {
         </div>
       )}
 
-      {/* REGISTRO RÁPIDO CON GOOGLE */}
-      <div className="mb-6">
-        <GoogleLoginButton
-          onSuccess={handleGoogleSuccess}
-          onError={handleGoogleError}
-          loading={isLoading}
-          buttonText="Registrarse con Google"
-        />
-
-        {/* DIVISOR */}
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-300"></div>
-          </div>
-          <div className="relative flex justify-center text-sm">
-            <span className="px-4 bg-white text-gray-500 font-medium">
-              O regístrate con tu correo
-            </span>
-          </div>
-        </div>
-      </div>
-
       {/* FORMULARIO TRADICIONAL */}
       <form className="space-y-5" onSubmit={handleRegister}>
         
@@ -351,7 +242,7 @@ const RegisterForm = ({ onBackToLogin }) => {
               onChange={handleInputChange}
               placeholder="Lucas"
               className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={isLoading}
+              disabled={loading}
               required
             />
           </div>
@@ -366,7 +257,7 @@ const RegisterForm = ({ onBackToLogin }) => {
               onChange={handleInputChange}
               placeholder="Mojoara"
               className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={isLoading}
+              disabled={loading}
               required
             />
           </div>
@@ -384,7 +275,7 @@ const RegisterForm = ({ onBackToLogin }) => {
             onChange={handleInputChange}
             placeholder="lucas.mojoara"
             className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-            disabled={isLoading}
+            disabled={loading}
             required
           />
         </div>
@@ -401,7 +292,7 @@ const RegisterForm = ({ onBackToLogin }) => {
             onChange={handleInputChange}
             placeholder="lucas.mojoara@example.com"
             className="w-full px-4 py-3 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-            disabled={isLoading}
+            disabled={loading}
             required
           />
         </div>
@@ -425,7 +316,7 @@ const RegisterForm = ({ onBackToLogin }) => {
                 ? "border-red-300 focus:border-red-500"
                 : "border-gray-200 focus:border-[#389fae]"
             } focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white`}
-            disabled={isLoading}
+            disabled={loading}
             required
             aria-invalid={!!phoneError}
           />
@@ -459,7 +350,7 @@ const RegisterForm = ({ onBackToLogin }) => {
               onChange={handleInputChange}
               placeholder="••••••••••"
               className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={isLoading}
+              disabled={loading}
               required
             />
             <button
@@ -495,7 +386,7 @@ const RegisterForm = ({ onBackToLogin }) => {
               onChange={handleInputChange}
               placeholder="••••••••••"
               className="w-full px-4 py-3 pr-12 rounded-xl border-2 border-gray-200 focus:border-[#389fae] focus:ring-0 outline-none transition-all duration-200 text-gray-900 placeholder-gray-400 bg-gray-50 focus:bg-white"
-              disabled={isLoading}
+              disabled={loading}
               required
             />
             <button
@@ -524,7 +415,7 @@ const RegisterForm = ({ onBackToLogin }) => {
               onChange={handleInputChange}
               className="w-5 h-5 border-2 border-blue-300 rounded focus:ring-2 mt-0.5"
               style={{ "--tw-ring-color": "#389fae", accentColor: "#389fae" }}
-              disabled={isLoading}
+              disabled={loading}
               required
             />
             <div className="flex-1">
@@ -572,7 +463,7 @@ const RegisterForm = ({ onBackToLogin }) => {
             onClick={goBackToLogin}
             className="font-semibold hover:underline transition-colors"
             style={{ color: "#0b56a7" }}
-            disabled={isLoading}
+            disabled={loading}
           >
             Inicia sesión
           </button>
