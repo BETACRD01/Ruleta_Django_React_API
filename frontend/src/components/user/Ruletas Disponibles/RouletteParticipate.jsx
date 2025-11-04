@@ -50,25 +50,25 @@ const safeDate = (value, opts = {}) => {
 ========================= */
 const isParticipationOpen = (roulette) => {
   if (!roulette) return false;
-  
+
   const now = new Date();
   const participationStart = getParticipationStart(roulette);
   const participationEnd = getParticipationEnd(roulette);
-  
+
   if (!participationStart) {
     if (participationEnd) {
       return new Date(participationEnd) > now;
     }
     return true;
   }
-  
+
   const hasStarted = new Date(participationStart) <= now;
-  
+
   if (participationEnd) {
     const hasNotEnded = new Date(participationEnd) > now;
     return hasStarted && hasNotEnded;
   }
-  
+
   return hasStarted;
 };
 
@@ -175,7 +175,7 @@ const PrizeModal = ({ open, onClose, prize }) => {
               </div>
 
               {description ? (
-                <div 
+                <div
                   className="prose prose-sm max-w-none text-gray-700 leading-relaxed"
                   dangerouslySetInnerHTML={{ __html: description }}
                 />
@@ -399,10 +399,10 @@ const RouletteHeroSection = ({ roulette }) => {
             className="w-full h-48 md:h-56 lg:h-64 relative group overflow-hidden"
             title="Clic para ampliar"
           >
-            <img 
-              src={roulette.image_url} 
-              alt={roulette?.name || 'Ruleta'} 
-              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]" 
+            <img
+              src={roulette.image_url}
+              alt={roulette?.name || 'Ruleta'}
+              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
             />
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition" />
             <div className="absolute bottom-3 right-3 text-xs px-2 py-1 rounded bg-black/60 text-white opacity-0 group-hover:opacity-100 transition">
@@ -463,7 +463,7 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
     const interval = setInterval(() => {
       forceUpdate(prev => prev + 1);
     }, 1000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -502,7 +502,7 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
 
   const getStatusMessage = () => {
     if (!roulette) return null;
-    
+
     if (roulette.is_drawn || roulette.status === 'completed') {
       return {
         type: 'completed',
@@ -511,7 +511,7 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
         message: 'Esta ruleta ya realizó su sorteo y no acepta más participaciones.'
       };
     }
-    
+
     if (roulette.status === 'cancelled') {
       return {
         type: 'cancelled',
@@ -520,11 +520,11 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
         message: 'Esta ruleta ha sido cancelada y no acepta participaciones.'
       };
     }
-    
+
     if (!participationOpen && participationStart) {
       const now = new Date();
       const start = new Date(participationStart);
-      
+
       if (start > now) {
         return {
           type: 'not-started',
@@ -535,7 +535,7 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
         };
       }
     }
-    
+
     if (!participationOpen && participationEnd) {
       return {
         type: 'expired',
@@ -544,7 +544,7 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
         message: `La participación cerró el ${safeDate(participationEnd)}.`
       };
     }
-    
+
     return null;
   };
 
@@ -552,13 +552,13 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
 
   if (disabled && statusMessage) {
     const Icon = statusMessage.icon;
-    
+
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
         <div className="text-center py-6">
           <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${
-            statusMessage.type === 'not-started' 
-              ? 'bg-amber-100' 
+            statusMessage.type === 'not-started'
+              ? 'bg-amber-100'
               : 'bg-red-100'
           }`}>
             <Icon className={`h-8 w-8 ${
@@ -567,15 +567,15 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
                 : 'text-red-600'
             }`} />
           </div>
-          
+
           <h3 className="text-base font-semibold text-gray-900 mb-2">
             {statusMessage.title}
           </h3>
-          
+
           <p className="text-gray-600 mb-4">
             {statusMessage.message}
           </p>
-          
+
           {statusMessage.countdown && (
             <div className="mt-4 inline-block">
               <CountdownTimer
@@ -690,16 +690,16 @@ const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
 ========================= */
 const getMotivationalMessage = (participationEnd) => {
   if (!participationEnd) return null;
-  
+
   const now = new Date();
   const end = new Date(participationEnd);
   const remainingMinutes = (end - now) / 60000;
-  
+
   // Participación cerrada
   if (remainingMinutes <= 0) {
     return null;
   }
-  
+
   // Menos de 5 minutos - URGENCIA MÁXIMA
   if (remainingMinutes <= 5) {
     const messages = [
@@ -716,7 +716,7 @@ const getMotivationalMessage = (participationEnd) => {
       textSize: "text-sm font-black"
     };
   }
-  
+
   // 5-15 minutos - Urgencia alta
   if (remainingMinutes <= 15) {
     const messages = [
@@ -733,7 +733,7 @@ const getMotivationalMessage = (participationEnd) => {
       textSize: "text-sm font-extrabold"
     };
   }
-  
+
   // 15-30 minutos - Urgencia media-alta
   if (remainingMinutes <= 30) {
     const messages = [
@@ -749,7 +749,7 @@ const getMotivationalMessage = (participationEnd) => {
       textSize: "text-sm font-bold"
     };
   }
-  
+
   // 30-60 minutos - Urgencia media
   if (remainingMinutes <= 60) {
     const messages = [
@@ -765,7 +765,7 @@ const getMotivationalMessage = (participationEnd) => {
       textSize: "text-sm font-bold"
     };
   }
-  
+
   // 1-3 horas - Motivación alta
   if (remainingMinutes <= 180) {
     const messages = [
@@ -781,7 +781,7 @@ const getMotivationalMessage = (participationEnd) => {
       textSize: "text-sm font-semibold"
     };
   }
-  
+
   // 3-6 horas - Motivación media
   if (remainingMinutes <= 360) {
     const messages = [
@@ -797,7 +797,7 @@ const getMotivationalMessage = (participationEnd) => {
       textSize: "text-sm font-semibold"
     };
   }
-  
+
   // 6-12 horas - Recordatorio
   if (remainingMinutes <= 720) {
     const messages = [
@@ -813,7 +813,7 @@ const getMotivationalMessage = (participationEnd) => {
       textSize: "text-xs font-semibold"
     };
   }
-  
+
   // 12-24 horas - Motivación suave
   if (remainingMinutes <= 1440) {
     const messages = [
@@ -829,7 +829,7 @@ const getMotivationalMessage = (participationEnd) => {
       textSize: "text-xs font-semibold"
     };
   }
-  
+
   // 1-2 días
   if (remainingMinutes <= 2880) {
     const messages = [
@@ -845,7 +845,7 @@ const getMotivationalMessage = (participationEnd) => {
       textSize: "text-xs font-medium"
     };
   }
-  
+
   // 2-7 días
   if (remainingMinutes <= 10080) {
     const messages = [
@@ -861,7 +861,7 @@ const getMotivationalMessage = (participationEnd) => {
       textSize: "text-xs font-medium"
     };
   }
-  
+
   // Más de una semana
   return {
     text: "Aún hay tiempo. ¡Participa y gana!",
@@ -894,7 +894,7 @@ export default function RouletteParticipate() {
 
   // Estado para forzar re-render del mensaje motivacional
   const [, forceUpdate] = useState(0);
-  
+
   useEffect(() => {
     const interval = setInterval(() => {
       forceUpdate(prev => prev + 1);
@@ -1023,7 +1023,7 @@ export default function RouletteParticipate() {
 
   // Obtener mensaje motivacional
   const motivationalMsg = getMotivationalMessage(participationEnd);
-  const isParticipationActive = participationEnd && new Date(participationEnd) > new Date() && 
+  const isParticipationActive = participationEnd && new Date(participationEnd) > new Date() &&
                                 (!participationStart || new Date(participationStart) <= new Date());
 
   return (
@@ -1092,7 +1092,7 @@ export default function RouletteParticipate() {
                       </p>
                     </div>
                   )}
-                  
+
                   {/* Participación activa - CON MENSAJES MOTIVACIONALES */}
                   {isParticipationActive && motivationalMsg && (
                     <div>
@@ -1103,7 +1103,7 @@ export default function RouletteParticipate() {
                       </div>
                     </div>
                   )}
-                  
+
                   {/* Próximo sorteo */}
                   {scheduledDate && new Date(scheduledDate) > new Date() && (
                     <div>

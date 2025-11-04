@@ -28,7 +28,7 @@ class ParticipationSerializer(serializers.ModelSerializer):
     receipt_filename = serializers.CharField(read_only=True)
     receipt_size = serializers.IntegerField(read_only=True)
     receipt_extension = serializers.CharField(read_only=True)
-    
+
     # Campos del premio ganado
     prize_name = serializers.SerializerMethodField()
     prize_image_url = serializers.SerializerMethodField()
@@ -59,11 +59,11 @@ class ParticipationSerializer(serializers.ModelSerializer):
             "won_at",
         ]
         read_only_fields = [
-            "user", 
-            "participant_number", 
-            "created_at", 
-            "is_winner", 
-            "won_prize", 
+            "user",
+            "participant_number",
+            "created_at",
+            "is_winner",
+            "won_prize",
             "prize_position",
             "won_at",
         ]
@@ -421,25 +421,25 @@ class MyParticipationsSerializer(serializers.ModelSerializer):
         # Premio asignado directamente en la participación
         if obj.won_prize and obj.won_prize.image:
             return _abs_url(self.context.get("request"), obj.won_prize.image)
-        
+
         return None
 
     def get_prize_name(self, obj):
         """Nombre del premio ganado"""
         if not obj.is_winner:
             return None
-        
+
         if obj.won_prize:
             return obj.won_prize.name
-        
+
         return None
 
     def get_prize_description(self, obj):
         """Descripción del premio ganado"""
         if not obj.is_winner:
             return None
-        
+
         if obj.won_prize:
             return obj.won_prize.description
-        
+
         return None

@@ -1,6 +1,7 @@
 # backend/notifications/apps.py
 
 from django.apps import AppConfig
+import logging
 
 class NotificationsConfig(AppConfig):
     """
@@ -16,10 +17,11 @@ class NotificationsConfig(AppConfig):
     def ready(self):
         """
         Configuración que se ejecuta cuando la app está lista
+        CORREGIDO: Sin acceso a BD durante inicialización
         """
-        # Importar señales para que se registren
+        # Importar señales para que se registren (NO ejecuta queries)
         try:
-            from . import signals
+            from . import signals  # noqa
             print(f"✓ Señales de {self.name} registradas correctamente")
         except ImportError as e:
             print(f"✗ Error importando señales de {self.name}: {e}")
@@ -27,14 +29,27 @@ class NotificationsConfig(AppConfig):
         # Configurar logging específico para notifications
         self._configure_logging()
         
-        # Verificar configuraciones requeridas
+        # Verificar configuraciones requeridas (SIN acceso a BD)
         self._check_configurations()
+        
+        # Registrar inicialización de templates DESPUÉS de migraciones
+        from django.db.models.signals import post_migrate
+        from django.dispatch import receiver
+        
+        @receiver(post_migrate)
+        def setup_default_data(sender, **kwargs):
+            """Se ejecuta DESPUÉS de migraciones, cuando es seguro acceder a BD"""
+            if sender.name == 'notifications':
+                try:
+                    self._setup_notification_channels()
+                    self._setup_default_templates()
+                except Exception as e:
+                    print(f"⚠️ Error configurando datos iniciales: {e}")
         
         print(f"✓ Aplicación {self.verbose_name} iniciada correctamente")
     
     def _configure_logging(self):
         """Configurar sistema de logging para la aplicación"""
-        import logging
         import sys
         
         # Configurar logger específico para notificaciones
@@ -47,21 +62,7 @@ class NotificationsConfig(AppConfig):
                 '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             )
             console_handler.setFormatter(console_formatter)
-            
-            # Handler para archivo (si se configura)
-            try:
-                from django.conf import settings
-                if hasattr(settings, 'LOGGING_DIR'):
-                    file_handler = logging.FileHandler(
-                        f"{settings.LOGGING_DIR}/notifications.log"
-                    )
-                    file_formatter = logging.Formatter(
-                        '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
-                    )
-                    file_handler.setFormatter(file_formatter)
-                    logger.addHandler(file_handler)
-            except Exception as e:
-                print(f"Warning: No se pudo configurar logging a archivo: {e}")
+            console_handler.setLevel(logging.INFO)
             
             logger.addHandler(console_handler)
             logger.setLevel(logging.INFO)
@@ -71,7 +72,10 @@ class NotificationsConfig(AppConfig):
             critical_logger.setLevel(logging.ERROR)
     
     def _check_configurations(self):
-        """Verificar configuraciones necesarias"""
+        """
+        Verificar configuraciones necesarias
+        SIN ACCESO A BASE DE DATOS
+        """
         from django.conf import settings
         
         # Verificar configuración de email (para notificaciones de admin)
@@ -86,16 +90,11 @@ class NotificationsConfig(AppConfig):
                 missing_email_configs.append(setting)
         
         if missing_email_configs:
-            print(f"Warning: Configuraciones de email faltantes: {missing_email_configs}")
-            print("Las notificaciones por email no funcionarán correctamente")
+            print(f"⚠️ Configuraciones de email faltantes: {missing_email_configs}")
         
         # Verificar configuración de caché (para optimizaciones)
         if not hasattr(settings, 'CACHES'):
-            print("Warning: No hay configuración de CACHES. Considera usar Redis/Memcached para mejor rendimiento")
-        
-        # Verificar configuración de timezone
-        if not hasattr(settings, 'TIME_ZONE'):
-            print("Warning: TIME_ZONE no configurado. Se usará UTC por defecto")
+            print("⚠️ No hay configuración de CACHES")
         
         # Verificar configuración de base de datos para índices
         if hasattr(settings, 'DATABASES'):
@@ -104,102 +103,79 @@ class NotificationsConfig(AppConfig):
             
             if 'postgresql' in db_engine:
                 print("✓ PostgreSQL detectado - Índices JSON optimizados disponibles")
-            elif 'mysql' in db_engine:
-                print("✓ MySQL detectado - Considera usar PostgreSQL para mejor soporte JSON")
             elif 'sqlite' in db_engine:
-                print("⚠ SQLite detectado - No recomendado para producción con alto volumen")
+                print("⚠️ SQLite detectado - No recomendado para producción")
+    
+    def _setup_notification_channels(self):
+        """
+        Crear canales de notificación por defecto
+        Solo se ejecuta DESPUÉS de migraciones
+        """
+        try:
+            from .models import NotificationChannel
+            
+            channels = [
+                {'code': 'email', 'name': 'Email', 'is_active': True},
+                {'code': 'web', 'name': 'Notificación Web', 'is_active': True},
+                {'code': 'push', 'name': 'Push Notification', 'is_active': False},
+            ]
+            
+            created = 0
+            for channel_data in channels:
+                _, created_flag = NotificationChannel.objects.get_or_create(
+                    code=channel_data['code'],
+                    defaults=channel_data
+                )
+                if created_flag:
+                    created += 1
+            
+            if created > 0:
+                logger = logging.getLogger('notifications')
+                logger.info(f"Channel 'email' registered")
+                
+        except Exception as e:
+            print(f"⚠️ Error configurando canales: {e}")
     
     def _setup_default_templates(self):
-        """Crear plantillas por defecto si no existen"""
-        from .models import NotificationTemplate, NotificationType
-        
-        default_templates = [
-            {
-                'name': 'welcome_user',
-                'notification_type': NotificationType.WELCOME_MESSAGE,
-                'title_template': '¡Bienvenido/a {{ username }}!',
-                'message_template': 'Hola {{ username }}, bienvenido/a al sistema de ruletas. ¡Que tengas suerte!'
-            },
-            {
-                'name': 'participation_confirmed',
-                'notification_type': NotificationType.PARTICIPATION_CONFIRMED,
-                'title_template': 'Participación confirmada',
-                'message_template': 'Tu participación en "{{ roulette_name }}" ha sido confirmada exitosamente.'
-            },
-            {
-                'name': 'winner_announcement',
-                'notification_type': NotificationType.ROULETTE_WINNER,
-                'title_template': '🎉 ¡Tenemos ganador!',
-                'message_template': '{{ winner_name }} ganó en {{ roulette_name }} con {{ total_participants }} participantes.'
-            },
-            {
-                'name': 'personal_winner',
-                'notification_type': NotificationType.WINNER_NOTIFICATION,
-                'title_template': '🏆 ¡FELICITACIONES!',
-                'message_template': '¡Eres el ganador de "{{ roulette_name }}"! {{ prize_details }}'
-            },
-            {
-                'name': 'admin_winner_alert',
-                'notification_type': NotificationType.ADMIN_WINNER_ALERT,
-                'title_template': '🎯 Nuevo ganador: {{ winner_name }}',
-                'message_template': 'La ruleta "{{ roulette_name }}" tiene ganador. Participantes: {{ total_participants }}. Verifica el proceso de entrega.'
-            },
-            {
-                'name': 'roulette_started',
-                'notification_type': NotificationType.ROULETTE_STARTED,
-                'title_template': '🎯 Nueva ruleta disponible',
-                'message_template': '"{{ roulette_name }}" está abierta para participar. Creada por {{ creator_username }}.'
-            },
-            {
-                'name': 'roulette_ending',
-                'notification_type': NotificationType.ROULETTE_ENDING_SOON,
-                'title_template': '⏰ Ruleta terminando pronto',
-                'message_template': 'La ruleta "{{ roulette_name }}" terminará en {{ hours_remaining }} horas. ¡Última oportunidad!'
-            }
-        ]
-        
-        created_count = 0
-        for template_data in default_templates:
-            template, created = NotificationTemplate.objects.get_or_create(
-                name=template_data['name'],
-                defaults=template_data
-            )
-            if created:
-                created_count += 1
-        
-        if created_count > 0:
-            print(f"✓ {created_count} plantillas por defecto creadas")
-
-# Función para ser llamada desde manage.py o scripts de inicialización
-def setup_notifications_app():
-    """
-    Configuración adicional que puede ser llamada manualmente
-    """
-    from django.core.management import call_command
-    
-    print("Configurando aplicación de notificaciones...")
-    
-    # Crear migraciones si es necesario
-    try:
-        call_command('makemigrations', 'notifications', verbosity=0)
-        print("✓ Migraciones verificadas")
-    except Exception as e:
-        print(f"Warning: Error verificando migraciones: {e}")
-    
-    # Aplicar migraciones
-    try:
-        call_command('migrate', 'notifications', verbosity=0)
-        print("✓ Migraciones aplicadas")
-    except Exception as e:
-        print(f"Error: No se pudieron aplicar migraciones: {e}")
-        return False
-    
-    # Crear plantillas por defecto
-    try:
-        config = NotificationsConfig('notifications', None)
-        config._setup_default_templates()
-    except Exception as e:
-        print(f"Warning: Error creando plantillas por defecto: {e}")
-    
-    print("✓ Configuración de notificaciones completada")
-    return True
+        """
+        Crear plantillas por defecto si no existen
+        Solo se ejecuta DESPUÉS de migraciones
+        """
+        try:
+            from .models import NotificationTemplate, NotificationType
+            
+            default_templates = [
+                {
+                    'name': 'participation_confirmed',
+                    'notification_type': NotificationType.PARTICIPATION_CONFIRMED,
+                    'title_template': 'Participación confirmada',
+                    'message_template': 'Tu participación en "{{ roulette_name }}" ha sido confirmada.'
+                },
+                {
+                    'name': 'winner_announcement',
+                    'notification_type': NotificationType.ROULETTE_WINNER,
+                    'title_template': '🎉 ¡Tenemos ganador!',
+                    'message_template': '{{ winner_name }} ganó en {{ roulette_name }}.'
+                },
+                {
+                    'name': 'personal_winner',
+                    'notification_type': NotificationType.WINNER_NOTIFICATION,
+                    'title_template': '🏆 ¡FELICITACIONES!',
+                    'message_template': '¡Eres el ganador de "{{ roulette_name }}"!'
+                },
+            ]
+            
+            created_count = 0
+            for template_data in default_templates:
+                _, created = NotificationTemplate.objects.get_or_create(
+                    name=template_data['name'],
+                    defaults=template_data
+                )
+                if created:
+                    created_count += 1
+            
+            if created_count > 0:
+                print(f"✓ {created_count} plantillas creadas")
+                
+        except Exception as e:
+            print(f"⚠️ Error creando plantillas: {e}")

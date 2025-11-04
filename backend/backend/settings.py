@@ -1,27 +1,22 @@
-# backend/settings.py
 import os
 from pathlib import Path
 from django.core.management.utils import get_random_secret_key
 from django.core.exceptions import ImproperlyConfigured
-
-# ============================================================================
-# CARGAR .env CON RUTA EXPLÍCITA
-# ============================================================================
 from dotenv import load_dotenv
 
-# Definir BASE_DIR primero
+# ============================================================================
+# BASE DIR Y CARGA DE .env
+# ============================================================================
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Cargar .env desde la carpeta backend con ruta explícita
 env_path = BASE_DIR / '.env'
 load_dotenv(dotenv_path=env_path)
 
-# Debug: verificar que se cargó
 if os.getenv('EMAIL_HOST_USER'):
-    print(f"✓ .env cargado correctamente desde: {env_path}")
+    print(f"✅ .env cargado correctamente desde: {env_path}")
 else:
-    print(f"⚠ .env NO se cargó. Buscando en: {env_path}")
-    print(f"⚠ Archivo existe: {env_path.exists()}")
+    print(f"⚠️ .env NO se cargó. Buscando en: {env_path}")
+    print(f"⚠️ Archivo existe: {env_path.exists()}")
 
 # ============================================================================
 # SEGURIDAD Y DEBUG
@@ -32,7 +27,6 @@ SECRET_KEY = os.getenv(
 )
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 
-# Hosts permitidos
 if DEBUG:
     ALLOWED_HOSTS = [
         "localhost",
@@ -45,11 +39,9 @@ else:
 # ============================================================================
 # CONFIGURACIÓN DE MARCA Y URLs
 # ============================================================================
-# IMPORTANTE: Estas variables deben definirse ANTES de usarlas en otras configuraciones
 BRAND_NAME = os.getenv("BRAND_NAME", "HAYU24")
 MEDIA_URL_BASE = os.getenv("MEDIA_URL_BASE", "http://localhost:8000")
 
-# URLs del Frontend y Backend
 FRONTEND_BASE_URL = os.getenv(
     "FRONTEND_BASE_URL",
     "http://localhost:3000" if DEBUG else "https://tu-dominio-frontend.com"
@@ -70,32 +62,21 @@ DJANGO_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "django.contrib.sites",  # Requerido por allauth
+    "django.contrib.sites",
 ]
 
 THIRD_PARTY_APPS = [
-    # Django REST Framework
     "rest_framework",
     "rest_framework.authtoken",
-    
-    # CORS
     "corsheaders",
-    
-    # CKEditor
     "ckeditor",
     "ckeditor_uploader",
-    
-    # Celery
     "django_celery_beat",
     "django_celery_results",
-    
-    # Django Allauth - Autenticación Social
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
-    
-    # DJ Rest Auth - API de Autenticación
     "dj_rest_auth",
     "dj_rest_auth.registration",
 ]
@@ -109,7 +90,6 @@ LOCAL_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
-# ID del sitio (requerido por django-allauth)
 SITE_ID = int(os.getenv("SITE_ID", "1"))
 
 # ============================================================================
@@ -124,7 +104,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "allauth.account.middleware.AccountMiddleware",  # Requerido por allauth
+    "allauth.account.middleware.AccountMiddleware",
 ]
 
 # ============================================================================
@@ -155,14 +135,16 @@ WSGI_APPLICATION = "backend.wsgi.application"
 # ============================================================================
 DATABASES = {
     "default": {
-        "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.sqlite3"),
-        "NAME": os.getenv("DB_NAME", BASE_DIR / "db.sqlite3"),
-        "USER": os.getenv("DB_USER", ""),
-        "PASSWORD": os.getenv("DB_PASSWORD", ""),
+        "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.postgresql"),
+        "NAME": os.getenv("DB_NAME", "LuckySpin"),
+        "USER": os.getenv("DB_USER", "postgres"),
+        "PASSWORD": os.getenv("DB_PASSWORD", "Kurumi"),
         "HOST": os.getenv("DB_HOST", "localhost"),
         "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
+
+print(f"📊 Base de datos: {DATABASES['default']['HOST']}:{DATABASES['default']['PORT']}")
 
 # ============================================================================
 # VALIDACIÓN DE CONTRASEÑAS
@@ -201,36 +183,39 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "authentication.User"
 
 # ============================================================================
-# CONFIGURACIÓN DE DJANGO-ALLAUTH (AUTENTICACIÓN SOCIAL)
+# CONFIGURACIÓN DE DJANGO-ALLAUTH (NUEVO FORMATO)
 # ============================================================================
+# Nuevo sistema de configuración de allauth (v0.50+)
+ACCOUNT_LOGIN_METHODS = ['email']  # Solo email, sin username
 
-# --- Configuración de Cuentas ---
-ACCOUNT_AUTHENTICATION_METHOD = 'email'  # Login solo con email
-ACCOUNT_EMAIL_REQUIRED = True
-ACCOUNT_EMAIL_VERIFICATION = 'mandatory'  # Verificación obligatoria
-ACCOUNT_USERNAME_REQUIRED = False  # No requerir username para OAuth
-ACCOUNT_USER_MODEL_USERNAME_FIELD = None  # Sin campo username
+# Campos requeridos en el formulario de registro
+# El asterisco (*) indica campo obligatorio y verificado
+ACCOUNT_SIGNUP_FIELDS = ['email*']
 
-# Auto-registro con proveedores sociales
-SOCIALACCOUNT_AUTO_SIGNUP = True
+# Verificación de email obligatoria
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
 
-# Prevenir duplicados de email
-ACCOUNT_UNIQUE_EMAIL = True
+# Rate limiting para intentos de login
+ACCOUNT_RATE_LIMITS = {
+    'login_failed': '5/5m',  # 5 intentos en 5 minutos
+}
 
-# Configuración de inicio de sesión
-ACCOUNT_LOGIN_ATTEMPTS_LIMIT = 5
-ACCOUNT_LOGIN_ATTEMPTS_TIMEOUT = 300  # 5 minutos
+# Sesiones persistentes
+ACCOUNT_SESSION_REMEMBER = True
+SOCIALACCOUNT_SESSION_REMEMBER = True
 
-# Configuración de logout
-ACCOUNT_LOGOUT_ON_GET = False  # Require confirmación de logout
-
-# URLs de redirección
+# Redirecciones
 ACCOUNT_EMAIL_CONFIRMATION_AUTHENTICATED_REDIRECT_URL = '/dashboard/'
 ACCOUNT_EMAIL_CONFIRMATION_ANONYMOUS_REDIRECT_URL = '/login/'
 LOGIN_REDIRECT_URL = '/dashboard/'
 ACCOUNT_LOGOUT_REDIRECT_URL = '/'
 
-# --- Configuración de Proveedores Sociales ---
+ACCOUNT_LOGOUT_ON_GET = False
+
+# Social account auto-signup
+SOCIALACCOUNT_AUTO_SIGNUP = True
+
+# Configuración de proveedores sociales
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'SCOPE': [
@@ -238,23 +223,20 @@ SOCIALACCOUNT_PROVIDERS = {
             'email',
         ],
         'AUTH_PARAMS': {
-            'access_type': 'offline',  # Para obtener refresh tokens
-            'prompt': 'consent',  # Siempre pedir consentimiento
+            'access_type': 'offline',
+            'prompt': 'consent',
         },
         'APP': {
             'client_id': os.getenv('GOOGLE_CLIENT_ID', ''),
             'secret': os.getenv('GOOGLE_CLIENT_SECRET', ''),
             'key': ''
         },
-        'VERIFIED_EMAIL': True,  # Confiar en emails verificados por Google
+        'VERIFIED_EMAIL': True,
     }
 }
 
-# --- Adapter Personalizado ---
-# Para manejar lógica personalizada en el registro social
 SOCIALACCOUNT_ADAPTER = 'authentication.adapters.CustomSocialAccountAdapter'
 
-# --- Configuración de DJ-Rest-Auth ---
 REST_AUTH_REGISTER_SERIALIZERS = {
     'REGISTER_SERIALIZER': 'authentication.serializers.CustomRegisterSerializer',
 }
@@ -263,18 +245,10 @@ REST_AUTH_SERIALIZERS = {
     'USER_DETAILS_SERIALIZER': 'authentication.serializers.UserSerializer',
 }
 
-# Token de autenticación
 REST_AUTH_TOKEN_MODEL = 'rest_framework.authtoken.models.Token'
 REST_AUTH_TOKEN_CREATOR = 'dj_rest_auth.utils.default_create_token'
 
-# Configuración de sesiones para OAuth
-SOCIALACCOUNT_SESSION_REMEMBER = True
-ACCOUNT_SESSION_REMEMBER = True
-
-# URL de callback para Google OAuth (FRONTEND_BASE_URL ya está definido arriba)
 GOOGLE_OAUTH_CALLBACK_URL = f"{FRONTEND_BASE_URL}/auth/google/callback"
-
-# ID del cliente de Google (ya lo tienes en .env, pero lo exponemos para las vistas)
 GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
 
 # ============================================================================
@@ -284,20 +258,17 @@ CKEDITOR_UPLOAD_PATH = "ckeditor_uploads/"
 CKEDITOR_IMAGE_BACKEND = "pillow"
 CKEDITOR_ALLOW_NONIMAGE_FILES = False
 
-# Restricciones de seguridad para uploads
-CKEDITOR_RESTRICT_BY_USER = True  # Solo el usuario puede ver sus uploads
+CKEDITOR_RESTRICT_BY_USER = True
 CKEDITOR_BROWSE_SHOW_DIRS = True
-CKEDITOR_RESTRICT_BY_DATE = True  # Organizar por fecha
+CKEDITOR_RESTRICT_BY_DATE = True
 
-# Configuración de imágenes
 CKEDITOR_IMAGE_QUALITY = 85
 CKEDITOR_THUMBNAIL_SIZE = (300, 300)
 CKEDITOR_FORCE_JPEG_COMPRESSION = True
-CKEDITOR_IMAGE_MAX_SIZE = (1200, 1200)  # Max width, height
+CKEDITOR_IMAGE_MAX_SIZE = (1200, 1200)
 
-# Formatos permitidos
 CKEDITOR_UPLOAD_SLUGIFY_FILENAME = True
-CKEDITOR_FILENAME_GENERATOR = 'utils.get_filename'  # Si tienes función custom
+CKEDITOR_FILENAME_GENERATOR = 'utils.get_filename'
 
 CKEDITOR_CONFIGS = {
     'default': {
@@ -315,25 +286,16 @@ CKEDITOR_CONFIGS = {
         'width': '100%',
         'removePlugins': 'stylesheetparser',
         'allowedContent': True,
-        'extraPlugins': 'uploadimage',  # ✅ Removido 'autogrow'
+        'extraPlugins': 'uploadimage',
         'removeButtons': '',
-        
-        # 🔒 Seguridad adicional
-        'disallowedContent': 'script; *[on*]',  # Bloquear scripts
-        'protectedSource': [],  # No permitir código protegido
-        
-        # 📸 Configuración de imágenes
+        'disallowedContent': 'script; *[on*]',
+        'protectedSource': [],
         'filebrowserImageBrowseUrl': '/ckeditor/browse/',
         'filebrowserImageUploadUrl': '/ckeditor/upload/',
-        'image_previewText': ' ',  # Sin texto de preview
-        
-        # 🎨 Estilos personalizados (opcional)
+        'image_previewText': ' ',
         'contentsCss': ['/static/css/ckeditor_custom.css'],
-        
-        # 📏 Límites
         'removeDialogTabs': 'image:advanced;link:advanced',
     },
-    
     'roulette_editor': {
         'skin': 'moono-lisa',
         'toolbar': 'Minimal',
@@ -350,19 +312,11 @@ CKEDITOR_CONFIGS = {
         'removePlugins': 'stylesheetparser',
         'allowedContent': True,
         'extraPlugins': 'uploadimage',
-        
-        # 🔒 Seguridad
         'disallowedContent': 'script; *[on*]',
-        
-        # 📸 Imágenes
         'filebrowserImageBrowseUrl': '/ckeditor/browse/',
         'filebrowserImageUploadUrl': '/ckeditor/upload/',
-        
-        # 📏 Más restrictivo que default
         'removeDialogTabs': 'image:advanced;link:advanced;link:target',
     },
-    
-    # 🆕 Configuración mínima (sin imágenes)
     'simple': {
         'toolbar': [
             ['Bold', 'Italic'],
@@ -377,7 +331,6 @@ CKEDITOR_CONFIGS = {
 }
 
 if 'ckeditor_uploader' in INSTALLED_APPS:
-    # Validar que Pillow esté instalado
     try:
         import PIL
     except ImportError:
@@ -385,7 +338,6 @@ if 'ckeditor_uploader' in INSTALLED_APPS:
             "CKEditor requiere Pillow. Instala con: pip install Pillow"
         )
     
-    # Validación adicional del directorio de uploads
     import os
     upload_path = os.path.join(MEDIA_ROOT, CKEDITOR_UPLOAD_PATH)
     if not os.path.exists(upload_path):
@@ -393,16 +345,18 @@ if 'ckeditor_uploader' in INSTALLED_APPS:
             os.makedirs(upload_path, exist_ok=True)
             print(f"✅ Directorio CKEditor creado: {upload_path}")
         except Exception as e:
-            print(f"⚠️  No se pudo crear directorio CKEditor: {e}")
+            print(f"⚠️ No se pudo crear directorio CKEditor: {e}")
 
+# Silenciar warning de CKEditor
+SILENCED_SYSTEM_CHECKS = ['ckeditor.W001']
 
 # ============================================================================
-# DJANGO REST FRAMEWORK
+# DJANGO REST FRAMEWORK (SIN THROTTLING)
 # ============================================================================
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.TokenAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -417,14 +371,9 @@ REST_FRAMEWORK = {
     ] + (["rest_framework.renderers.BrowsableAPIRenderer"] if DEBUG else []),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
-    "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle"
-    ],
-    "DEFAULT_THROTTLE_RATES": {
-        "anon": "100/hour",
-        "user": "1000/hour"
-    }
+    # Throttling completamente deshabilitado
+    "DEFAULT_THROTTLE_CLASSES": [],
+    "DEFAULT_THROTTLE_RATES": {}
 }
 
 # ============================================================================
@@ -463,19 +412,20 @@ CORS_ALLOW_METHODS = ["DELETE", "GET", "OPTIONS", "PATCH", "POST", "PUT"]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ] + ([f"https://{host}" for host in os.getenv("DJANGO_ALLOWED_HOSTS", "").split(",") if host and host != "localhost"] if not DEBUG else [])
 
 if DEBUG:
     CORS_ALLOW_ALL_ORIGINS = False
 
 # ============================================================================
-# CONFIGURACIÓN DE EMAIL - BREVO
+# CONFIGURACIÓN DE EMAIL
 # ============================================================================
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
 
-# Solo configurar SMTP si no es console backend
 if EMAIL_BACKEND != "django.core.mail.backends.console.EmailBackend":
-    EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp-relay.brevo.com")
+    EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
     EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
     EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "1") == "1"
     EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "0") == "1"
@@ -490,7 +440,6 @@ if EMAIL_BACKEND != "django.core.mail.backends.console.EmailBackend":
         EMAIL_CONNECTION_TIMEOUT = 60
         EMAIL_RETRY_DELAY = 2
         EMAIL_MAX_RETRIES = 3
-        print("⚠️  Email SSL verification will be disabled in development")
 
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "williancerda0@gmail.com")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
@@ -506,7 +455,7 @@ ALLOWED_RECEIPT_EXTENSIONS = [".jpg", ".jpeg", ".png", ".pdf"]
 MAX_RECEIPT_SIZE = 10 * 1024 * 1024
 
 # ============================================================================
-# CONFIGURACIÓN DE LOGGING
+# CONFIGURACIÓN DE LOGGING (Silenciar warnings innecesarios)
 # ============================================================================
 LOGGING = {
     "version": 1,
@@ -521,6 +470,12 @@ LOGGING = {
             "style": "{",
         },
     },
+    "filters": {
+        "suppress_deprecated": {
+            "()": "django.utils.log.CallbackFilter",
+            "callback": lambda record: "deprecated" not in record.getMessage().lower()
+        }
+    },
     "handlers": {
         "file": {
             "level": "INFO",
@@ -529,9 +484,10 @@ LOGGING = {
             "formatter": "verbose",
         },
         "console": {
-            "level": "DEBUG" if DEBUG else "INFO",
+            "level": "INFO",
             "class": "logging.StreamHandler",
             "formatter": "simple",
+            "filters": ["suppress_deprecated"],
         },
         "mail_admins": {
             "level": "ERROR",
@@ -552,17 +508,27 @@ LOGGING = {
         },
         "django.core.mail": {
             "handlers": ["console", "file"],
-            "level": "DEBUG" if DEBUG else "INFO",
+            "level": "INFO",
             "propagate": False,
         },
         "authentication": {
             "handlers": ["console", "file"],
-            "level": "DEBUG" if DEBUG else "INFO",
+            "level": "INFO",
             "propagate": False,
         },
         "roulettes": {
             "handlers": ["console", "file"],
-            "level": "DEBUG" if DEBUG else "INFO",
+            "level": "INFO",
+            "propagate": False,
+        },
+        "notifications": {
+            "handlers": ["console", "file"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "py.warnings": {
+            "handlers": ["console"],
+            "level": "ERROR",
             "propagate": False,
         },
     },
@@ -575,7 +541,7 @@ LOGGING = {
 (BASE_DIR / "logs").mkdir(exist_ok=True)
 
 # ============================================================================
-# CONFIGURACIÓN DE SEGURIDAD (PRODUCCIÓN)
+# CONFIGURACIÓN DE SEGURIDAD
 # ============================================================================
 if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
@@ -636,19 +602,13 @@ CACHES = {
             'CULL_FREQUENCY': 3,
         }
     }
-} if DEBUG else {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/1'),
-        'TIMEOUT': 300,
-    }
 }
 
 # ============================================================================
 # CONFIGURACIÓN DE SESIONES
 # ============================================================================
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'
-SESSION_COOKIE_AGE = 60 * 60 * 24 * 7  # 1 semana
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 7
 SESSION_COOKIE_NAME = 'luckyspin_sessionid'
 SESSION_COOKIE_HTTPONLY = True
 SESSION_SAVE_EVERY_REQUEST = True
@@ -667,17 +627,8 @@ IMAGE_MAX_HEIGHT = int(os.getenv("IMAGE_MAX_HEIGHT", "1200"))
 # ============================================================================
 # CONFIGURACIÓN DE CELERY
 # ============================================================================
-ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
-
-if ENVIRONMENT == 'production':
-    redis_url = os.getenv('REDIS_CLOUD_URL')
-    print("Modo PRODUCCION: usando Redis Cloud")
-else:
-    redis_url = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-    print(f"Modo DESARROLLO: usando {redis_url}")
-
-CELERY_BROKER_URL = redis_url
-CELERY_RESULT_BACKEND = redis_url
+CELERY_BROKER_URL = os.getenv('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
 
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
@@ -696,3 +647,10 @@ CELERY_RESULT_EXPIRES = 3600
 CELERY_RESULT_EXTENDED = True
 
 WINNER_NOTIFICATION_DELAY = int(os.getenv('WINNER_NOTIFICATION_DELAY', '300'))
+
+# ============================================================================
+# SUPRIMIR WARNINGS DE PYTHON
+# ============================================================================
+import warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+warnings.filterwarnings('ignore', module='dj_rest_auth')

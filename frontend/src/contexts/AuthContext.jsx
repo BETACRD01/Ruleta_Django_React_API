@@ -53,9 +53,12 @@ export const AuthProvider = ({ children }) => {
 
       const result = await authAPI.login(credentials);
 
-      if (result?.success && result?.token) {
-        setToken(result.token);
-        setGlobalAuthToken(result.token);
+      // ✅ CORREGIDO: Aceptar tanto 'token' como 'key'
+      const authToken = result?.token || result?.key;
+
+      if (result?.success && authToken) {
+        setToken(authToken);
+        setGlobalAuthToken(authToken);
         const userInfo = await authAPI.getUserInfo();
         setUser(userInfo);
         await loadUserProfile();
@@ -79,21 +82,31 @@ export const AuthProvider = ({ children }) => {
   }, [showSuccess, showError, loadUserProfile]);
 
   // ============================================================================
-  // GOOGLE LOGIN
+  // GOOGLE LOGIN - CORREGIDO ✅
   // ============================================================================
   const googleLogin = useCallback(async (accessToken) => {
     try {
       setLoading(true);
       setError(null);
 
+      console.log('🔐 Iniciando Google Login...');
       const result = await authAPI.googleLogin(accessToken);
+      console.log('📦 Respuesta del backend:', result);
 
-      if (result?.success && result?.token) {
-        setToken(result.token);
-        setGlobalAuthToken(result.token);
+      // ✅ CORREGIDO: Aceptar tanto 'token' como 'key' (dj-rest-auth usa 'key')
+      const authToken = result?.token || result?.key;
+
+      if (result?.success && authToken) {
+        console.log('✅ Token recibido:', authToken);
+        setToken(authToken);
+        setGlobalAuthToken(authToken);
+        
         const userInfo = await authAPI.getUserInfo();
+        console.log('✅ User info obtenida:', userInfo);
+        
         setUser(userInfo);
         await loadUserProfile();
+        
         showSuccess(
           `¡Bienvenido ${userInfo.first_name || userInfo.username || 'Usuario'}!`, 
           'Inicio de sesión con Google exitoso'
@@ -101,14 +114,24 @@ export const AuthProvider = ({ children }) => {
         return { success: true, user: userInfo };
       }
 
-      const errorMessage = result?.message || 'Error al autenticar con Google';
+      // Si no hay token pero la respuesta fue exitosa, mostrar info específica
+      if (result?.success && !authToken) {
+        console.error('⚠️ Backend respondió success=true pero no envió token');
+        console.error('📦 Respuesta completa:', result);
+        const errorMessage = 'El servidor no devolvió un token de autenticación';
+        setError(errorMessage);
+        showError(errorMessage, 'Error de autenticación con Google');
+        return { success: false, message: errorMessage };
+      }
+
+      const errorMessage = result?.message || result?.error || 'Error al autenticar con Google';
       setError(errorMessage);
       showError(errorMessage, 'Error de autenticación con Google');
       return { success: false, message: errorMessage };
     } catch (err) {
       const errorMessage = err.message || 'Error de conexión con Google';
       setError(errorMessage);
-      console.error('Error en Google login:', err);
+      console.error('❌ Error en Google login:', err);
       showError(errorMessage, 'Error de conexión');
       return { success: false, message: errorMessage };
     } finally {
@@ -137,9 +160,12 @@ export const AuthProvider = ({ children }) => {
 
       const result = await authAPI.register(userData);
 
-      if (result?.success && result?.token) {
-        setToken(result.token);
-        setGlobalAuthToken(result.token);
+      // ✅ CORREGIDO: Aceptar tanto 'token' como 'key'
+      const authToken = result?.token || result?.key;
+
+      if (result?.success && authToken) {
+        setToken(authToken);
+        setGlobalAuthToken(authToken);
         const userInfo = await authAPI.getUserInfo();
         setUser(userInfo);
         await loadUserProfile();
@@ -315,7 +341,7 @@ export const AuthProvider = ({ children }) => {
 
     // Métodos de autenticación
     login,
-    googleLogin, // ← AGREGADO
+    googleLogin,
     register,
     logout,
 
@@ -352,7 +378,7 @@ export const AuthProvider = ({ children }) => {
     loading, 
     error, 
     login,
-    googleLogin, // ← AGREGADO
+    googleLogin,
     register, 
     logout, 
     updateProfile, 

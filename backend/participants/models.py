@@ -45,13 +45,15 @@ class Participation(models.Model):
         verbose_name=_("Ruleta"),
     )
     receipt = models.FileField(
-        upload_to=receipt_upload_path,
-        validators=[
-            FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png", "pdf"])
-        ],
-        verbose_name=_("Comprobante"),
-        help_text=_("Formatos permitidos: JPG, JPEG, PNG, PDF"),
-    )
+    upload_to=receipt_upload_path,
+    validators=[
+        FileExtensionValidator(allowed_extensions=["jpg", "jpeg", "png", "pdf"])
+    ],
+    verbose_name=_("Comprobante"),
+    help_text=_("Formatos permitidos: JPG, JPEG, PNG, PDF"),
+    blank=True,  # ✅ AGREGAR - Permite vacío en formularios
+    null=True,   # ✅ AGREGAR - Permite NULL en base de datos
+)
     participant_number = models.PositiveIntegerField(
         verbose_name=_("Número de Participante"),
         help_text=_("Número secuencial del participante dentro de esta ruleta"),
@@ -78,7 +80,7 @@ class Participation(models.Model):
         verbose_name=_("Premio Ganado"),
         help_text=_("Premio específico que ganó este participante")
     )
-    
+
     prize_position = models.PositiveIntegerField(
         null=True,
         blank=True,

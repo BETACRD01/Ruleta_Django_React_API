@@ -1,8 +1,8 @@
 // src/components/user/AvailableRoulettesTab.jsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  RefreshCcw, AlertTriangle, Users, Play, X, Download, Clock, Timer, 
+import {
+  RefreshCcw, AlertTriangle, Users, Play, X, Download, Clock, Timer,
   ChevronDown, ChevronUp, Trophy, Calendar, CalendarCheck, CalendarX2, Lock, CheckCircle
 } from 'lucide-react';
 import { EmptyState } from '../UI';
@@ -69,21 +69,21 @@ const isParticipationOpen = (roulette) => {
   const now = new Date();
   const participationStart = getParticipationStart(roulette);
   const participationEnd = getParticipationEnd(roulette);
-  
+
   if (!participationStart) {
     if (participationEnd) {
       return new Date(participationEnd) > now;
     }
     return true;
   }
-  
+
   const hasStarted = new Date(participationStart) <= now;
-  
+
   if (participationEnd) {
     const hasNotEnded = new Date(participationEnd) > now;
     return hasStarted && hasNotEnded;
   }
-  
+
   return hasStarted;
 };
 
@@ -94,24 +94,24 @@ const getRouletteState = (r) => {
   if (isRouletteDrawn(r)) {
     return 'completed';
   }
-  
+
   if (r?.status === 'cancelled') {
     return 'cancelled';
   }
-  
+
   if (isParticipationClosed(r)) {
     return 'waiting_draw';
   }
-  
+
   if (isParticipationOpen(r)) {
     return 'active';
   }
-  
+
   const participationStart = getParticipationStart(r);
   if (participationStart && new Date(participationStart) > new Date()) {
     return 'scheduled';
   }
-  
+
   return 'draft';
 };
 
@@ -217,7 +217,7 @@ const SafeImage = ({ src, alt = '', className = '' }) => {
   }, [src]);
 
   const handleLoad = () => setLoading(false);
-  
+
   const handleError = () => {
     setLoading(false);
     setError(true);
@@ -255,7 +255,7 @@ const SafeImage = ({ src, alt = '', className = '' }) => {
 };
 
 /* =========================
-   AspectRatio 16:9 
+   AspectRatio 16:9
    ========================= */
 const AspectBox = ({ children, className = '' }) => (
   <div className={`relative w-full overflow-hidden rounded-t-xl ${className}`}>
@@ -330,38 +330,38 @@ const ImageLightbox = ({ open, src, alt = '', onClose }) => {
    ========================= */
 const ExpandableDescription = ({ description, maxLength = 150, className = "" }) => {
   const [isExpanded, setIsExpanded] = useState(false);
-  
+
   if (!description) return null;
-  
+
   // Crear un elemento temporal para extraer texto plano del HTML
   const getPlainText = (html) => {
     const temp = document.createElement('div');
     temp.innerHTML = html;
     return temp.textContent || temp.innerText || '';
   };
-  
+
   const plainText = getPlainText(description);
   const shouldTruncate = plainText.length > maxLength;
-  
+
   // Truncar el HTML de manera segura
   const getTruncatedHTML = (html, maxLen) => {
     const temp = document.createElement('div');
     temp.innerHTML = html;
     const text = temp.textContent || temp.innerText || '';
-    
+
     if (text.length <= maxLen) return html;
-    
+
     // Crear versión truncada simple
     const truncatedText = text.substring(0, maxLen) + '...';
     const wrapper = document.createElement('div');
     wrapper.textContent = truncatedText;
     return wrapper.innerHTML;
   };
-  
-  const displayHTML = isExpanded || !shouldTruncate 
-    ? description 
+
+  const displayHTML = isExpanded || !shouldTruncate
+    ? description
     : getTruncatedHTML(description, maxLength);
-  
+
   return (
     <div className={`relative ${className}`}>
       <div
@@ -369,7 +369,7 @@ const ExpandableDescription = ({ description, maxLength = 150, className = "" })
         style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
         dangerouslySetInnerHTML={{ __html: displayHTML }}
       />
-      
+
       {shouldTruncate && (
         <button
           type="button"
@@ -403,44 +403,44 @@ const StatusBadge = ({ roulette, className = "" }) => {
   const getStatusInfo = () => {
     switch(state) {
       case 'completed':
-        return { 
-          color: 'bg-green-100 text-green-800 border-green-200', 
+        return {
+          color: 'bg-green-100 text-green-800 border-green-200',
           text: '✓ Sorteo Realizado'
         };
-      
+
       case 'waiting_draw':
-        return { 
-          color: 'bg-orange-100 text-orange-800 border-orange-200', 
+        return {
+          color: 'bg-orange-100 text-orange-800 border-orange-200',
           text: '⏳ Esperando Sorteo'
         };
-      
+
       case 'active':
         if (participantsCount === 0) {
-          return { 
-            color: 'bg-yellow-100 text-yellow-800 border-yellow-200', 
+          return {
+            color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
             text: '⚠️ Sin participantes'
           };
         }
-        return { 
-          color: 'bg-blue-100 text-blue-800 border-blue-200', 
+        return {
+          color: 'bg-blue-100 text-blue-800 border-blue-200',
           text: '🎯 Abierta'
         };
-      
+
       case 'scheduled':
-        return { 
-          color: 'bg-purple-100 text-purple-800 border-purple-200', 
+        return {
+          color: 'bg-purple-100 text-purple-800 border-purple-200',
           text: '📅 Próximamente'
         };
-      
+
       case 'cancelled':
-        return { 
-          color: 'bg-red-100 text-red-800 border-red-200', 
+        return {
+          color: 'bg-red-100 text-red-800 border-red-200',
           text: '❌ Cancelada'
         };
-      
+
       default:
-        return { 
-          color: 'bg-gray-100 text-gray-800 border-gray-200', 
+        return {
+          color: 'bg-gray-100 text-gray-800 border-gray-200',
           text: '📝 Borrador'
         };
     }
@@ -462,13 +462,13 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
   const participationStart = getParticipationStart(roulette);
   const participationEnd = getParticipationEnd(roulette);
   const scheduledDate = getScheduledDate(roulette);
-  
+
   const now = new Date();
   const hasStarted = !participationStart || new Date(participationStart) <= now;
   const hasEnded = participationEnd && new Date(participationEnd) <= now;
-  
+
   const showCountdown = hasStarted && !hasEnded && participationEnd;
-  
+
   return (
     <div className={`space-y-2 ${className}`}>
       {participationStart && (
@@ -494,7 +494,7 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
           </div>
         </div>
       )}
-      
+
       {participationEnd && (
         <div className="flex items-start gap-2 text-xs">
           <CalendarX2 className={`h-4 w-4 flex-shrink-0 mt-0.5 ${hasEnded ? 'text-red-500' : 'text-orange-500'}`} />
@@ -520,7 +520,7 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
           </div>
         </div>
       )}
-      
+
       {scheduledDate && (
         <div className="flex items-start gap-2 text-xs">
           <CalendarCheck className="h-4 w-4 flex-shrink-0 mt-0.5 text-purple-500" />
@@ -531,7 +531,7 @@ const DateInfoPanel = ({ roulette, className = "" }) => {
           </div>
         </div>
       )}
-      
+
       {!participationStart && !participationEnd && !scheduledDate && (
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <Clock className="h-4 w-4" />
@@ -561,7 +561,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
     const interval = setInterval(() => {
       forceUpdate(prev => prev + 1);
     }, 1000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
@@ -569,12 +569,12 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
     try {
       setLoading(true);
       setPageError('');
-      
+
       const [rRes, pRes] = await Promise.all([
         roulettesAPI.getRoulettes({ page_size: 100 }),
         participantsAPI.getMyParticipations({ page_size: 200 }),
       ]);
-      
+
       const list = toArray(rRes).map((r) => ({
         ...r,
         image_url: resolveImageUrl(r),
@@ -584,7 +584,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
         participation_end: getParticipationEnd(r),
         created_date: normalizeDate(r),
       }));
-      
+
       setRoulettes(list);
       setMyParticipations(toArray(pRes));
     } catch (err) {
@@ -601,6 +601,19 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
     else setLoading(false);
   }, [roulettesProp, myPartsProp, loadData]);
 
+// ✅ NUEVO: Recargar cuando la página se vuelve visible
+  useEffect(() => {
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === 'visible') {
+      loadData();
+    }
+  };
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  return () => {
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+  };
+}, [loadData]);
+
   const isParticipating = useCallback(
     (rouletteId) =>
       Array.isArray(myParticipations) &&
@@ -615,7 +628,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
 
     const filtered = list.filter((r) => {
       const state = getRouletteState(r);
-      
+
       if (filterStatus === 'active') {
         return state === 'active' || state === 'scheduled';
       }
@@ -639,8 +652,8 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
             <button
               onClick={() => setFilterStatus('active')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filterStatus === 'active' 
-                  ? 'bg-blue-600 text-white' 
+                filterStatus === 'active'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
@@ -649,15 +662,15 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
             <button
               onClick={() => setFilterStatus('completed')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                filterStatus === 'completed' 
-                  ? 'bg-blue-600 text-white' 
+                filterStatus === 'completed'
+                  ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
               Completadas
             </button>
           </div>
-          
+
           <button
             type="button"
             onClick={loadData}
@@ -712,12 +725,12 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
             const isCompleted = state === 'completed';
             const isWaitingDraw = state === 'waiting_draw';
             const participationOpen = isParticipationOpen(r);
-            
+
             let ctaDisabled = false;
             let ctaLabel = 'Participar Ahora';
             let ctaStyle = 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-sm hover:shadow-md transform hover:scale-105';
             let CtaIcon = Play;
-            
+
             if (isCompleted) {
               ctaLabel = 'Ver Ganador';
               ctaStyle = 'bg-green-600 hover:bg-green-700 text-white shadow-sm';
@@ -740,15 +753,16 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
               ctaDisabled = true;
             } else if (participationOpen) {
               if (participating) {
-                ctaLabel = 'Ya participas — Entrar';
+                ctaLabel = 'Ya participas';
                 ctaStyle = 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50';
+                ctaDisabled = true; // ✅ BLOQUEADO
                 CtaIcon = CheckCircle;
               } else {
                 ctaLabel = 'Participar Ahora';
                 ctaStyle = 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:from-blue-700 hover:to-indigo-700 shadow-sm hover:shadow-md transform hover:scale-105';
                 CtaIcon = Play;
+                ctaDisabled = false;
               }
-              ctaDisabled = false;
             } else {
               ctaLabel = 'No Disponible';
               ctaStyle = 'bg-gray-100 text-gray-500 border border-gray-200 cursor-not-allowed';
@@ -775,14 +789,14 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                       alt={r.title || r.name || 'Ruleta'}
                       className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
-                    
+
                     <div className="absolute top-3 left-3">
-                      <StatusBadge 
+                      <StatusBadge
                         roulette={r}
                         className="bg-white/95 backdrop-blur-sm shadow-lg"
                       />
                     </div>
-                    
+
                     {(state === 'scheduled' || isWaitingDraw) && (
                       <div className="absolute top-3 right-3">
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 rounded-full shadow-lg backdrop-blur-sm">
@@ -804,9 +818,9 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                   </div>
 
                   {r.description && (
-                    <ExpandableDescription 
-                      description={r.description} 
-                      maxLength={100} 
+                    <ExpandableDescription
+                      description={r.description}
+                      maxLength={100}
                       className="flex-1"
                     />
                   )}
