@@ -3,7 +3,6 @@
 // src/components/admin/DrawTools.jsx
 import { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import {
-  RotateCcw,
   Play,
   Users,
   RefreshCcw,
@@ -30,7 +29,6 @@ const SPIN_DURATION_MS = 4500
 ============================================================================ */
 
 const mod360 = (x) => ((x % 360) + 360) % 360
-const pad2 = (n) => String(n).padStart(2, "0")
 
 const pointerOffsetDegrees = (pointerSide) => (pointerSide === "top" ? -90 : 0)
 
@@ -609,21 +607,6 @@ const DrawTools = ({ onRefresh }) => {
 
     return { availableUnits, deliveredUnits, activeTypes }
   }, [prizes])
-
-  const countdown = useMemo(() => {
-    if (!detail?.scheduled_date) return null
-    const target = new Date(detail.scheduled_date).getTime()
-    const diffMs = target - nowTs
-    const positive = Math.max(diffMs, 0)
-    let secs = Math.floor(positive / 1000)
-    const days = Math.floor(secs / 86400)
-    secs %= 86400
-    const hours = Math.floor(secs / 3600)
-    secs %= 3600
-    const minutes = Math.floor(secs / 60)
-    const seconds = secs % 60
-    return { diffMs, days, hours, minutes, seconds }
-  }, [detail?.scheduled_date, nowTs])
 
   const centerIconKey = (detail?.center_icon || "trophy").toLowerCase()
 

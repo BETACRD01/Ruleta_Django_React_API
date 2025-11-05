@@ -11,7 +11,7 @@ import PasswordResetForm from "./PasswordResetForm";
 
 // Contextos
 import { useAuth } from "../../contexts/AuthContext";
-import { useAuthNotifications } from "../../contexts/NotificationContext";
+import { useNotification } from "../../contexts/NotificationContext";
 
 // ============================================================================
 // CONSTANTES
@@ -29,27 +29,6 @@ const INITIAL_FORM_STATE = {
 };
 
 // ============================================================================
-// UTILIDADES DE ALMACENAMIENTO
-// ============================================================================
-const TokenStorage = {
-  save: (tokens, user) => {
-    const { access, refresh } = tokens;
-    
-    // Guardar tokens en todas las variantes de claves
-    const tokenKeys = ['token', 'auth_token', 'authToken', 'access_token'];
-    tokenKeys.forEach(key => localStorage.setItem(key, access));
-    
-    localStorage.setItem('refresh_token', refresh);
-    localStorage.setItem('user', JSON.stringify(user));
-  },
-
-  clear: () => {
-    const keys = ['token', 'auth_token', 'authToken', 'access_token', 'refresh_token', 'user'];
-    keys.forEach(key => localStorage.removeItem(key));
-  }
-};
-
-// ============================================================================
 // COMPONENTE PRINCIPAL
 // ============================================================================
 const LoginForm = () => {
@@ -57,8 +36,14 @@ const LoginForm = () => {
   // HOOKS Y ESTADO
   // ---------------------------------------------------------------------------
   const navigate = useNavigate();
-  const { login, loading: authLoading, error: authError, clearError } = useAuth();
-  const { handleAuthError, showSuccess } = useAuthNotifications();
+  const { 
+    login, 
+    googleLogin, 
+    loading: authLoading, 
+    error: authError, 
+    clearError 
+  } = useAuth();
+  const { showError } = useNotification();
 
   const [currentView, setCurrentView] = useState(VIEWS.LOGIN);
   const [formData, setFormData] = useState(INITIAL_FORM_STATE);
@@ -112,7 +97,6 @@ const LoginForm = () => {
       });
 
       if (result?.success) {
-        showSuccess?.(`¡Bienvenido de nuevo!`);
         navigate("/", { replace: true });
       } else {
         setError(result?.message || "Credenciales inválidas");
@@ -121,76 +105,50 @@ const LoginForm = () => {
       console.error("Error en login:", err);
       const msg = err?.message || "Error al iniciar sesión";
       setError(msg);
-      handleAuthError?.(err, "inicio de sesión");
     } finally {
       setFormLoading(false);
     }
   };
 
   // ---------------------------------------------------------------------------
-  // LOGIN CON GOOGLE
+  // LOGIN CON GOOGLE - CORREGIDO ✅
   // ---------------------------------------------------------------------------
   const handleGoogleSuccess = async (accessToken) => {
-    setGoogleLoading(true);
-    setError("");
-    
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL}/auth/google/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ access_token: accessToken }),
-      });
+      setGoogleLoading(true);
+      setError("");
       
-      const data = await response.json();
+      console.log('🔍 Iniciando Google Login desde LoginForm...');
       
-      if (!response.ok) {
-        throw new Error(data.error || `Error del servidor: ${response.status}`);
-      }
-
-      if (data.success && data.tokens?.access) {
-        // Guardar tokens de forma consistente
-        TokenStorage.save(data.tokens, data.user);
-        
-        // Actualizar contexto de autenticación (sin llamada a API)
-        try {
-          await login?.({ 
-            token: data.tokens.access, 
-            user: data.user, 
-            skipApiCall: true 
-          });
-        } catch (contextError) {
-          console.warn("Contexto no actualizado, pero tokens guardados:", contextError);
-        }
-        
-        // Mostrar éxito
-        const userName = data.user?.first_name || data.user?.email?.split('@')[0] || 'Usuario';
-        showSuccess?.(`¡Bienvenido ${userName}!`);
-        
-        // Redirigir con reemplazo de historial
-        setTimeout(() => {
-          window.location.href = "/";
-        }, 100);
-        
+      // 🆕 USAR EL MÉTODO googleLogin DEL CONTEXTO
+      // Este método ya maneja todo internamente sin duplicar peticiones
+      const result = await googleLogin(accessToken);
+      
+      if (result?.success) {
+        console.log('✅ Google login exitoso, redirigiendo...');
+        // Redirigir inmediatamente sin setTimeout
+        navigate("/", { replace: true });
       } else {
-        throw new Error(data.error || "Respuesta inválida del servidor");
+        throw new Error(result?.message || "Error en autenticación con Google");
       }
       
     } catch (err) {
-      console.error("Error en Google Login:", err);
-      setError(err.message || "Error de conexión. Por favor intenta nuevamente.");
-      handleAuthError?.(err, "inicio de sesión con Google");
+      console.error("❌ Error en Google Login:", err);
+      const errorMsg = err.message || "Error de conexión. Por favor intenta nuevamente.";
+      setError(errorMsg);
+      showError?.(errorMsg, "Error de autenticación con Google");
     } finally {
       setGoogleLoading(false);
     }
   };
 
   const handleGoogleError = useCallback((error) => {
-    console.error("Error en Google OAuth:", error);
-    setError("No se pudo conectar con Google. Por favor intenta nuevamente.");
+    console.error("❌ Error en Google OAuth:", error);
+    const errorMsg = "No se pudo conectar con Google. Por favor intenta nuevamente.";
+    setError(errorMsg);
+    showError?.(errorMsg, "Error de Google OAuth");
     setGoogleLoading(false);
-  }, []);
+  }, [showError]);
 
   // ---------------------------------------------------------------------------
   // NAVEGACIÓN ENTRE VISTAS

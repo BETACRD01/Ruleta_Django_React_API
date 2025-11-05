@@ -1,5 +1,5 @@
 // src/components/auth/GoogleLoginButton.jsx
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
 
 const GoogleLoginButton = ({ onSuccess, onError, loading = false }) => {
@@ -7,28 +7,46 @@ const GoogleLoginButton = ({ onSuccess, onError, loading = false }) => {
   const [hasError, setHasError] = React.useState(false);
 
   // Verificar si Google OAuth está configurado
-  const isGoogleConfigured = React.useMemo(() => {
+  const isGoogleConfigured = useMemo(() => {
     const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
-    // Para Vite: import.meta.env.VITE_GOOGLE_CLIENT_ID;
     return clientId && clientId.length > 20;
   }, []);
 
+  // 🔒 PREVENIR MÚLTIPLES LLAMADAS
+  const processingRef = React.useRef(false);
+
+  // Manejar el éxito del login con protección contra llamadas múltiples
+  const handleSuccess = useCallback(async (tokenResponse) => {
+    // 🛡️ PROTECCIÓN: Si ya se está procesando, ignorar
+    if (processingRef.current) {
+      console.log('⚠️ Login ya en proceso, ignorando llamada duplicada');
+      return;
+    }
+
+    processingRef.current = true;
+    setIsLoading(true);
+    
+    try {
+      console.log('🔐 Procesando token de Google...');
+      await onSuccess(tokenResponse.access_token);
+    } catch (error) {
+      console.error('❌ Google login error:', error);
+      setHasError(true);
+      if (onError) onError(error);
+    } finally {
+      setIsLoading(false);
+      // Resetear después de un pequeño delay para evitar clics rápidos
+      setTimeout(() => {
+        processingRef.current = false;
+      }, 1000);
+    }
+  }, [onSuccess, onError]);
+
+  // Configurar el hook de Google Login
   const googleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      setIsLoading(true);
-      try {
-        // tokenResponse contiene el access_token
-        await onSuccess(tokenResponse.access_token);
-      } catch (error) {
-        console.error('Google login error:', error);
-        setHasError(true);
-        if (onError) onError(error);
-      } finally {
-        setIsLoading(false);
-      }
-    },
+    onSuccess: handleSuccess,
     onError: (error) => {
-      console.error('Google OAuth error:', error);
+      console.error('❌ Google OAuth error:', error);
       setHasError(true);
       if (onError) onError(error);
     },
@@ -40,14 +58,20 @@ const GoogleLoginButton = ({ onSuccess, onError, loading = false }) => {
     return null;
   }
 
+  const isButtonDisabled = loading || isLoading || processingRef.current;
+
   return (
     <button
-      onClick={() => googleLogin()}
-      disabled={loading || isLoading}
+      onClick={() => {
+        if (!processingRef.current && !isLoading && !loading) {
+          googleLogin();
+        }
+      }}
+      disabled={isButtonDisabled}
       type="button"
       className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-gray-300 rounded-xl font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
     >
-      {(loading || isLoading) ? (
+      {isButtonDisabled ? (
         <>
           <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

@@ -79,7 +79,63 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [showSuccess, showError, loadUserProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadUserProfile]);
+
+  // ============================================================================
+  // 🆕 NUEVO MÉTODO: Establecer auth desde proveedor externo (Google, Facebook, etc)
+  // ============================================================================
+  const setAuthFromExternal = useCallback(async (authToken, userData) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      console.log('🔐 Estableciendo auth desde proveedor externo...');
+      
+      // Guardar token globalmente
+      setToken(authToken);
+      setGlobalAuthToken(authToken);
+
+      // Si ya tenemos datos del usuario, usarlos directamente
+      if (userData) {
+        console.log('✅ Usando datos de usuario proporcionados:', userData);
+        setUser(userData);
+        await loadUserProfile();
+        showSuccess(
+          `¡Bienvenido ${userData.first_name || userData.username || 'Usuario'}!`,
+          'Inicio de sesión exitoso'
+        );
+        return { success: true, user: userData };
+      }
+
+      // Si no, obtener datos del usuario del backend
+      console.log('📡 Obteniendo datos del usuario del backend...');
+      const userInfo = await authAPI.getUserInfo();
+      setUser(userInfo);
+      await loadUserProfile();
+      showSuccess(
+        `¡Bienvenido ${userInfo.first_name || userInfo.username || 'Usuario'}!`,
+        'Inicio de sesión exitoso'
+      );
+      return { success: true, user: userInfo };
+
+    } catch (err) {
+      const errorMessage = err.message || 'Error al establecer autenticación';
+      setError(errorMessage);
+      console.error('❌ Error en setAuthFromExternal:', err);
+      showError(errorMessage, 'Error de autenticación');
+      
+      // Limpiar tokens en caso de error
+      clearAllTokens();
+      setToken(null);
+      setUser(null);
+      
+      return { success: false, message: errorMessage };
+    } finally {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadUserProfile]);
 
   // ============================================================================
   // GOOGLE LOGIN - CORREGIDO ✅
@@ -89,36 +145,38 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
       setError(null);
 
-      console.log('🔐 Iniciando Google Login...');
+      console.log('🔍 Iniciando Google Login...');
       const result = await authAPI.googleLogin(accessToken);
       console.log('📦 Respuesta del backend:', result);
 
-      // ✅ CORREGIDO: Aceptar tanto 'token' como 'key' (dj-rest-auth usa 'key')
-      const authToken = result?.token || result?.key;
+      // ✅ CORREGIDO: Múltiples formas de obtener el token
+      // Prioridad: tokens.access > token > key
+      const authToken = 
+        result?.tokens?.access ||  // 🆕 Nuevo: soporte para tokens.access
+        result?.token || 
+        result?.key;
+
+      console.log('🔑 Token extraído:', authToken);
 
       if (result?.success && authToken) {
-        console.log('✅ Token recibido:', authToken);
-        setToken(authToken);
-        setGlobalAuthToken(authToken);
+        console.log('✅ Token recibido, estableciendo autenticación...');
         
-        const userInfo = await authAPI.getUserInfo();
-        console.log('✅ User info obtenida:', userInfo);
+        // 🆕 USAR EL NUEVO MÉTODO en lugar de setToken directamente
+        const authResult = await setAuthFromExternal(authToken, result.user);
         
-        setUser(userInfo);
-        await loadUserProfile();
-        
-        showSuccess(
-          `¡Bienvenido ${userInfo.first_name || userInfo.username || 'Usuario'}!`, 
-          'Inicio de sesión con Google exitoso'
-        );
-        return { success: true, user: userInfo };
+        if (authResult.success) {
+          console.log('✅ Autenticación establecida correctamente');
+          return { success: true, user: authResult.user };
+        } else {
+          throw new Error(authResult.message || 'Error al establecer autenticación');
+        }
       }
 
       // Si no hay token pero la respuesta fue exitosa, mostrar info específica
       if (result?.success && !authToken) {
         console.error('⚠️ Backend respondió success=true pero no envió token');
-        console.error('📦 Respuesta completa:', result);
-        const errorMessage = 'El servidor no devolvió un token de autenticación';
+        console.error('📦 Estructura completa de respuesta:', JSON.stringify(result, null, 2));
+        const errorMessage = 'El servidor no devolvió un token de autenticación válido';
         setError(errorMessage);
         showError(errorMessage, 'Error de autenticación con Google');
         return { success: false, message: errorMessage };
@@ -137,7 +195,8 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [showSuccess, showError, loadUserProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setAuthFromExternal]);
 
   const register = useCallback(async (userData) => {
     try {
@@ -190,7 +249,8 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [showSuccess, showError, loadUserProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadUserProfile]);
 
   const logout = useCallback(async () => {
     try {
@@ -206,7 +266,8 @@ export const AuthProvider = ({ children }) => {
       setToken(null);
       setError(null);
     }
-  }, [showInfo, showError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const requestPasswordReset = useCallback(async (email) => {
     try {
@@ -223,7 +284,8 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [showSuccess, showError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const updateProfile = useCallback(async (profileData) => {
     try {
@@ -243,7 +305,8 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [showSuccess, showError, loadUserProfile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadUserProfile]);
 
   const changePassword = useCallback(async (passwordData) => {
     try {
@@ -261,7 +324,8 @@ export const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [showSuccess, showError]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isAdmin = useCallback(() =>
     user?.role === 'admin' || user?.is_admin === true || user?.is_staff === true || user?.is_superuser === true,
@@ -344,6 +408,7 @@ export const AuthProvider = ({ children }) => {
     googleLogin,
     register,
     logout,
+    setAuthFromExternal, // 🆕 NUEVO: Para login externo sin peticiones duplicadas
 
     // Perfil
     updateProfile,
@@ -380,7 +445,8 @@ export const AuthProvider = ({ children }) => {
     login,
     googleLogin,
     register, 
-    logout, 
+    logout,
+    setAuthFromExternal, // 🆕 Incluir en dependencias
     updateProfile, 
     changePassword, 
     requestPasswordReset,

@@ -463,11 +463,6 @@ export default function RouletteCard({ roulette, serverTime, onClick }) {
     if (onClick) onClick(roulette)
   }
 
-  const handleWinnersClick = (e) => {
-    e.stopPropagation()
-    setShowWinnersModal(true)
-  }
-
   const handleImageClick = (e) => {
     e.stopPropagation()
     if (roulette.cover_image_url) {
