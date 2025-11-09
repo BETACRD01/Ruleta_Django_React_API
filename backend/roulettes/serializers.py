@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from typing import Any, Dict, Optional
 
 from django.contrib.auth import get_user_model
@@ -17,11 +19,11 @@ from .models import (
 from participants.models import Participation
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
-
-# =========================
-# Helpers
-# =========================
+# ============================================================================
+#                         HELPERS
+# ============================================================================
 def _abs_url(request, f) -> Optional[str]:
     """Devuelve URL absoluta si hay request; si no, la relativa del FileField."""
     if not f:
@@ -33,37 +35,85 @@ def _abs_url(request, f) -> Optional[str]:
     return request.build_absolute_uri(url) if request else url
 
 
-# =========================
-# Roulette Settings
-# =========================
+# ============================================================================
+#                    ROULETTE SETTINGS - SERIALIZERS
+# ============================================================================
 class RouletteSettingsSerializer(serializers.ModelSerializer):
+    """Serializer para lectura de configuración de ruleta (read-only)"""
     class Meta:
         model = RouletteSettings
         fields = [
             "max_participants",
             "allow_multiple_entries",
-            # eliminado: "auto_draw_when_full"
             "show_countdown",
             "notify_on_participation",
             "notify_on_draw",
-            "winners_target",  # 0 = auto (premios disponibles), >0 = fijo
+            "winners_target",
+            "require_receipt",
         ]
 
-    def validate_winners_target(self, value: int) -> int:
-        if value < 0:
-            raise serializers.ValidationError("winners_target no puede ser negativo")
-        return value
+
+class RouletteSettingsWriteSerializer(serializers.Serializer):
+    """Serializer para escribir/actualizar configuración de ruleta"""
+    max_participants = serializers.IntegerField(required=False, min_value=0)
+    allow_multiple_entries = serializers.BooleanField(required=False)
+    show_countdown = serializers.BooleanField(required=False)
+    notify_on_participation = serializers.BooleanField(required=False)
+    notify_on_draw = serializers.BooleanField(required=False)
+    winners_target = serializers.IntegerField(required=False, min_value=0)
+    require_receipt = serializers.BooleanField(required=False)
+    
+    def validate_require_receipt(self, value):
+        """Validar explícitamente el campo require_receipt"""
+        if isinstance(value, str):
+            return value.lower() in ('true', '1', 'yes', 'on')
+        return bool(value)
 
 
-# =========================
-# Prizes (SIN probabilidad)
-# =========================
+# ============================================================================
+#                    ROULETTE MAIN SERIALIZERS
+# ============================================================================
+class RouletteSerializer(serializers.ModelSerializer):
+    """Serializer principal de ruleta (lectura)"""
+    settings = RouletteSettingsSerializer(read_only=True)
+    participants_count = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Roulette
+        fields = [
+            "id",
+            "name",
+            "description",
+            "status",
+            "cover_image",
+            "participation_start",
+            "participation_end",
+            "scheduled_date",
+            "is_drawn",
+            "created_at",
+            "updated_at",
+            "participants_count",
+            "settings",
+        ]
+        read_only_fields = [
+            "id",
+            "is_drawn",
+            "created_at",
+            "updated_at",
+            "settings",
+        ]
+
+    def get_participants_count(self, obj):
+        return obj.participations.filter(user__is_active=True).count()
+
+
+# ============================================================================
+#                    PRIZES SERIALIZERS
+# ============================================================================
 class RoulettePrizeSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
     is_available = serializers.ReadOnlyField()
-    # Exponer "position" como alias legible de display_order
     position = serializers.SerializerMethodField()
-    # Estado legible para la UI
     status = serializers.SerializerMethodField()
 
     class Meta:
@@ -95,7 +145,6 @@ class RoulettePrizeSerializer(serializers.ModelSerializer):
             return None
 
     def get_status(self, obj) -> str:
-        # Consideramos “sorteado” si ya no está disponible (stock==0 ó inactivo)
         return "sorteado" if not getattr(obj, "is_available", False) else "pendiente"
 
     def validate_stock(self, value: int) -> int:
@@ -109,9 +158,9 @@ class RoulettePrizeSerializer(serializers.ModelSerializer):
         return value
 
 
-# =========================
-# Participations (lite)
-# =========================
+# ============================================================================
+#                    PARTICIPATIONS SERIALIZERS
+# ============================================================================
 class ParticipationLiteSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()
     user_avatar = serializers.SerializerMethodField()
@@ -135,18 +184,18 @@ class ParticipationLiteSerializer(serializers.ModelSerializer):
         return _abs_url(self.context.get("request"), avatar)
 
 
-# =========================
-# User Info
-# =========================
+# ============================================================================
+#                    USER INFO SERIALIZER
+# ============================================================================
 class UserInfoSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "username", "first_name", "last_name", "email"]
 
 
-# =========================
-# Roulette List
-# =========================
+# ============================================================================
+#                    ROULETTE LIST SERIALIZER
+# ============================================================================
 class RouletteListSerializer(serializers.ModelSerializer):
     participants_count = serializers.IntegerField(source="get_participants_count", read_only=True)
     winner_name = serializers.SerializerMethodField()
@@ -200,7 +249,6 @@ class RouletteListSerializer(serializers.ModelSerializer):
         return _abs_url(self.context.get("request"), obj.cover_image)
 
     def get_prizes_count(self, obj) -> int:
-        # Premios que realmente “cuentan” (activos y con stock > 0)
         return obj.prizes.filter(is_active=True, stock__gt=0).count()
 
     def get_can_participate(self, obj) -> Dict[str, Any]:
@@ -235,7 +283,6 @@ class RouletteListSerializer(serializers.ModelSerializer):
 
     def get_winners_count(self, obj) -> int:
         count = obj.participations.filter(is_winner=True).count()
-        # Si hay winner_id “principal” no marcado en participations, contarlo también
         if obj.winner_id and not obj.participations.filter(pk=obj.winner_id, is_winner=True).exists():
             count += 1
         return count
@@ -244,9 +291,9 @@ class RouletteListSerializer(serializers.ModelSerializer):
         return obj.winners_target_effective()
 
 
-# =========================
-# Roulette Detail
-# =========================
+# ============================================================================
+#                    ROULETTE DETAIL SERIALIZER
+# ============================================================================
 class RouletteDetailSerializer(serializers.ModelSerializer):
     participants_count = serializers.IntegerField(source="get_participants_count", read_only=True)
     participants = ParticipationLiteSerializer(source="get_participants_list", many=True, read_only=True)
@@ -343,7 +390,7 @@ class RouletteDetailSerializer(serializers.ModelSerializer):
         return {
             "total_prizes": obj.prizes.count(),
             "active_prizes": obj.prizes.filter(is_active=True).count(),
-            "available_awards": obj.available_awards_count(),  # premios que cuentan para winners
+            "available_awards": obj.available_awards_count(),
             "total_stock": obj.prizes.aggregate(total=models.Sum("stock"))["total"] or 0,
             "draw_history_count": obj.draw_history.count(),
         }
@@ -358,146 +405,217 @@ class RouletteDetailSerializer(serializers.ModelSerializer):
         return obj.winners_target_effective()
 
 
-# =========================
-# Create / Update
-# =========================
+# ============================================================================
+#                ROULETTE CREATE/UPDATE SERIALIZER - ✅ CORREGIDO v3
+# ============================================================================
 class RouletteCreateUpdateSerializer(serializers.ModelSerializer):
-    # 'name' requerido solo en create; opcional en update
-    name = serializers.CharField(required=False, allow_blank=False)
-    cover_delete = serializers.BooleanField(write_only=True, required=False, default=False)
-    settings = RouletteSettingsSerializer(required=False)
-    cover_image_url = serializers.SerializerMethodField(read_only=True)
-
+    """
+    ✅ CORREGIDO v3: Crea/actualiza ruletas con settings como JSON string
+    Maneja FormData + archivos + settings parseados correctamente
+    """
+    settings = RouletteSettingsWriteSerializer(required=False, allow_null=True)
+    
     class Meta:
         model = Roulette
         fields = [
+            "id",
             "name",
             "description",
+            "status",
+            "cover_image",
             "participation_start",
             "participation_end",
             "scheduled_date",
-            "status",
-            "cover_image",
-            "cover_image_url",
-            "cover_delete",
             "settings",
         ]
+        read_only_fields = ["id"]
 
-    def get_cover_image_url(self, obj) -> Optional[str]:
-        return _abs_url(self.context.get("request"), obj.cover_image)
+    def to_internal_value(self, data):
+        """
+        ✅ OVERRIDE: Extrae settings como JSON string de FormData
+        En FormData, settings llega como string JSON en request.POST
+        """
+        settings_data = data.get('settings')
+        logger.info(f"✅ to_internal_value() - settings de data.get(): {settings_data}")
+        
+        # Buscar en request.POST si no viene en data
+        if not settings_data and self.context.get('request'):
+            try:
+                request = self.context['request']
+                settings_str = request.POST.get('settings')
+                if settings_str:
+                    logger.info(f"✅ to_internal_value() - encontrado en request.POST: {settings_str}")
+                    settings_data = settings_str
+                else:
+                    logger.warning(f"⚠️ settings NO encontrado en request.POST")
+            except Exception as e:
+                logger.warning(f"⚠️ Error accediendo a request.POST: {e}")
+        
+        # Procesar con el serializer estándar
+        ret = super().to_internal_value(data)
+        
+        # Agregar settings si se encontró
+        if settings_data:
+            logger.info(f"✅ to_internal_value() - Agregando settings: {settings_data}")
+            ret['settings'] = settings_data
+        
+        logger.info(f"✅ to_internal_value() - ret final: {ret.get('settings', 'SIN SETTINGS')}")
+        return ret
 
-    def validate(self, attrs):
-        participation_start = attrs.get("participation_start")
-        participation_end = attrs.get("participation_end")
-        scheduled_date = attrs.get("scheduled_date")
-        now = timezone.now()
+    def validate(self, data):
+        """
+        ✅ Validación adicional para settings desde FormData
+        """
+        logger.info(f"✅ validate() - settings recibido: {data.get('settings', 'SIN SETTINGS')}")
+        
+        if 'settings' not in data:
+            try:
+                request = self.context.get('request')
+                if request:
+                    settings_data = request.data.get('settings')
+                    if settings_data:
+                        logger.info(f"✅ validate() - restaurando de request.data: {settings_data}")
+                        data['settings'] = settings_data
+            except Exception as e:
+                logger.warning(f"⚠️ validate() - Error: {e}")
+        
+        return data
 
-        instance = getattr(self, "instance", None)
-        is_editing = instance is not None
-
-        if participation_start and participation_end:
-            if participation_start >= participation_end:
-                raise serializers.ValidationError(
-                    {"participation_end": "La fecha de fin debe ser posterior al inicio."}
-                )
-
-        if scheduled_date:
-            if not is_editing and scheduled_date <= now:
-                raise serializers.ValidationError(
-                    {"scheduled_date": "La fecha programada debe ser futura para nuevas ruletas."}
-                )
-            if participation_end and scheduled_date <= participation_end:
-                raise serializers.ValidationError(
-                    {"scheduled_date": "El sorteo debe ser posterior al fin de participación."}
-                )
-
-        # Normalizar campos vacíos -> None
+    def _normalize_dates(self, validated_data):
+        """Normalizar fechas None"""
         for field in ["participation_start", "participation_end", "scheduled_date"]:
-            if field in attrs and (attrs[field] == "" or attrs[field] is None):
-                attrs[field] = None
+            if field in validated_data and not validated_data[field]:
+                validated_data[field] = None
+        return validated_data
 
-        return attrs
-
-    def _apply_settings(self, instance: Roulette, settings_data: Optional[Dict[str, Any]]):
+    def _ensure_settings(self, roulette, settings_data=None):
         """
-        Crea/actualiza settings de manera segura.
-        winners_target: 0 = automático (premios disponibles).
+        ✅ CORREGIDO v3: Crea/actualiza RouletteSettings de forma segura
+        - Parsea JSON string si es necesario
+        - Valida booleanos correctamente
+        - Evita duplicados con update_or_create
         """
-        if settings_data is None:
-            if not hasattr(instance, "settings") or not instance.settings:
-                RouletteSettings.objects.create(
-                    roulette=instance,
-                    max_participants=0,
-                    allow_multiple_entries=False,
-                    # eliminado: auto_draw_when_full
-                    show_countdown=True,
-                    notify_on_participation=True,
-                    notify_on_draw=True,
-                    winners_target=0,  # AUTO por defecto
-                )
-            return
+        # Estado base seguro
+        defaults = {
+            'max_participants': 0,
+            'allow_multiple_entries': False,
+            'show_countdown': True,
+            'notify_on_participation': True,
+            'notify_on_draw': True,
+            'winners_target': 0,
+            'require_receipt': True,
+        }
 
-        if hasattr(instance, "settings") and instance.settings:
-            for key, value in settings_data.items():
-                setattr(instance.settings, key, value)
-            instance.settings.save()
-        else:
-            RouletteSettings.objects.create(roulette=instance, **settings_data)
+        logger.info(f"🔧 _ensure_settings() - Iniciando para roulette {roulette.id}")
+        logger.info(f"   settings_data: {settings_data}")
+        logger.info(f"   tipo: {type(settings_data)}")
+        
+        # ✅ PASO 1: Si settings_data es STRING JSON, parsearlo a DICCIONARIO
+        if isinstance(settings_data, str):
+            logger.info(f"   📝 Parseando JSON string...")
+            try:
+                settings_data = json.loads(settings_data)
+                logger.info(f"   ✅ Parseado correctamente: {settings_data}")
+            except json.JSONDecodeError as e:
+                logger.error(f"   ❌ Error en JSON: {e}")
+                settings_data = None
+        
+        # ✅ PASO 2: Procesar diccionario si existe
+        if isinstance(settings_data, dict) and settings_data:
+            logger.info(f"   ✅ Procesando diccionario")
+            
+            # Booleanos
+            bool_fields = ['allow_multiple_entries', 'show_countdown', 
+                          'notify_on_participation', 'notify_on_draw', 'require_receipt']
+            
+            for bool_field in bool_fields:
+                if bool_field in settings_data:
+                    raw_value = settings_data[bool_field]
+                    new_value = bool(raw_value)
+                    defaults[bool_field] = new_value
+                    logger.info(f"      ✅ {bool_field}: {repr(raw_value)} → {new_value}")
+            
+            # Numéricos
+            for num_field in ['max_participants', 'winners_target']:
+                if num_field in settings_data:
+                    try:
+                        new_value = int(settings_data[num_field])
+                        defaults[num_field] = new_value
+                        logger.info(f"      ✅ {num_field}: {new_value}")
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"      ⚠️ {num_field} error: {e}")
+        
+        logger.info(f"   ✅ Defaults finales: {defaults}")
+        
+        # ✅ PASO 3: Guardar en BD
+        try:
+            settings_obj, created = RouletteSettings.objects.update_or_create(
+                roulette=roulette,
+                defaults=defaults
+            )
+            
+            action = "CREADO" if created else "ACTUALIZADO"
+            logger.info(f"   ✅ Settings {action} exitosamente")
+            logger.info(f"      require_receipt en BD: {settings_obj.require_receipt}")
+            
+            return settings_obj
+            
+        except Exception as e:
+            logger.error(f"   ❌ Error guardando: {e}", exc_info=True)
+            raise
 
     def create(self, validated_data):
-        # Asegurar que name sea requerido SOLO en creación
-        if not validated_data.get("name"):
-            raise serializers.ValidationError({"name": "Este campo es requerido al crear."})
-
-        validated_data.pop("cover_delete", False)  # no aplica en create
+        """✅ Crea ruleta y settings de forma segura"""
+        # Extraer settings
         settings_data = validated_data.pop("settings", None)
-
-        # Normalizar fechas None
-        for f in ["participation_start", "participation_end", "scheduled_date"]:
-            if f in validated_data and not validated_data[f]:
-                validated_data[f] = None
-
-        instance = Roulette.objects.create(**validated_data)
-
-        # Crear/actualizar settings
-        self._apply_settings(instance, settings_data)
-
-        instance.refresh_from_db()
-        return instance
+        logger.info(f"✅ create() - settings extraído: {settings_data} (tipo: {type(settings_data)})")
+        
+        # Normalizar fechas
+        validated_data = self._normalize_dates(validated_data)
+        
+        # Crear ruleta
+        roulette = Roulette.objects.create(**validated_data)
+        logger.info(f"✅ Ruleta creada: {roulette.id}")
+        
+        # Crear settings (parsea JSON si es necesario)
+        self._ensure_settings(roulette, settings_data)
+        
+        roulette.refresh_from_db()
+        return roulette
 
     def update(self, instance, validated_data):
+        """✅ Actualiza ruleta y settings de forma segura"""
         cover_delete = validated_data.pop("cover_delete", False)
         settings_data = validated_data.pop("settings", None)
-
+        logger.info(f"✅ update() - settings extraído: {settings_data} (tipo: {type(settings_data)})")
+        
         # Normalizar fechas
-        for f in ["participation_start", "participation_end", "scheduled_date"]:
-            if f in validated_data and not validated_data[f]:
-                validated_data[f] = None
-
-        # Manejo de imagen de portada
+        validated_data = self._normalize_dates(validated_data)
+        
+        # Manejo de imagen
         if cover_delete and getattr(instance, "cover_image", None):
             try:
                 instance.cover_image.delete(save=False)
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning(f"No se pudo eliminar imagen física: {e}")
+                logger.warning(f"No se pudo eliminar imagen: {e}")
             validated_data["cover_image"] = None
-
-        # Settings (incluye winners_target)
-        self._apply_settings(instance, settings_data)
-
-        # Actualizar campos de ruleta
+        
+        # Actualizar campos
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
-
         instance.save()
+        logger.info(f"✅ Ruleta actualizada: {instance.id}")
+        
+        # Actualizar settings (parsea JSON si es necesario)
+        self._ensure_settings(instance, settings_data)
+        
         instance.refresh_from_db()
         return instance
 
 
-# =========================
-# Draw Execute
-# =========================
+# ============================================================================
+#                    DRAW EXECUTE SERIALIZER
+# ============================================================================
 class DrawExecuteSerializer(serializers.Serializer):
     roulette_id = serializers.IntegerField()
     count = serializers.IntegerField(required=False, min_value=1, default=1)
@@ -511,7 +629,6 @@ class DrawExecuteSerializer(serializers.Serializer):
         except Roulette.DoesNotExist:
             raise serializers.ValidationError({"roulette_id": "Ruleta no encontrada"})
 
-        # Estado base
         if roulette.is_drawn or roulette.status == RouletteStatus.COMPLETED:
             raise serializers.ValidationError("La ruleta ya fue sorteada.")
 
@@ -519,12 +636,10 @@ class DrawExecuteSerializer(serializers.Serializer):
         if total_participants == 0:
             raise serializers.ValidationError("No hay participantes para sortear.")
 
-        # Elegibles
         eligibles = roulette.participations.filter(is_winner=False).count()
         if eligibles == 0:
             raise serializers.ValidationError("No quedan participantes elegibles para ganar.")
 
-        # Política corregida: el limitante REAL es el stock; la meta es referencial
         settings = getattr(roulette, "settings", None)
         target = int(getattr(settings, "winners_target", 0) or 0)
 
@@ -537,17 +652,12 @@ class DrawExecuteSerializer(serializers.Serializer):
             raise serializers.ValidationError("No quedan premios disponibles.")
 
         if target > 0:
-            # Si ya se alcanzó la meta PERO todavía hay stock, permitir continuar.
-            # Solo bloquear si meta alcanzada Y además ya no hay stock (ya controlado arriba).
-            # Por claridad explícita:
             if already >= target and available_stock <= 0:
                 raise serializers.ValidationError("Se alcanzó la meta de ganadores y no quedan más premios.")
             attrs["count"] = min(count, available_stock, eligibles)
         else:
-            # Automático por stock
             attrs["count"] = min(count, available_stock, eligibles)
 
-        # Permisos
         request = self.context.get("request")
         user = getattr(request, "user", None)
         if user is None or not user.is_authenticated:
@@ -559,9 +669,9 @@ class DrawExecuteSerializer(serializers.Serializer):
         return attrs
 
 
-# =========================
-# Draw History
-# =========================
+# ============================================================================
+#                    DRAW HISTORY SERIALIZER
+# ============================================================================
 class DrawHistorySerializer(serializers.ModelSerializer):
     roulette_name = serializers.CharField(source="roulette.name", read_only=True)
     roulette_slug = serializers.CharField(source="roulette.slug", read_only=True)
@@ -603,12 +713,11 @@ class DrawHistorySerializer(serializers.ModelSerializer):
         return None
 
 
-# =========================
-# Prize Create/Update (SIN probabilidad)
-# =========================
+# ============================================================================
+#                PRIZE CREATE/UPDATE SERIALIZER
+# ============================================================================
 class RoulettePrizeCreateUpdateSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField(read_only=True)
-    # aceptar "position" como alias de display_order en entrada
     position = serializers.IntegerField(required=False, allow_null=True, write_only=True)
 
     class Meta:
@@ -620,7 +729,7 @@ class RoulettePrizeCreateUpdateSerializer(serializers.ModelSerializer):
             "image_url",
             "stock",
             "display_order",
-            "position",  # write-only, alias
+            "position",
             "is_active",
         ]
 
@@ -628,7 +737,6 @@ class RoulettePrizeCreateUpdateSerializer(serializers.ModelSerializer):
         return _abs_url(self.context.get("request"), obj.image)
 
     def validate(self, attrs):
-        # Mapear position -> display_order si llegó
         if "position" in attrs and attrs["position"] is not None:
             pos = attrs.pop("position")
             attrs["display_order"] = int(pos)
@@ -668,16 +776,14 @@ class RoulettePrizeCreateUpdateSerializer(serializers.ModelSerializer):
         return instance
 
 
-# =========================
-# Roulette Stats (utilitario)
-# =========================
+# ============================================================================
+#                ROULETTE STATS SERIALIZER
+# ============================================================================
 class RouletteStatsSerializer(serializers.Serializer):
     """
-    Serializer de solo lectura que devuelve un paquete de estadísticas.
-    Puedes instanciarlo con un objeto Roulette y hará los cálculos en
-    to_representation(). No requiere campos de entrada.
+    Serializer de solo lectura que devuelve estadísticas
+    Instancia con un objeto Roulette
     """
-
     roulette_info = serializers.DictField(read_only=True)
     participants = serializers.DictField(read_only=True)
     winner_info = serializers.DictField(allow_null=True, read_only=True)
@@ -685,7 +791,6 @@ class RouletteStatsSerializer(serializers.Serializer):
     participation_trends = serializers.DictField(required=False, read_only=True)
 
     def to_representation(self, instance: Roulette) -> Dict[str, Any]:
-        # Info básica de la ruleta
         roulette_info = {
             "id": instance.id,
             "name": instance.name,
@@ -698,10 +803,8 @@ class RouletteStatsSerializer(serializers.Serializer):
             "participation_end": instance.participation_end,
         }
 
-        # Participantes
         total_participants = instance.participations.count()
         winners_count = instance.participations.filter(is_winner=True).count()
-        # Si existe winner_id “principal” fuera del flag, contarlo
         if instance.winner_id and not instance.participations.filter(pk=instance.winner_id, is_winner=True).exists():
             winners_count += 1
 
@@ -711,12 +814,10 @@ class RouletteStatsSerializer(serializers.Serializer):
             "eligible": max(total_participants - winners_count, 0),
         }
 
-        # Ganador “principal”
         winner_info = None
         if instance.winner:
             winner_info = ParticipationLiteSerializer(instance.winner, context=self.context).data
 
-        # Premios
         prizes_qs = instance.prizes.all()
         prizes_info = {
             "total": prizes_qs.count(),
@@ -725,7 +826,6 @@ class RouletteStatsSerializer(serializers.Serializer):
             "total_stock": prizes_qs.aggregate(total=models.Sum("stock"))["total"] or 0,
         }
 
-        # Tendencias / placeholder (si en el futuro agregas series de tiempo)
         participation_trends = {}
 
         return {

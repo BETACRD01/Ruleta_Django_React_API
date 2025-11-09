@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Trophy, Users, Award } from "lucide-react";
-import { Card, Tabs, LoadingSpinner } from "./UI";
+import { Card, Tabs, LoadingSpinner } from "./UI/UI";
 import { roulettesAPI, participantsAPI, handleAPIError } from "../config/api";
 import { useAuth } from "../contexts/AuthContext";
 

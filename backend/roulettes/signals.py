@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 def _safe_delete_storage_path(path: Optional[str], *, label: str) -> None:
     """
     Elimina un archivo del almacenamiento si existe.
-    No levanta excepción: loggea y continúa.
+    No levanta excepción: loguea y continúa.
     """
     if not path:
         return
@@ -54,6 +54,7 @@ def create_roulette_settings(sender, instance: Roulette, created: bool, **kwargs
                 "notify_on_participation": True,
                 "notify_on_draw": True,
                 "winners_target": 0,
+                "require_receipt": True,
             },
         )
 
@@ -73,13 +74,13 @@ def create_roulette_settings(sender, instance: Roulette, created: bool, **kwargs
         )
 
 # ============================================================
-# Roulette: notificaciones asíncronas
+# Roulette: notificaciones asincrónicas
 # ============================================================
 
 @receiver(post_save, sender=Roulette)
 def schedule_roulette_notifications(sender, instance: Roulette, created: bool, **kwargs):
     """
-    Programa el envío de notificaciones de forma ASÍNCRONA usando Celery.
+    Programa el envío de notificaciones de forma ASINCRÓNA usando Celery.
     Se ejecuta después de que la transacción se complete exitosamente.
     """
     if not created:
@@ -199,7 +200,7 @@ def validate_prize_before_save(sender, instance: RoulettePrize, **kwargs):
 @receiver(post_save, sender=RoulettePrize)
 def handle_prize_changes(sender, instance: RoulettePrize, created: bool, **kwargs):
     """
-    Loggea cambios en premios.
+    Loguea cambios en premios.
     """
     logger.info(
         "Premio %s en ruleta '%s' (id=%s): %s",

@@ -1,3 +1,4 @@
+# backend/roulettes/utils.py
 from __future__ import annotations
 
 import hashlib
@@ -83,8 +84,7 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
     - Selecciona un participante que todavía NO ha ganado.
     - Usa _assign_prize_atomically() para asignar premio y reducir stock.
     - Usa _schedule_winner_notifications() para programar notificación retardada.
-    - NO cierra anticipado: el cierre se decide en reconcile_completion() según
-      stock restante y/o meta fija.
+    - ✅ Reconcilia completitud DESPUÉS del sorteo.
     """
     
     roulette = (
@@ -143,10 +143,10 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
         return {
             "success": False,
             "message": "No se encontró un premio disponible para asignar.",
-            "error_code": "NO_PRIZE_FOUND"
+            "error_code": "NO_PRIZE_FOUND",
         }
 
-    # Asignar premio a participación ganadora
+    # Aquí ya sabemos que prize está garantizado no ser None
     winner.won_prize = prize
     winner.prize_position = prize.display_order or 1
     winner.is_winner = True
@@ -199,7 +199,7 @@ def execute_roulette_draw(roulette: Roulette, admin_user, draw_type: str = "manu
         is_first_winner=True
     )
 
-    # Decidir posible cierre SOLO si ya no se puede continuar
+    # ✅ RECONCILIAR COMPLETITUD DESPUÉS DEL SORTEO
     roulette.reconcile_completion(by_user=admin_user)
 
     return {
@@ -349,9 +349,18 @@ def calculate_time_remaining(target_datetime) -> Optional[Dict[str, Any]]:
 
 
 def get_roulette_countdown_info(roulette: Roulette) -> Dict[str, Any]:
+    """
+    Calcula información de countdown para diferentes eventos de la ruleta.
+    
+    Retorna un diccionario con claves opcionales:
+    - participation_start: si la participación aún no ha comenzado
+    - participation_end: si la participación aún está abierta
+    - scheduled_draw: si hay sorteo programado pendiente
+    """
     now = timezone.now()
     info: Dict[str, Any] = {}
 
+    # Countdown para inicio de participación
     if roulette.participation_start and now < roulette.participation_start:
         info["participation_start"] = {
             "label": "Inicio de participación",
@@ -359,14 +368,18 @@ def get_roulette_countdown_info(roulette: Roulette) -> Dict[str, Any]:
             "countdown": calculate_time_remaining(roulette.participation_start),
         }
 
-    if roulette.participation_end and now < roulette.participation_end and getattr(roulette, "participation_is_open", False):
+    # Countdown para fin de participación
+    participation_is_open = getattr(roulette, "participation_is_open", False)
+    if roulette.participation_end and now < roulette.participation_end and participation_is_open:
         info["participation_end"] = {
             "label": "Fin de participación",
             "target_date": roulette.participation_end,
             "countdown": calculate_time_remaining(roulette.participation_end),
         }
 
-    if roulette.scheduled_date and now < roulette.scheduled_date and not roulette.is_drawn:
+    # Countdown para sorteo programado
+    is_drawn = getattr(roulette, "is_drawn", False)
+    if roulette.scheduled_date and now < roulette.scheduled_date and not is_drawn:
         info["scheduled_draw"] = {
             "label": "Sorteo programado",
             "target_date": roulette.scheduled_date,

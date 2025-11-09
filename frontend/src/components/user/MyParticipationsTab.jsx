@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, Filter, Calendar, Eye, Trophy, RefreshCw, AlertTriangle, X, User, Clock, XCircle, Gift } from 'lucide-react';
-import { Button } from '../UI';
+import { Button } from '../UI/UI';
 import { participantsAPI, handleAPIError, API_URL, formatters } from '../../config/api';
 
 /* -----------------------

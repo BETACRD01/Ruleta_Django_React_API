@@ -6,7 +6,8 @@ from .models import (
     RealTimeMessage, 
     NotificationType, 
     AdminNotificationPreference,
-    NotificationTemplate
+    NotificationTemplate,
+    NotificationReadStatus  # ✅ CORREGIDO: AGREGADO
 )
 from django.contrib.auth import get_user_model
 from django.utils.html import strip_tags
@@ -15,7 +16,7 @@ from rest_framework.exceptions import ValidationError
 User = get_user_model()
 
 class NotificationSerializer(serializers.ModelSerializer):
-    """Serializer principal para notificaciones con sanitización"""
+    """Serializer principal para notificaciones con sanitizaciÃ³n"""
     user_name = serializers.CharField(source='user.username', read_only=True, allow_null=True)
     notification_type_display = serializers.CharField(
         source='get_notification_type_display', 
@@ -65,14 +66,14 @@ class NotificationSerializer(serializers.ModelSerializer):
         ]
     
     def get_time_since_created(self, obj):
-        """Calcular tiempo transcurrido desde la creación"""
+        """Calcular tiempo transcurrido desde la creaciÃ³n"""
         from django.utils import timezone
         from django.utils.timesince import timesince
         
         return timesince(obj.created_at, timezone.now())
     
     def get_is_expired(self, obj):
-        """Verificar si la notificación ha expirado"""
+        """Verificar si la notificaciÃ³n ha expirado"""
         if not obj.expires_at:
             return False
         from django.utils import timezone
@@ -89,7 +90,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         if data.get('message'):
             data['message'] = strip_tags(data['message'])[:5000]
         
-        # Limitar tamaño de extra_data en response
+        # Limitar tamaÃ±o de extra_data en response
         if data.get('extra_data') and isinstance(data['extra_data'], dict):
             import json
             if len(json.dumps(data['extra_data'])) > 50000:
@@ -98,7 +99,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         return data
 
 class NotificationCreateSerializer(serializers.ModelSerializer):
-    """Serializer para crear notificaciones con validación estricta"""
+    """Serializer para crear notificaciones con validaciÃ³n estricta"""
     
     class Meta:
         model = Notification
@@ -117,24 +118,24 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
         ]
     
     def validate_title(self, value):
-        """Validar título"""
+        """Validar tÃ­tulo"""
         if not value or not value.strip():
-            raise ValidationError("El título no puede estar vacío")
+            raise ValidationError("El tÃ­tulo no puede estar vacÃ­o")
         
         if len(value) > 200:
-            raise ValidationError("El título no puede exceder 200 caracteres")
+            raise ValidationError("El tÃ­tulo no puede exceder 200 caracteres")
         
         # Strip tags para prevenir XSS
         clean_value = strip_tags(value).strip()
         if not clean_value:
-            raise ValidationError("El título no puede contener solo HTML")
+            raise ValidationError("El tÃ­tulo no puede contener solo HTML")
         
         return clean_value
     
     def validate_message(self, value):
         """Validar mensaje"""
         if not value or not value.strip():
-            raise ValidationError("El mensaje no puede estar vacío")
+            raise ValidationError("El mensaje no puede estar vacÃ­o")
         
         if len(value) > 5000:
             raise ValidationError("El mensaje no puede exceder 5000 caracteres")
@@ -146,18 +147,18 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
         return clean_value
     
     def validate_notification_type(self, value):
-        """Validar tipo de notificación"""
+        """Validar tipo de notificaciÃ³n"""
         valid_types = [choice[0] for choice in NotificationType.choices]
         if value not in valid_types:
             raise ValidationError(
-                f"Tipo inválido. Opciones: {', '.join(valid_types)}"
+                f"Tipo invÃ¡lido. Opciones: {', '.join(valid_types)}"
             )
         return value
     
     def validate_priority(self, value):
         """Validar prioridad"""
         if value not in ['low', 'normal', 'high', 'urgent']:
-            raise ValidationError("Prioridad inválida")
+            raise ValidationError("Prioridad invÃ¡lida")
         return value
     
     def validate_roulette_id(self, value):
@@ -187,13 +188,13 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
     
     def validate(self, data):
         """Validaciones cruzadas"""
-        # Si es pública, no debe tener usuario
+        # Si es pÃºblica, no debe tener usuario
         if data.get('is_public') and data.get('user'):
             raise ValidationError(
-                "Las notificaciones públicas no pueden tener usuario asignado"
+                "Las notificaciones pÃºblicas no pueden tener usuario asignado"
             )
         
-        # Si no es pública ni admin, debe tener usuario
+        # Si no es pÃºblica ni admin, debe tener usuario
         if not data.get('is_public') and not data.get('is_admin_only'):
             if not data.get('user'):
                 raise ValidationError(
@@ -206,19 +207,19 @@ class NotificationCreateSerializer(serializers.ModelSerializer):
                 "Las notificaciones admin-only no pueden tener usuario asignado"
             )
         
-        # Validar expiración
+        # Validar expiraciÃ³n
         if data.get('expires_at'):
             from django.utils import timezone
             if data['expires_at'] <= timezone.now():
                 raise ValidationError(
-                    "La fecha de expiración debe ser futura"
+                    "La fecha de expiraciÃ³n debe ser futura"
                 )
         
         return data
 
 class NotificationUpdateSerializer(serializers.ModelSerializer):
     """
-    Serializer para actualizar notificaciones (principalmente marcar como leída)
+    Serializer para actualizar notificaciones (principalmente marcar como leÃ­da)
     """
     class Meta:
         model = Notification
@@ -226,7 +227,7 @@ class NotificationUpdateSerializer(serializers.ModelSerializer):
 
 class PublicNotificationSerializer(serializers.ModelSerializer):
     """
-    Serializer para notificaciones públicas (información limitada)
+    Serializer para notificaciones pÃºblicas (informaciÃ³n limitada)
     """
     notification_type_display = serializers.CharField(
         source='get_notification_type_display', 
@@ -259,7 +260,7 @@ class PublicNotificationSerializer(serializers.ModelSerializer):
         ]
     
     def get_time_since_created(self, obj):
-        """Calcular tiempo transcurrido desde la creación"""
+        """Calcular tiempo transcurrido desde la creaciÃ³n"""
         from django.utils import timezone
         from django.utils.timesince import timesince
         
@@ -272,8 +273,6 @@ class PublicNotificationSerializer(serializers.ModelSerializer):
     def get_roulette_name(self, obj):
         """Obtener nombre de la ruleta desde extra_data"""
         return obj.extra_data.get('roulette_name', '')
-
-# REEMPLAZAR AdminNotificationSerializer en backend/notifications/serializers.py
 
 class AdminNotificationSerializer(serializers.ModelSerializer):
     """Serializer admin con query optimizado"""
@@ -326,8 +325,8 @@ class AdminNotificationSerializer(serializers.ModelSerializer):
     
     def get_is_read_by_me(self, obj):
         """
-        Verifica si admin actual ha leído esta notificación.
-        OPTIMIZADO: usa annotate en queryset si está disponible.
+        Verifica si admin actual ha leÃ­do esta notificaciÃ³n.
+        OPTIMIZADO: usa annotate en queryset si estÃ¡ disponible.
         """
         request = self.context.get('request')
         if not request or not request.user.is_authenticated:
@@ -337,8 +336,7 @@ class AdminNotificationSerializer(serializers.ModelSerializer):
         if hasattr(obj, 'is_read_by_me'):
             return obj.is_read_by_me
         
-        # Fallback: query individual (evitar en producción)
-        from .models import NotificationReadStatus
+        # Fallback: query individual (evitar en producciÃ³n)
         return NotificationReadStatus.objects.filter(
             notification=obj,
             user=request.user
@@ -364,7 +362,7 @@ class RealTimeMessageSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'sent_at', 'time_since_sent']
     
     def get_time_since_sent(self, obj):
-        """Calcular tiempo transcurrido desde el envío"""
+        """Calcular tiempo transcurrido desde el envÃ­o"""
         from django.utils import timezone
         from django.utils.timesince import timesince
         
@@ -372,7 +370,7 @@ class RealTimeMessageSerializer(serializers.ModelSerializer):
 
 class NotificationStatsSerializer(serializers.Serializer):
     """
-    Serializer para estadísticas de notificaciones
+    Serializer para estadÃ­sticas de notificaciones
     """
     total_notifications = serializers.IntegerField()
     unread_notifications = serializers.IntegerField()
@@ -382,34 +380,34 @@ class NotificationStatsSerializer(serializers.Serializer):
     admin_notifications_count = serializers.IntegerField(required=False)
     
     def to_representation(self, instance):
-        """Personalizar la representación de las estadísticas"""
+        """Personalizar la representaciÃ³n de las estadÃ­sticas"""
         data = super().to_representation(instance)
         
-        # Agregar información adicional si está disponible
+        # Agregar informaciÃ³n adicional si estÃ¡ disponible
         if hasattr(instance, 'last_notification_date'):
             data['last_notification_date'] = instance.last_notification_date
         
         return data
 
 class BulkNotificationMarkReadSerializer(serializers.Serializer):
-    """Serializer para marcar múltiples notificaciones con límites"""
+    """Serializer para marcar mÃºltiples notificaciones con lÃ­mites"""
     notification_ids = serializers.ListField(
         child=serializers.IntegerField(min_value=1, max_value=2147483647),
         min_length=1,
-        max_length=100,  # Aumentado de 50 a 100
+        max_length=100,
         help_text="Lista de IDs de notificaciones (max 100)"
     )
     
     def validate_notification_ids(self, value):
         """Validar unicidad y rango"""
         if len(value) != len(set(value)):
-            raise ValidationError("Los IDs deben ser únicos")
+            raise ValidationError("Los IDs deben ser Ãºnicos")
         
         # Validar que no haya IDs negativos o 0
         if any(id_val < 1 for id_val in value):
             raise ValidationError("Todos los IDs deben ser positivos")
         
-        return list(set(value))  # Eliminar duplicados por seguridad
+        return list(set(value))
 
 
 class AdminNotificationPreferenceSerializer(serializers.ModelSerializer):
@@ -465,7 +463,7 @@ class WinnerAnnouncementSerializer(serializers.Serializer):
     roulette_id = serializers.IntegerField(min_value=1)
     total_participants = serializers.IntegerField(min_value=1, max_value=1000000)
     prize_details = serializers.CharField(
-        max_length=1000,  # Aumentado de 500
+        max_length=1000,
         required=False, 
         allow_blank=True
     )
@@ -474,7 +472,7 @@ class WinnerAnnouncementSerializer(serializers.Serializer):
         """Sanitizar nombre de ruleta"""
         clean_value = strip_tags(value).strip()
         if not clean_value:
-            raise ValidationError("El nombre de la ruleta no puede estar vacío")
+            raise ValidationError("El nombre de la ruleta no puede estar vacÃ­o")
         return clean_value
     
     def validate_prize_details(self, value):
@@ -485,11 +483,11 @@ class WinnerAnnouncementSerializer(serializers.Serializer):
         return ''
     
     def validate_winner_user_id(self, value):
-        """Validar que el usuario ganador existe y está activo"""
+        """Validar que el usuario ganador existe y estÃ¡ activo"""
         try:
             user = User.objects.get(pk=value)
             if not user.is_active:
-                raise ValidationError("El usuario ganador no está activo")
+                raise ValidationError("El usuario ganador no estÃ¡ activo")
             return value
         except User.DoesNotExist:
             raise ValidationError("Usuario ganador no existe")

@@ -1,7 +1,7 @@
 // src/components/user/ResultsTab.jsx
 import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import { Trophy, Award, RefreshCcw, AlertTriangle, Gift } from 'lucide-react';
-import { Card, Badge, EmptyState, Button } from '../UI';
+import { Card, Badge, EmptyState, Button } from '../UI/UI';
 import { participantsAPI, handleAPIError, formatters } from '../../config/api';
 
 /** Helpers defensivos mejorados */

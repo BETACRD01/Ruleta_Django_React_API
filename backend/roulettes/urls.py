@@ -26,6 +26,7 @@ urlpatterns = [
 
     path("draw/execute/", views.DrawExecuteView.as_view(), name="draw-execute"),
     path("draw/history/", views.DrawHistoryView.as_view(), name="draw-history"),
+    path('roulettes/<int:pk>/settings/', views.RouletteViewSet.as_view({'get': 'settings', 'put': 'settings'}), name='roulette-settings'),
 
     path("<int:roulette_id>/stats/", views.roulette_stats, name="stats"),
     path("<int:roulette_id>/prizes/", views.RoulettePrizeListCreateView.as_view(), name="prizes-list"),

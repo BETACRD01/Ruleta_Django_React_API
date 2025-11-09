@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+"este es el de ahora"
 from datetime import timedelta, datetime
 from typing import Any, Dict, Iterable, List, Optional, TypedDict, TypeAlias, Literal, Mapping, TYPE_CHECKING, Tuple
 
@@ -18,7 +18,8 @@ from .models import (
     Notification, 
     RealTimeMessage, 
     AdminNotificationPreference,
-    NotificationTemplate
+    NotificationTemplate,
+    NotificationReadStatus  # ✅ CORREGIDO: AGREGADO
 )
 
 import logging
@@ -858,8 +859,6 @@ class RealTimeService:
         return message
     
 
-    # AGREGAR AL FINAL DE backend/notifications/services.py
-
 # ============================================================================
 # ADMIN READ STATUS MANAGEMENT
 # ============================================================================
@@ -878,8 +877,6 @@ def mark_admin_notification_as_read(
     Returns:
         bool: True si se marcó exitosamente
     """
-    from .models import NotificationReadStatus
-    
     try:
         user = User.objects.get(pk=admin_user_id, is_staff=True)
         notification = Notification.objects.get(
@@ -916,7 +913,6 @@ def get_unread_admin_notifications_count(admin_user_id: int) -> int:
         int: Cantidad de notificaciones no leídas
     """
     from django.db.models import Exists, OuterRef
-    from .models import NotificationReadStatus
     
     try:
         user = User.objects.get(pk=admin_user_id, is_staff=True)
@@ -953,7 +949,6 @@ def get_admin_notifications_with_read_status(
         List de dicts con: {notification: Notification, is_read: bool}
     """
     from django.db.models import Exists, OuterRef
-    from .models import NotificationReadStatus
     
     try:
         user = User.objects.get(pk=admin_user_id, is_staff=True)
@@ -998,8 +993,6 @@ def bulk_mark_admin_notifications_read(
     """
     Marca múltiples notificaciones admin como leídas (transaccional).
     """
-    from .models import NotificationReadStatus
-    
     try:
         user = User.objects.select_for_update().get(
             pk=admin_user_id, 
@@ -1060,7 +1053,12 @@ def bulk_mark_admin_notifications_read(
         )
     
     return count
-# AGREGAR nueva función de validación:
+
+
+# ============================================================================
+# VALIDATION FUNCTION
+# ============================================================================
+
 def validate_notification_data(
     title: str,
     message: str,

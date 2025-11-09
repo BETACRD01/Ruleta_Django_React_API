@@ -253,7 +253,7 @@ class RouletteAdminForm(forms.ModelForm):
 
 
 class RouletteSettingsAdminForm(forms.ModelForm):
-    """Formulario de configuración de ruleta (incluye winners_target)."""
+    """Formulario de configuración de ruleta (incluye require_receipt)."""
 
     class Meta:
         model = RouletteSettings
@@ -261,6 +261,7 @@ class RouletteSettingsAdminForm(forms.ModelForm):
         widgets = {
             "max_participants": forms.NumberInput(attrs={"min": "0", "step": "1"}),
             "winners_target": forms.NumberInput(attrs={"min": "0", "step": "1"}),
+            "require_receipt": forms.CheckboxInput(),  # ✅ NUEVO
         }
 
 
@@ -294,6 +295,13 @@ class RouletteSettingsInline(admin.StackedInline):
             {
                 "fields": ("max_participants", "allow_multiple_entries", "winners_target"),
                 "description": "Límites, múltiples entradas y cantidad de ganadores objetivo (0 = automático por premios disponibles).",
+            },
+        ),
+        (
+            "Comprobante",  # ✅ NUEVO FIELDSET
+            {
+                "fields": ("require_receipt",),
+                "description": "Configurar si se requiere comprobante para participar.",
             },
         ),
         (

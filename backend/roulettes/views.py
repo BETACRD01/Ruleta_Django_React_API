@@ -12,6 +12,17 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 
+from rest_framework import viewsets, permissions, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+from .models import Roulette, RouletteSettings
+from .serializers import (
+    RouletteSerializer,
+    RouletteCreateUpdateSerializer,
+    RouletteSettingsSerializer,
+)
+
 from authentication.permissions import IsAdminRole
 from participants.models import Participation
 from .models import (
@@ -133,33 +144,56 @@ class RouletteCreateView(generics.CreateAPIView):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def perform_create(self, serializer):
+        # ✅ El serializer.create() YA crea settings
+        # NO hacer nada más aquí, solo guardar y loguear
         instance = serializer.save(created_by=self.request.user)
         
-        # Crear settings por defecto si no existe
-        if not hasattr(instance, "settings") or not instance.settings:
-            RouletteSettings.objects.create(
-                roulette=instance,
-                max_participants=0,
-                allow_multiple_entries=False,
-                show_countdown=True,
-                notify_on_participation=True,
-                notify_on_draw=True,
-                winners_target=0,
+        # ✅ LOGGING para debug (opcional)
+        settings_obj = getattr(instance, 'settings', None)
+        if settings_obj:
+            print(f"✅ Ruleta creada: {instance.name} (ID: {instance.id})")
+            print(f"   - require_receipt: {settings_obj.require_receipt}")
+            
+            logger.info(
+                "Ruleta creada: %s (ID: %s) por %s, require_receipt=%s", 
+                instance.name, 
+                instance.id, 
+                self.request.user.username,
+                settings_obj.require_receipt
             )
-        
-        logger.info("Ruleta creada: %s (ID: %s) por %s", instance.name, instance.id, self.request.user.username)
-        
-        # Las notificaciones se envían automáticamente vía signal post_save
-        # de forma asíncrona usando Celery (ver roulettes/signals.py)
-
-
+        else:
+            logger.warning("Ruleta %s creada sin settings", instance.id)
 class RouletteDetailView(generics.RetrieveAPIView):
     queryset = Roulette.objects.select_related("created_by", "settings", "winner__user").prefetch_related(
         "participations__user", "prizes"
     )
     serializer_class = RouletteDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
-
+    
+    def retrieve(self, request, *args, **kwargs):
+        """Override para asegurar que settings siempre existe"""
+        instance = self.get_object()
+        
+        # ✅ NUEVO: Crear settings si no existe
+        if not hasattr(instance, 'settings') or not instance.settings:
+            from .models import RouletteSettings
+            print(f"⚠️ Ruleta {instance.id} sin settings, creando...")
+            settings_obj, created = RouletteSettings.objects.get_or_create(
+                roulette=instance,
+                defaults={
+                    'max_participants': 0,
+                    'allow_multiple_entries': False,
+                    'show_countdown': True,
+                    'notify_on_participation': True,
+                    'notify_on_draw': True,
+                    'winners_target': 0,
+                    'require_receipt': True,
+                }
+            )
+            instance.refresh_from_db()
+        
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
 
 class RouletteUpdateView(generics.UpdateAPIView):
     queryset = Roulette.objects.all()
@@ -348,3 +382,66 @@ class RoulettePrizeUpdateView(_PrizeBase, generics.UpdateAPIView):
 
 class RoulettePrizeDestroyView(_PrizeBase, generics.DestroyAPIView):
     lookup_field = "pk"
+
+
+class RouletteViewSet(viewsets.ModelViewSet):
+    """ViewSet para gestionar ruletas"""
+    queryset = Roulette.objects.all()
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_serializer_class(self):
+        """Usar serializer diferente para crear/actualizar"""
+        if self.action in ['create', 'update', 'partial_update']:
+            return RouletteCreateUpdateSerializer
+        return RouletteSerializer
+
+    def get_queryset(self):
+        """Filtrar ruletas según estado"""
+        qs = Roulette.objects.all()
+        status = self.request.query_params.get('status')
+        if status:
+            qs = qs.filter(status=status)
+        return qs.select_related('owner').prefetch_related('settings')
+
+    def create(self, request, *args, **kwargs):
+        """Crear nueva ruleta con settings"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        
+        # Retornar con settings incluidos
+        instance = serializer.instance
+        return_serializer = RouletteSerializer(instance)
+        return Response(return_serializer.data, status=status.HTTP_201_CREATED)
+
+    def update(self, request, *args, **kwargs):
+        """Actualizar ruleta con settings"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        
+        # Retornar con settings incluidos
+        return_serializer = RouletteSerializer(instance)
+        return Response(return_serializer.data)
+
+    @action(detail=True, methods=['get', 'put'])
+    def settings(self, request, pk=None):
+        """Endpoint para obtener/actualizar settings de ruleta"""
+        roulette = self.get_object()
+        
+        if request.method == 'GET':
+            settings_obj = getattr(roulette, 'settings', None)
+            if not settings_obj:
+                settings_obj = RouletteSettings.objects.create(roulette=roulette)
+            
+            serializer = RouletteSettingsSerializer(settings_obj)
+            return Response(serializer.data)
+        
+        elif request.method == 'PUT':
+            settings_obj, _ = RouletteSettings.objects.get_or_create(roulette=roulette)
+            serializer = RouletteSettingsSerializer(settings_obj, data=request.data, partial=True)
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+            return Response(serializer.data)

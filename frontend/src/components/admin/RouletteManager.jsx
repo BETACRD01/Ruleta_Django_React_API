@@ -6,6 +6,8 @@ import {
 import { RoulettesAPI, getGlobalAuthToken } from "../../config/api";
 import RouletteModal from "../admin/Gestión de Ruletas/RouletteModal.jsx";
 import PrizePanel from "../admin/Gestión de Ruletas/PrizePanel";
+import SafeImageWithRetry from "../UI/SafeImageWithRetry";
+import DeleteConfirmationModal from "../UI/DeleteConfirmationModal";
 import '../../styles/ckeditor-custom.css';
 
 /* ===========================
@@ -193,6 +195,10 @@ const RouletteManager = ({ onRefetchDashboard }) => {
   // Descripciones expandidas por tarjeta
   const [expandedDescriptions, setExpandedDescriptions] = useState(new Set());
 
+  // Estados para modal de eliminación
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState(null);
+
   // -------------------- Helpers para imágenes --------------------
   const getImageUrl = (roulette) => {
     if (!roulette) return null;
@@ -324,8 +330,12 @@ const RouletteManager = ({ onRefetchDashboard }) => {
   };
 
   // -------------------- Acciones CRUD --------------------
+  
+  // ✅ CAMBIO 3: Inicializar settings correctamente en startCreate
   const startCreate = () => {
-    setEditing({
+    console.log("🆕 startCreate() - Inicializando nueva ruleta con settings");
+    
+    const newEditing = {
       id: null,
       name: "",
       description: "",
@@ -337,10 +347,24 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       cover_preview: "",
       cover_url: "",
       cover_delete: false,
-    });
+      // ✅ CAMBIO: Inicializar settings correctamente
+      settings: {
+        max_participants: 0,
+        allow_multiple_entries: false,
+        show_countdown: true,
+        notify_on_participation: true,
+        notify_on_draw: true,
+        winners_target: 0,
+        require_receipt: false,  // ✅ CAMBIO: FALSE (sin comprobante por defecto)
+      },
+    };
+    
+    console.log("✅ Settings iniciales:", newEditing.settings);
+    setEditing(newEditing);
     setModalOpen(true);
   };
 
+  // ✅ CAMBIO 4: Usar safeSettings al cargar desde backend
   const startEdit = async (id) => {
     if (!id) {
       setError("ID de ruleta inválido");
@@ -360,6 +384,19 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       
       const imageUrl = getImageUrl(detail);
       
+      // ✅ CAMBIO: Asegurar que settings siempre tienen valores por defecto
+      const safeSettings = {
+        max_participants: detail.settings?.max_participants ?? 0,
+        allow_multiple_entries: detail.settings?.allow_multiple_entries ?? false,
+        show_countdown: detail.settings?.show_countdown ?? true,
+        notify_on_participation: detail.settings?.notify_on_participation ?? true,
+        notify_on_draw: detail.settings?.notify_on_draw ?? true,
+        winners_target: detail.settings?.winners_target ?? 0,
+        require_receipt: detail.settings?.require_receipt ?? true,
+      };
+      
+      console.log("✏️ startEdit() - Settings cargados desde backend:", safeSettings);
+      
       const editingData = {
         id: detail.id,
         name: detail.name || "",
@@ -372,7 +409,11 @@ const RouletteManager = ({ onRefetchDashboard }) => {
         cover_preview: "",
         cover_url: imageUrl || "",
         cover_delete: false,
+        // ✅ CAMBIO: Usar safeSettings en lugar de lectura directa
+        settings: safeSettings,
       };
+      
+      console.log("✅ editingData completo:", editingData);
       
       setEditing(editingData);
       setModalOpen(true);
@@ -384,6 +425,7 @@ const RouletteManager = ({ onRefetchDashboard }) => {
     }
   };
 
+  // ✅ CAMBIO 5: Agregar logging para verificar payload
   const saveEditing = async (payload) => {
     if (!payload) {
       setError("Datos de payload inválidos");
@@ -394,6 +436,12 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       setLoading(true);
       setError("");
       
+      // ✅ CAMBIO: Logging para verificar el payload
+      console.log("💾 saveEditing() - Payload recibido de RouletteModal:");
+      console.log("   Tiene settings:", !!payload.settings);
+      console.log("   Settings completo:", payload.settings);
+      console.log("   Payload completo:", JSON.stringify(payload, null, 2));
+      
       const api = createAPIInstance();
       
       let updatedOrCreated;
@@ -401,12 +449,17 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       
       if (isUpdate) {
         const id = payload?.id ?? editing.id;
+        console.log("📝 Actualizando ruleta ID:", id);
         updatedOrCreated = await api.updateRoulette(id, payload);
       } else {
+        console.log("🆕 Creando nueva ruleta");
         updatedOrCreated = await api.createRoulette(payload);
       }
 
       if (updatedOrCreated?.id) {
+        console.log("✅ Ruleta guardada:", updatedOrCreated.id);
+        console.log("   Settings después de guardar:", updatedOrCreated.settings);
+        
         setItems((prevItems) => {
           const existingIndex = prevItems.findIndex((x) => x.id === updatedOrCreated.id);
           
@@ -448,21 +501,24 @@ const RouletteManager = ({ onRefetchDashboard }) => {
       return;
     }
     
-    const { id, name, status: st, is_drawn } = roulette;
-    
-    const isCompleted = is_drawn || st === "completed";
-    const msg = isCompleted
-      ? `La ruleta "${name}" ya fue sorteada/completada.\n\n¿Eliminarla de todos modos? Esta acción eliminará todos los datos relacionados.`
-      : `¿Eliminar la ruleta "${name}"?\n\nEsta acción no se puede deshacer y eliminará:\n• La ruleta\n• Todas las participaciones\n• Todos los premios\n• El historial de sorteos`;
-      
-    if (!window.confirm(msg)) return;
+    // Abrir modal de confirmación
+    setItemToDelete(roulette);
+    setDeleteModalOpen(true);
+  };
+
+  // Ejecutar eliminación después de confirmación en el modal
+  const executeDelete = async () => {
+    if (!itemToDelete?.id) {
+      setError("Ruleta inválida para eliminar");
+      setDeleteModalOpen(false);
+      return;
+    }
 
     try {
-      setLoading(true);
-      setError("");
+      const { id, status: st, is_drawn } = itemToDelete;
+      const isCompleted = is_drawn || st === "completed";
       
       const api = createAPIInstance();
-      
       await api.deleteRoulette(id, { force: isCompleted });
       
       setItems((prevItems) => prevItems.filter((item) => item.id !== id));
@@ -474,11 +530,12 @@ const RouletteManager = ({ onRefetchDashboard }) => {
         onRefetchDashboard();
       }
       
+      setDeleteModalOpen(false);
+      setItemToDelete(null);
+      
     } catch (e) {
       console.error("Error eliminando ruleta:", e);
-      setError("No se pudo eliminar: " + (e?.message || "Error desconocido"));
-    } finally {
-      setLoading(false);
+      throw new Error("No se pudo eliminar: " + (e?.message || "Error desconocido"));
     }
   };
 
@@ -777,24 +834,23 @@ const RouletteManager = ({ onRefetchDashboard }) => {
                     key={r.id} 
                     className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-shadow duration-200"
                   >
-                    {/* Imagen / placeholder */}
+                    {/* Imagen con SafeImageWithRetry */}
                     <div className="h-40 bg-gray-100 relative overflow-hidden">
                       {img ? (
-                        <img 
-                          src={img} 
-                          alt={r.name || 'Ruleta'} 
+                        <SafeImageWithRetry
+                          src={img}
+                          alt={r.name || 'Ruleta'}
                           className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            e.target.parentElement.querySelector('.fallback-icon').style.display = 'flex';
-                          }}
+                          maxRetries={3}
+                          retryDelay={2000}
+                          placeholderBg="bg-gray-100"
+                          showError={true}
                         />
-                      ) : null}
-                      <div 
-                        className={`fallback-icon w-full h-full flex items-center justify-center text-gray-400 ${img ? 'hidden' : 'flex'}`}
-                      >
-                        <ImageIcon className="h-12 w-12" />
-                      </div>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-400">
+                          <ImageIcon className="h-12 w-12" />
+                        </div>
+                      )}
                       
                       {/* Estado */}
                       <div className={`absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-medium border ${st.class} backdrop-blur-sm`}>
@@ -985,6 +1041,25 @@ const RouletteManager = ({ onRefetchDashboard }) => {
         onAddPrize={addPrize}
         onUpdatePrize={updatePrize}
         onDeletePrize={deletePrize}
+      />
+
+      {/* Modal de confirmación de eliminación */}
+      <DeleteConfirmationModal
+        isOpen={deleteModalOpen}
+        title="Confirmar eliminación"
+        message={
+          itemToDelete?.is_drawn || itemToDelete?.status === "completed"
+            ? `La ruleta "${itemToDelete?.name}" ya fue sorteada/completada.\n\n¿Eliminarla de todos modos? Esta acción eliminará todos los datos relacionados.`
+            : `¿Eliminar la ruleta? Esta acción no se puede deshacer y eliminará:\n• La ruleta\n• Todas las participaciones\n• Todos los premios\n• El historial de sorteos`
+        }
+        itemName={itemToDelete?.name || ""}
+        onConfirm={executeDelete}
+        onCancel={() => {
+          setDeleteModalOpen(false);
+          setItemToDelete(null);
+        }}
+        confirmButtonText="Eliminar"
+        confirmButtonColor="red"
       />
     </div>
   );

@@ -4,7 +4,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   X, Upload, ImageIcon, Trash2, Save, Calendar,
-  AlertCircle, Info, Clock, Timer, CalendarCheck
+  AlertCircle, Info, Clock, Timer, CalendarCheck, CheckCircle2
 } from "lucide-react";
 import '../../../styles/ckeditor-custom.css';
 import CKEditorWrapper from '../../CKEditorWrapper';
@@ -27,12 +27,14 @@ const DEFAULT_EDITING = {
   participation_start: "",
   participation_end: "",
   scheduled_date: "",
+  settings: {
+    require_receipt: true,
+  },
 };
 
 /* ================================
-   ✅ FUNCIONES DE FECHAS
+   FUNCIONES AUXILIARES DE FECHAS
 ================================ */
-
 const formatDate = (dateString) => {
   if (!dateString) return "";
   try {
@@ -89,9 +91,14 @@ const parseDateTimeLocal = (dateTimeLocalString) => {
   }
 };
 
-/* =========================
-   Componente de Fecha Programada
-   ========================= */
+const getExt = (name = "") =>
+  name && name.includes(".") ? name.toLowerCase().slice(name.lastIndexOf(".")) : "";
+
+/* ================================
+   COMPONENTES SECUNDARIOS
+================================ */
+
+/** Componente para mostrar fecha programada */
 const ScheduledDateDisplay = ({ targetDate, label = "Fecha programada", className = "" }) => {
   if (!targetDate) return null;
 
@@ -113,9 +120,7 @@ const ScheduledDateDisplay = ({ targetDate, label = "Fecha programada", classNam
   );
 };
 
-/* =========================
-   Cronómetro con 3 fases
-   ========================= */
+/** Componente de cronómetro con 3 fases */
 const CountdownTimer = ({ startDate, endDate, onComplete, className = "" }) => {
   const [timeLeft, setTimeLeft] = useState({
     days: 0,
@@ -216,12 +221,6 @@ const CountdownTimer = ({ startDate, endDate, onComplete, className = "" }) => {
 };
 
 /* ================================
-   HELPERS DE ARCHIVOS
-================================ */
-const getExt = (name = "") =>
-  name && name.includes(".") ? name.toLowerCase().slice(name.lastIndexOf(".")) : "";
-
-/* ================================
    MODAL PRINCIPAL
 ================================ */
 const RouletteModal = ({
@@ -239,10 +238,7 @@ const RouletteModal = ({
 
   const currentEditing = editing || DEFAULT_EDITING;
 
-  const getDefaultDescription = () => {
-    return ``;
-  };
-
+  // ==================== INICIALIZACIÓN ====================
   useEffect(() => {
     if (!isOpen) {
       setValidationErrors({});
@@ -254,13 +250,14 @@ const RouletteModal = ({
       setEditing(prev => ({
         ...DEFAULT_EDITING,
         ...prev,
-        description: getDefaultDescription(),
+        description: "",
       }));
     }
   }, [isOpen, currentEditing.id, currentEditing.description, setEditing]);
 
   if (!isOpen) return null;
 
+  // ==================== VALIDACIÓN ====================
   const getValidationErrors = () => {
     const errors = {};
 
@@ -358,6 +355,7 @@ const RouletteModal = ({
     );
   };
 
+  // ==================== MANEJO DE IMÁGENES ====================
   const onPickFile = () => fileRef.current?.click();
 
   const onFileChange = (e) => {
@@ -422,8 +420,14 @@ const RouletteModal = ({
     return null;
   };
 
+  // ==================== GUARDAR ====================
   const handleSave = () => {
     if (!validateAndFocus()) return;
+
+    // ✅ NUEVO: Logging para verificar qué se envía
+    console.log(`📋 handleSave() - Enviando:`);
+    console.log(`   currentEditing.settings:`, currentEditing.settings);
+    console.log(`   require_receipt:`, currentEditing.settings?.require_receipt);
 
     const dataToSend = {
       id: currentEditing.id || undefined,
@@ -439,6 +443,9 @@ const RouletteModal = ({
       scheduled_date: currentEditing.scheduled_date
         ? parseDateTimeLocal(currentEditing.scheduled_date)
         : null,
+      settings: {
+        require_receipt: currentEditing.settings?.require_receipt ?? true,
+      },
     };
 
     if (currentEditing.cover_image) {
@@ -447,9 +454,13 @@ const RouletteModal = ({
       dataToSend.cover_delete = true;
     }
 
+    // ✅ NUEVO: Mostrar exactamente qué se envía
+    console.log(`✅ Datos a enviar:`, JSON.stringify(dataToSend, null, 2));
+
     onSave(dataToSend);
   };
 
+  // ==================== CONFIGURACIÓN ====================
   const statusOptions = [
     {
       value: "draft",
@@ -485,13 +496,18 @@ const RouletteModal = ({
 
   const currentStatus = statusOptions.find((s) => s.value === currentEditing.status);
   const previewSrc = getPreviewSrc();
+  
+  // ✅ CORREGIDO: Leer directamente de settings
+  const requireReceipt = currentEditing.settings?.require_receipt ?? true;
 
+  // ==================== RENDER ====================
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
       <div className="relative w-full max-w-5xl bg-white rounded-xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
-        {/* Header */}
+        
+        {/* ===================== HEADER ===================== */}
         <div className="bg-gradient-to-r from-slate-700 to-slate-800 px-6 py-4 flex items-center justify-between border-b border-slate-600">
           <div className="flex items-center space-x-3">
             <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center">
@@ -536,7 +552,7 @@ const RouletteModal = ({
           </div>
         </div>
 
-        {/* Error */}
+        {/* ===================== ERROR BANNER ===================== */}
         {error && (
           <div className="mx-6 mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
             <div className="flex items-start space-x-2">
@@ -549,14 +565,17 @@ const RouletteModal = ({
           </div>
         )}
 
-        {/* Contenido scrollable */}
+        {/* ===================== CONTENIDO SCROLLABLE ===================== */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           
-          {/* Información Básica */}
+          {/* ============ SECCIÓN: INFORMACIÓN BÁSICA ============ */}
           <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
             <h4 className="text-base font-semibold text-gray-900 mb-4">Información Básica</h4>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Grid: Título y Estado */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+              
+              {/* Campo: Título */}
               <div data-field="name">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Título *
@@ -568,9 +587,7 @@ const RouletteModal = ({
                     if (validationErrors.name) setValidationErrors((p) => ({ ...p, name: null }));
                   }}
                   className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 outline-none transition ${
-                    validationErrors.name
-                      ? "border-red-300 bg-red-50"
-                      : "border-gray-300"
+                    validationErrors.name ? "border-red-300 bg-red-50" : "border-gray-300"
                   }`}
                   placeholder="ej: Ruleta de Navidad 2025"
                   maxLength={200}
@@ -588,6 +605,7 @@ const RouletteModal = ({
                 </span>
               </div>
 
+              {/* Campo: Estado */}
               <div data-field="status">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Estado *
@@ -617,6 +635,60 @@ const RouletteModal = ({
               </div>
             </div>
 
+            {/* ✅ CHECKBOX: REQUIERE COMPROBANTE - CORREGIDO */}
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={requireReceipt}
+                      onChange={(e) => {
+                        console.log(`🔄 Checkbox cambió a: ${e.target.checked}`);
+                        
+                        // ✅ PASO 1: Valor nuevo
+                        const newValue = e.target.checked;
+                        
+                        // ✅ PASO 2: Actualizar editing explícitamente
+                        setEditing?.((prev) => {
+                          const updated = {
+                            ...(prev || DEFAULT_EDITING),
+                            settings: {
+                              ...(prev?.settings || {}),
+                              require_receipt: newValue,  // ✅ GUARDAR EXPLÍCITAMENTE
+                            }
+                          };
+                          console.log(`✅ Estado actualizado:`, updated.settings);
+                          return updated;
+                        });
+                      }}
+                      disabled={loading}
+                      className="w-4 h-4 rounded border-gray-300 text-blue-600 cursor-pointer accent-blue-600"
+                    />
+                    <div>
+                      <span className="text-sm font-semibold text-gray-900 group-hover:text-blue-700 transition flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-blue-600" />
+                        Requiere Comprobante
+                      </span>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {requireReceipt
+                          ? "✓ Los usuarios DEBEN adjuntar comprobante para participar"
+                          : "✓ Los usuarios pueden participar SIN comprobante"}
+                      </p>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Ícono informativo */}
+                <div className="flex-shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center" title="Información">
+                    <Info className="h-4 w-4 text-blue-600" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Campo: Descripción */}
             <div className="mt-4" data-field="description">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Descripción
@@ -643,11 +715,13 @@ const RouletteModal = ({
             </div>
           </div>
 
-          {/* Imagen de Portada */}
+          {/* ============ SECCIÓN: IMAGEN DE PORTADA ============ */}
           <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
             <h4 className="text-base font-semibold text-gray-900 mb-4">Imagen de Portada</h4>
 
             <div className="flex flex-col lg:flex-row items-start gap-4">
+              
+              {/* Preview imagen */}
               <div className="w-full lg:w-64 h-40 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center border-2 border-dashed border-gray-300">
                 {previewSrc ? (
                   <img
@@ -666,6 +740,7 @@ const RouletteModal = ({
                 )}
               </div>
 
+              {/* Controles imagen */}
               <div className="flex-1 space-y-3">
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -710,7 +785,7 @@ const RouletteModal = ({
             </div>
           </div>
 
-          {/* Programación Temporal */}
+          {/* ============ SECCIÓN: PROGRAMACIÓN TEMPORAL ============ */}
           <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-2">
@@ -722,6 +797,7 @@ const RouletteModal = ({
               </span>
             </div>
 
+            {/* Advertencia importante */}
             <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
               <div className="flex items-start space-x-2">
                 <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
@@ -731,6 +807,7 @@ const RouletteModal = ({
               </div>
             </div>
 
+            {/* Estado de participación */}
             {(currentEditing.participation_start || currentEditing.participation_end) && (
               <div className="mb-4 p-3 bg-white rounded-lg border border-gray-200">
                 <h5 className="text-xs font-semibold text-gray-700 mb-2 flex items-center">
@@ -746,6 +823,7 @@ const RouletteModal = ({
               </div>
             )}
 
+            {/* Fecha programada */}
             {currentEditing.scheduled_date && (
               <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <h5 className="text-xs font-semibold text-blue-800 mb-2 flex items-center">
@@ -759,7 +837,10 @@ const RouletteModal = ({
               </div>
             )}
 
+            {/* Grid: Fechas */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              
+              {/* Campo: Inicio de Participación */}
               <div data-field="participation_start">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Inicio de Participación
@@ -792,6 +873,7 @@ const RouletteModal = ({
                 </p>
               </div>
 
+              {/* Campo: Fin de Participación */}
               <div data-field="participation_end">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Fin de Participación
@@ -824,6 +906,7 @@ const RouletteModal = ({
                 </p>
               </div>
 
+              {/* Campo: Fecha del Sorteo */}
               <div data-field="scheduled_date">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Fecha del Sorteo
@@ -859,7 +942,7 @@ const RouletteModal = ({
           </div>
         </div>
 
-        {/* Footer */}
+        {/* ===================== FOOTER ===================== */}
         <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
           <div className="flex items-center text-xs text-gray-600">
             <Info className="h-4 w-4 mr-1" />

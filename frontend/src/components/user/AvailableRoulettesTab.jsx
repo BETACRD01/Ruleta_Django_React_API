@@ -5,7 +5,8 @@ import {
   RefreshCcw, AlertTriangle, Users, Play, X, Download, Clock, Timer,
   ChevronDown, ChevronUp, Trophy, Calendar, CalendarCheck, CalendarX2, Lock, CheckCircle
 } from 'lucide-react';
-import { EmptyState } from '../UI';
+import { EmptyState } from '../UI/UI';
+import SafeImageWithRetry from '../UI/SafeImageWithRetry';
 import {
   roulettesAPI,
   participantsAPI,
@@ -52,19 +53,16 @@ const toArray = (res) => (Array.isArray(res?.results) ? res.results : Array.isAr
    ✅ LÓGICA CORREGIDA DE ESTADOS
    ========================= */
 
-// ✅ Verificar si el SORTEO está completado (ganador seleccionado)
 const isRouletteDrawn = (r) => {
   return Boolean(r?.is_drawn || r?.drawn_at || r?.winner_id);
 };
 
-// ✅ Verificar si la PARTICIPACIÓN está cerrada (fecha expirada)
 const isParticipationClosed = (r) => {
   const participationEnd = getParticipationEnd(r);
   if (!participationEnd) return false;
   return new Date(participationEnd) <= new Date();
 };
 
-// ✅ Verificar si la participación está abierta
 const isParticipationOpen = (roulette) => {
   const now = new Date();
   const participationStart = getParticipationStart(roulette);
@@ -203,58 +201,6 @@ const CountdownTimer = ({ endDate, onComplete, className = "" }) => {
 };
 
 /* =========================
-   SafeImage
-   ========================= */
-const SafeImage = ({ src, alt = '', className = '' }) => {
-  const [displaySrc, setDisplaySrc] = useState(src || '');
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setDisplaySrc(src || '');
-    setError(false);
-    setLoading(true);
-  }, [src]);
-
-  const handleLoad = () => setLoading(false);
-
-  const handleError = () => {
-    setLoading(false);
-    setError(true);
-  };
-
-  if (!displaySrc || error) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200">
-        <div className="text-center text-gray-400">
-          <div className="text-sm font-medium">Sin imagen</div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="relative w-full h-full">
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-          <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        </div>
-      )}
-      <img
-        src={displaySrc}
-        alt={alt}
-        className={`${className} ${loading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
-        decoding="async"
-        loading="lazy"
-        draggable={false}
-        onLoad={handleLoad}
-        onError={handleError}
-      />
-    </div>
-  );
-};
-
-/* =========================
    AspectRatio 16:9
    ========================= */
 const AspectBox = ({ children, className = '' }) => (
@@ -333,7 +279,6 @@ const ExpandableDescription = ({ description, maxLength = 150, className = "" })
 
   if (!description) return null;
 
-  // Crear un elemento temporal para extraer texto plano del HTML
   const getPlainText = (html) => {
     const temp = document.createElement('div');
     temp.innerHTML = html;
@@ -343,7 +288,6 @@ const ExpandableDescription = ({ description, maxLength = 150, className = "" })
   const plainText = getPlainText(description);
   const shouldTruncate = plainText.length > maxLength;
 
-  // Truncar el HTML de manera segura
   const getTruncatedHTML = (html, maxLen) => {
     const temp = document.createElement('div');
     temp.innerHTML = html;
@@ -351,7 +295,6 @@ const ExpandableDescription = ({ description, maxLength = 150, className = "" })
 
     if (text.length <= maxLen) return html;
 
-    // Crear versión truncada simple
     const truncatedText = text.substring(0, maxLen) + '...';
     const wrapper = document.createElement('div');
     wrapper.textContent = truncatedText;
@@ -549,7 +492,6 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
   const [filterStatus, setFilterStatus] = useState('active');
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState('');
-  const [, forceUpdate] = useState(0);
 
   const [roulettes, setRoulettes] = useState(Array.isArray(roulettesProp) ? roulettesProp : []);
   const [myParticipations, setMyParticipations] = useState(Array.isArray(myPartsProp) ? myPartsProp : []);
@@ -557,13 +499,8 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
   const busyRef = useRef(null);
   const [lightbox, setLightbox] = useState({ open: false, src: '', alt: '' });
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      forceUpdate(prev => prev + 1);
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
+  // ✅ REMOVIDO: forceUpdate cada segundo (era el culpable)
+  // El CountdownTimer tiene su propio interval, no necesita forceUpdate global
 
   const loadData = useCallback(async () => {
     try {
@@ -601,18 +538,18 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
     else setLoading(false);
   }, [roulettesProp, myPartsProp, loadData]);
 
-// ✅ NUEVO: Recargar cuando la página se vuelve visible
+  // ✅ Recargar cuando la página se vuelve visible
   useEffect(() => {
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === 'visible') {
-      loadData();
-    }
-  };
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-  return () => {
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-  };
-}, [loadData]);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadData]);
 
   const isParticipating = useCallback(
     (rouletteId) =>
@@ -755,7 +692,7 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
               if (participating) {
                 ctaLabel = 'Ya participas';
                 ctaStyle = 'bg-white text-blue-600 border border-blue-600 hover:bg-blue-50';
-                ctaDisabled = true; // ✅ BLOQUEADO
+                ctaDisabled = true;
                 CtaIcon = CheckCircle;
               } else {
                 ctaLabel = 'Participar Ahora';
@@ -784,10 +721,12 @@ const AvailableRoulettesTab = ({ roulettes: roulettesProp, myParticipations: myP
                   aria-label="Ver portada en grande"
                 >
                   <AspectBox className="bg-gray-50">
-                    <SafeImage
+                    <SafeImageWithRetry
                       src={cardImg}
                       alt={r.title || r.name || 'Ruleta'}
                       className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      maxRetries={3}
+                      retryDelay={2000}
                     />
 
                     <div className="absolute top-3 left-3">

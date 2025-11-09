@@ -1,9 +1,10 @@
-// src/pages/RouletteParticipate.jsx
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+// src/pages/RouletteParticipate.jsx - CORREGIDO SIN CICLO INFINITO
+import React, { useEffect, useMemo, useState, useCallback, memo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   Users, Calendar, Upload, ArrowLeft, CheckCircle, AlertTriangle,
-  Star, Award, Gift, Clock, Crown, Medal, Package, Percent, X, Lock
+  Star, Award, Gift, Clock, Crown, Medal, Package, Percent, X,
+  Lock, Play,
 } from 'lucide-react';
 import {
   roulettesAPI,
@@ -12,7 +13,6 @@ import {
   isAuthenticated,
   API_URL,
   formatters,
-  validators,
 } from '../../../config/api';
 import '../../../styles/ckeditor-custom.css';
 
@@ -45,12 +45,8 @@ const safeDate = (value, opts = {}) => {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', ...opts });
 };
 
-/* =========================
-   Verificar si la participación está abierta
-========================= */
 const isParticipationOpen = (roulette) => {
   if (!roulette) return false;
-
   const now = new Date();
   const participationStart = getParticipationStart(roulette);
   const participationEnd = getParticipationEnd(roulette);
@@ -94,9 +90,9 @@ const useCountUp = (target = 0, duration = 800) => {
 };
 
 /* =========================
-   LIGHTBOX de imagen
+   LIGHTBOX de imagen (MEMOIZADO)
 ========================= */
-const ImageLightbox = ({ src, alt, onClose }) => {
+const ImageLightbox = memo(({ src, alt, onClose }) => {
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
@@ -121,12 +117,14 @@ const ImageLightbox = ({ src, alt, onClose }) => {
       />
     </div>
   );
-};
+});
+
+ImageLightbox.displayName = 'ImageLightbox';
 
 /* =========================
-   Modal Premio
+   Modal Premio (MEMOIZADO)
 ========================= */
-const PrizeModal = ({ open, onClose, prize }) => {
+const PrizeModal = memo(({ open, onClose, prize }) => {
   const [showImage, setShowImage] = useState(false);
   useEffect(() => { if (!open) setShowImage(false); }, [open]);
 
@@ -209,12 +207,14 @@ const PrizeModal = ({ open, onClose, prize }) => {
       )}
     </>
   );
-};
+});
+
+PrizeModal.displayName = 'PrizeModal';
 
 /* =========================
-   Cronómetro
+   Cronómetro (MEMOIZADO - No se re-renderiza por props)
 ========================= */
-const CountdownTimer = ({ endDate, label, type = "default", className = "" }) => {
+const CountdownTimer = memo(({ endDate, label, type = "default", className = "" }) => {
   const [t, setT] = useState({ d: 0, h: 0, m: 0, s: 0 });
   const [expired, setExpired] = useState(false);
 
@@ -260,12 +260,14 @@ const CountdownTimer = ({ endDate, label, type = "default", className = "" }) =>
       )}
     </div>
   );
-};
+});
+
+CountdownTimer.displayName = 'CountdownTimer';
 
 /* =========================
-   Premios con scroll
+   Premios con scroll (MEMOIZADO)
 ========================= */
-const CompactPrizesSection = ({ prizes = [], onOpenPrize }) => {
+const CompactPrizesSection = memo(({ prizes = [], onOpenPrize }) => {
   const getProp = (p, ...k) => { for (const x of k) if (p?.[x] != null && p[x] !== '') return p[x]; return null; };
   const imgOf = (p) => {
     const raw = getProp(p, 'image_url', 'image', 'photo', 'picture', 'banner', 'thumbnail', 'cover');
@@ -286,11 +288,12 @@ const CompactPrizesSection = ({ prizes = [], onOpenPrize }) => {
     if (pos <= 5) return { icon: Award, cls: "from-indigo-100 to-indigo-200 text-indigo-800 border-indigo-300", label: `${pos}°`, show: true };
     return { icon: Star, cls: "from-purple-100 to-purple-200 text-purple-800 border-purple-300", label: `${pos}°`, show: true };
   };
-  const sorted = [...(Array.isArray(prizes) ? prizes : [])].sort((a, b) => {
-    const A = getProp(a, 'position', 'pos', 'order') ?? 999;
-    const B = getProp(b, 'position', 'pos', 'order') ?? 999;
-    return Number(A) - Number(B);
-  });
+  const sorted = useMemo(() => 
+    [...(Array.isArray(prizes) ? prizes : [])].sort((a, b) => {
+      const A = getProp(a, 'position', 'pos', 'order') ?? 999;
+      const B = getProp(b, 'position', 'pos', 'order') ?? 999;
+      return Number(A) - Number(B);
+    }), [prizes]);
 
   if (!sorted.length) {
     return (
@@ -379,19 +382,20 @@ const CompactPrizesSection = ({ prizes = [], onOpenPrize }) => {
       </div>
     </div>
   );
-};
+});
+
+CompactPrizesSection.displayName = 'CompactPrizesSection';
 
 /* =========================
-   Hero ACTUALIZADO - Imagen grande sin overlay
+   Hero Section (MEMOIZADO)
 ========================= */
-const RouletteHeroSection = ({ roulette }) => {
+const RouletteHeroSection = memo(({ roulette }) => {
   const [expanded, setExpanded] = useState(false);
   const [showImageModal, setShowImageModal] = useState(false);
 
   return (
     <>
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        {/* Imagen más compacta */}
         {roulette?.image_url && (
           <button
             type="button"
@@ -411,7 +415,6 @@ const RouletteHeroSection = ({ roulette }) => {
           </button>
         )}
 
-        {/* Contenido con fondo blanco */}
         <div className="p-5 sm:p-6">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-4">
             {roulette?.name || roulette?.title || 'Ruleta de Premios'}
@@ -439,7 +442,6 @@ const RouletteHeroSection = ({ roulette }) => {
         </div>
       </div>
 
-      {/* Lightbox para imagen */}
       {showImageModal && (
         <ImageLightbox
           src={roulette?.image_url}
@@ -449,244 +451,290 @@ const RouletteHeroSection = ({ roulette }) => {
       )}
     </>
   );
-};
+});
+
+RouletteHeroSection.displayName = 'RouletteHeroSection';
 
 /* =========================
-   Formulario
+   ✅ FORMULARIO DE PARTICIPACIÓN - ACTUALIZADO CON TÉRMINOS Y CONDICIONES
 ========================= */
-const ParticipationForm = ({ roulette, onSubmit, loading, error, success }) => {
+const ParticipationForm = memo(({ roulette, onSubmit, loading, error, success }) => {
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState('');
-  const [, forceUpdate] = useState(0);
+  const [requireReceipt, setRequireReceipt] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [termsError, setTermsError] = useState('');
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      forceUpdate(prev => prev + 1);
-    }, 1000);
+    if (!roulette?.settings) {
+      setRequireReceipt(false);
+      return;
+    }
+    setRequireReceipt(roulette.settings.require_receipt === true);
+  }, [roulette?.settings]);
 
-    return () => clearInterval(interval);
+  useEffect(() => {
+    if (requireReceipt) {
+      setAcceptedTerms(false);
+      setTermsError('');
+    }
+  }, [requireReceipt]);
+
+  const fallbackExt = useCallback((f) => {
+    const extAllowed = ['jpg', 'jpeg', 'png', 'pdf'];
+    return f?.name && extAllowed.includes(f.name.split('.').pop()?.toLowerCase());
+  }, []);
+  
+  const fallbackSize = useCallback((f) => 
+    (f?.size ?? 0) <= 5 * 1024 * 1024, []);
+
+  const validateReceipt = useCallback((f) => {
+    if (!requireReceipt) return '';
+    if (!f) return 'Debes adjuntar el comprobante.';
+    if (!fallbackExt(f)) return 'Extensión no permitida (JPG, JPEG, PNG o PDF).';
+    if (!fallbackSize(f)) return 'El archivo supera 5MB.';
+    return '';
+  }, [requireReceipt, fallbackExt, fallbackSize]);
+
+  const handleFileChange = useCallback((e) => {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
+    setFileError(validateReceipt(f));
+  }, [validateReceipt]);
+
+  const handleTermsChange = useCallback((e) => {
+    const checked = e.target.checked;
+    setAcceptedTerms(checked);
+    if (checked) {
+      setTermsError('');
+    }
   }, []);
 
-  const hasFn = (fn) => typeof fn === 'function';
-  const extAllowed = ['jpg', 'jpeg', 'png', 'pdf'];
-  const fallbackExt = (f) => f?.name && extAllowed.includes(f.name.split('.').pop()?.toLowerCase());
-  const fallbackSize = (f) => (f?.size ?? 0) <= 5 * 1024 * 1024;
-
-  const validateReceipt = (f) => {
-    if (!f) return 'Debes adjuntar el comprobante.';
-    const okExt = hasFn(validators?.fileExtension) ? validators.fileExtension(extAllowed)(f) : fallbackExt(f);
-    if (!okExt) return 'Extensión no permitida (JPG, JPEG, PNG o PDF).';
-    const okSize = hasFn(validators?.maxFileSize) ? validators.maxFileSize(5)(f) : fallbackSize(f);
-    if (!okSize) return 'El archivo supera 5MB.';
-    return '';
-  };
-
-  const onSubmitLocal = async (e) => {
+  const onSubmitLocal = useCallback(async (e) => {
     e?.preventDefault?.();
+    
+    if (!requireReceipt && !acceptedTerms) {
+      setTermsError('Debes aceptar los términos y condiciones para participar.');
+      return;
+    }
+    
     const err = validateReceipt(file);
-    if (err) { setFileError(err); return; }
+    if (err) {
+      setFileError(err);
+      return;
+    }
+    
     await onSubmit(file);
+    
     setFile(null);
-  };
+    setFileError('');
+    setAcceptedTerms(false);
+    setTermsError('');
+  }, [file, validateReceipt, onSubmit, requireReceipt, acceptedTerms]);
 
   const participationOpen = useMemo(() => isParticipationOpen(roulette), [roulette]);
-  const participationStart = useMemo(() => getParticipationStart(roulette), [roulette]);
-  const participationEnd = useMemo(() => getParticipationEnd(roulette), [roulette]);
-
-  const disabled = useMemo(() => {
+  
+  const isDisabled = useMemo(() => {
     if (!roulette) return false;
     if (roulette.is_drawn) return true;
     if (roulette.status === 'completed' || roulette.status === 'cancelled') return true;
     return !participationOpen;
   }, [roulette, participationOpen]);
 
-  const getStatusMessage = () => {
-    if (!roulette) return null;
-
-    if (roulette.is_drawn || roulette.status === 'completed') {
-      return {
-        type: 'completed',
-        icon: AlertTriangle,
-        title: 'Sorteo completado',
-        message: 'Esta ruleta ya realizó su sorteo y no acepta más participaciones.'
-      };
-    }
-
-    if (roulette.status === 'cancelled') {
-      return {
-        type: 'cancelled',
-        icon: AlertTriangle,
-        title: 'Ruleta cancelada',
-        message: 'Esta ruleta ha sido cancelada y no acepta participaciones.'
-      };
-    }
-
-    if (!participationOpen && participationStart) {
-      const now = new Date();
-      const start = new Date(participationStart);
-
-      if (start > now) {
-        return {
-          type: 'not-started',
-          icon: Lock,
-          title: 'Participación aún no disponible',
-          message: `La participación abrirá el ${safeDate(participationStart)}.`,
-          countdown: participationStart
-        };
-      }
-    }
-
-    if (!participationOpen && participationEnd) {
-      return {
-        type: 'expired',
-        icon: AlertTriangle,
-        title: 'Participación cerrada',
-        message: `La participación cerró el ${safeDate(participationEnd)}.`
-      };
-    }
-
-    return null;
-  };
-
-  const statusMessage = getStatusMessage();
-
-  if (disabled && statusMessage) {
-    const Icon = statusMessage.icon;
-
+  if (isDisabled) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-        <div className="text-center py-6">
-          <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-4 ${
-            statusMessage.type === 'not-started'
-              ? 'bg-amber-100'
-              : 'bg-red-100'
-          }`}>
-            <Icon className={`h-8 w-8 ${
-              statusMessage.type === 'not-started'
-                ? 'text-amber-600'
-                : 'text-red-600'
-            }`} />
-          </div>
-
-          <h3 className="text-base font-semibold text-gray-900 mb-2">
-            {statusMessage.title}
-          </h3>
-
-          <p className="text-gray-600 mb-4">
-            {statusMessage.message}
-          </p>
-
-          {statusMessage.countdown && (
-            <div className="mt-4 inline-block">
-              <CountdownTimer
-                endDate={statusMessage.countdown}
-                label="Abre en"
-                type="participation"
-              />
-            </div>
-          )}
-        </div>
+      <div className="bg-white rounded-2xl border border-gray-300 shadow-sm p-6 text-center">
+        <Lock className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+        <h3 className="text-lg font-semibold text-gray-900">Participación Cerrada</h3>
+        <p className="text-sm text-gray-600 mt-1">Esta ruleta no está disponible para participar.</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-[#207ba8]/20 shadow-sm overflow-hidden" id="participar">
+    <div className="bg-white rounded-2xl border border-[#207ba8]/20 shadow-sm overflow-hidden">
       <div className="px-6 py-5 bg-[#0b56a7]/5 border-b border-[#207ba8]/20 text-center sticky top-0 z-10">
         <h3 className="text-lg font-semibold text-[#0b56a7]">Participar en el sorteo</h3>
-        <p className="text-xs text-[#207ba8] mt-1">Adjunta tu comprobante (JPG, PNG o PDF). Máx. 5MB.</p>
+        <p className="text-xs text-[#207ba8] mt-1">
+          {requireReceipt 
+            ? "Adjunta tu comprobante (JPG, PNG o PDF). Máx. 5MB."
+            : "✅ Participa sin comprobante"}
+        </p>
       </div>
 
       <div className="p-6">
         <form onSubmit={onSubmitLocal} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-800 mb-2">Comprobante *</label>
-            <label
-              className="
-                group relative flex flex-col items-center justify-center w-full h-32
-                border-2 border-dashed rounded-xl cursor-pointer transition
-                bg-[#4dc9b1]/[0.03] border-[#207ba8]/30
-                hover:border-[#207ba8]/50 hover:bg-[#4dc9b1]/[0.06]
-                focus-within:outline-none focus-within:ring-2 focus-within:ring-[#4dc9b1]/40
-              "
-            >
-              <div className="text-center p-3">
-                <div
+          
+          {requireReceipt && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-800 mb-2">
+                  Comprobante *
+                </label>
+                <label
                   className="
-                    w-12 h-12 mx-auto mb-2 rounded-full flex items-center justify-center
-                    bg-[#389fae]/15 group-hover:bg-[#389fae]/25 transition-colors
+                    group relative flex flex-col items-center justify-center w-full h-32
+                    border-2 border-dashed rounded-xl cursor-pointer transition
+                    bg-[#4dc9b1]/[0.03] border-[#207ba8]/30
+                    hover:border-[#207ba8]/50 hover:bg-[#4dc9b1]/[0.06]
+                    focus-within:outline-none focus-within:ring-2 focus-within:ring-[#4dc9b1]/40
                   "
                 >
-                  <Upload className="h-5 w-5 text-[#0b56a7]" />
+                  <div className="text-center p-3">
+                    <div
+                      className="
+                        w-12 h-12 mx-auto mb-2 rounded-full flex items-center justify-center
+                        bg-[#389fae]/15 group-hover:bg-[#389fae]/25 transition-colors
+                      "
+                    >
+                      <Upload className="h-5 w-5 text-[#0b56a7]" />
+                    </div>
+                    <span className="text-sm font-medium text-[#0b56a7]">
+                      {file ? 'Cambiar archivo' : 'Seleccionar archivo'}
+                    </span>
+                    <p className="text-xs text-[#207ba8]">JPG, JPEG, PNG o PDF</p>
+                  </div>
+
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.pdf"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    onChange={handleFileChange}
+                  />
+                </label>
+
+                {file && (
+                  <div className="mt-3 p-3 bg-[#4dc9b1]/10 border border-[#4dc9b1]/30 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-7 h-7 bg-[#4dc9b1]/20 rounded-full flex items-center justify-center">
+                        <CheckCircle className="h-4 w-4 text-[#0b56a7]" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-[#0b56a7]">{file.name}</p>
+                        <p className="text-xs text-[#207ba8]">
+                          Tamaño: {formatters?.fileSize ? formatters.fileSize(file.size) : `${(file.size / 1024).toFixed(2)} KB`}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {fileError && (
+                <div className="flex items-start gap-3 text-[#0b56a7] bg-[#0b56a7]/10 border border-[#0b56a7]/20 px-3 py-3 rounded-lg">
+                  <AlertTriangle className="h-5 w-5 mt-0.5" />
+                  <span className="text-sm font-medium">{fileError}</span>
                 </div>
-                <span className="text-sm font-medium text-[#0b56a7]">
-                  {file ? 'Cambiar archivo' : 'Seleccionar archivo'}
+              )}
+            </>
+          )}
+
+          {!requireReceipt && (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle className="h-5 w-5 text-green-600" />
+                </div>
+                <div>
+                  <p className="font-medium text-green-800 text-sm">Participa sin comprobante</p>
+                  <p className="text-xs text-green-700 mt-0.5">Puedes registrar tu participación directamente sin adjuntar archivo.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!requireReceipt && (
+            <div className="space-y-3">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg max-h-48 overflow-y-auto"
+                   style={{ scrollbarWidth: 'thin', scrollbarColor: '#cbd5e1 transparent' }}>
+                <h4 className="text-sm font-semibold text-blue-900 mb-2">Términos y Condiciones</h4>
+                <div className="text-xs text-blue-800 space-y-2 leading-relaxed">
+                  <p>
+                    <strong>1. Participación:</strong> Al participar en este sorteo, aceptas que tu nombre y datos pueden ser utilizados para contactarte en caso de ser ganador.
+                  </p>
+                  <p>
+                    <strong>2. Transparencia:</strong> El sorteo es transparente y controlado automáticamente. Los resultados son verificables.
+                  </p>
+                  <p>
+                    <strong>3. Limitaciones:</strong> No se pueden hacer cambios ni cancelaciones una vez enviada la participación. Solo se aceptan las participaciones dentro del plazo establecido.
+                  </p>
+                  <p>
+                    <strong>4. Verificación:</strong> Nos reservamos el derecho de verificar que los participantes cumplan con los requisitos establecidos.
+                  </p>
+                  <p>
+                    <strong>5. Responsabilidad:</strong> No nos hacemos responsables por cambios en la disponibilidad de premios. Los premios se entregarán conforme a lo establecido.
+                  </p>
+                  <p>
+                    <strong>6. Aceptación:</strong> Al hacer clic en aceptar, certificas que has leído y entendido todos estos términos y condiciones.
+                  </p>
+                </div>
+              </div>
+
+              <label className="flex items-start gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-100 transition">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={handleTermsChange}
+                  className="w-5 h-5 mt-0.5 rounded border-gray-300 text-[#0b56a7] cursor-pointer focus:ring-2 focus:ring-[#4dc9b1]"
+                />
+                <span className="text-sm text-gray-700">
+                  Acepto los <strong>términos y condiciones</strong> para participar en el sorteo
                 </span>
-                <p className="text-xs text-[#207ba8]">JPG, JPEG, PNG o PDF</p>
-              </div>
+              </label>
 
-              <input
-                type="file"
-                accept=".jpg,.jpeg,.png,.pdf"
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                onChange={(e) => {
-                  const f = e.target.files?.[0] || null;
-                  setFile(f);
-                  setFileError(validateReceipt(f));
-                }}
-              />
-            </label>
-
-            {file && (
-              <div className="mt-3 p-3 bg-[#4dc9b1]/10 border border-[#4dc9b1]/30 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 bg-[#4dc9b1]/20 rounded-full flex items-center justify-center">
-                    <CheckCircle className="h-4 w-4 text-[#0b56a7]" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-[#0b56a7]">{file.name}</p>
-                    <p className="text-xs text-[#207ba8]">Tamaño: {formatters?.fileSize ? formatters.fileSize(file.size) : `${(file.size / 1024).toFixed(2)} KB`}</p>
-                  </div>
+              {termsError && (
+                <div className="flex items-start gap-3 text-red-700 bg-red-50 border border-red-200 px-3 py-3 rounded-lg">
+                  <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+                  <span className="text-sm font-medium">{termsError}</span>
                 </div>
-              </div>
-            )}
-          </div>
-
-          {fileError && (
-            <div className="flex items-start gap-3 text-[#0b56a7] bg-[#0b56a7]/10 border border-[#0b56a7]/20 px-3 py-3 rounded-lg">
-              <AlertTriangle className="h-5 w-5 mt-0.5" />
-              <span className="text-sm font-medium">{fileError}</span>
+              )}
             </div>
           )}
 
           <button
             type="submit"
-            disabled={loading || !!fileError || !file}
+            disabled={loading || !!fileError || !!termsError || (requireReceipt && !file) || (!requireReceipt && !acceptedTerms)}
             className={`w-full inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold transition
-              ${loading || !!fileError || !file
-                ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                : 'bg-[#207ba8] hover:bg-[#0b56a7] text-white shadow-sm hover:shadow'}`}
+            ${(loading || !!fileError || !!termsError || (requireReceipt && !file) || (!requireReceipt && !acceptedTerms))
+              ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+              : 'bg-[#207ba8] hover:bg-[#0b56a7] text-white shadow-sm hover:shadow'}`}
           >
             {loading ? (
               <>
                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Procesando…
+                Procesando...
               </>
             ) : (
-              <>Confirmar participación</>
+              <>
+                <Play className="h-4 w-4" />
+                Confirmar participación
+              </>
             )}
           </button>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          {success && <p className="text-sm text-green-600">{success}</p>}
+          {error && (
+            <div className="flex items-start gap-3 text-red-700 bg-red-50 border border-red-200 px-3 py-3 rounded-lg">
+              <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+              <span className="text-sm">{error}</span>
+            </div>
+          )}
+          
+          {success && (
+            <div className="flex items-start gap-3 text-green-700 bg-green-50 border border-green-200 px-3 py-3 rounded-lg">
+              <CheckCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+              <span className="text-sm font-medium">{success}</span>
+            </div>
+          )}
         </form>
       </div>
     </div>
   );
-};
+});
+
+ParticipationForm.displayName = 'ParticipationForm';
 
 /* =========================
-   Mensajes motivacionales mejorados
+   Función de mensajes motivacionales
 ========================= */
 const getMotivationalMessage = (participationEnd) => {
   if (!participationEnd) return null;
@@ -695,12 +743,8 @@ const getMotivationalMessage = (participationEnd) => {
   const end = new Date(participationEnd);
   const remainingMinutes = (end - now) / 60000;
 
-  // Participación cerrada
-  if (remainingMinutes <= 0) {
-    return null;
-  }
+  if (remainingMinutes <= 0) return null;
 
-  // Menos de 5 minutos - URGENCIA MÁXIMA
   if (remainingMinutes <= 5) {
     const messages = [
       "¡ÚLTIMA OPORTUNIDAD! Cierra en minutos",
@@ -713,11 +757,9 @@ const getMotivationalMessage = (participationEnd) => {
       bgColor: "bg-red-100 border border-red-300",
       animate: "animate-pulse",
       icon: "🚨",
-      textSize: "text-sm font-black"
     };
   }
 
-  // 5-15 minutos - Urgencia alta
   if (remainingMinutes <= 15) {
     const messages = [
       "¡Últimos minutos! No dejes pasar tu suerte",
@@ -730,150 +772,46 @@ const getMotivationalMessage = (participationEnd) => {
       bgColor: "bg-red-50 border border-red-200",
       animate: "animate-pulse",
       icon: "🔥",
-      textSize: "text-sm font-extrabold"
     };
   }
 
-  // 15-30 minutos - Urgencia media-alta
   if (remainingMinutes <= 30) {
-    const messages = [
-      "Menos de media hora para participar",
-      "¡El reloj no se detiene! Participa ya",
-      "Tu oportunidad está por terminar"
-    ];
     return {
-      text: messages[Math.floor(now.getMinutes() / 10) % messages.length],
+      text: "¡El reloj no se detiene! Participa ya",
       color: "text-orange-700",
       bgColor: "bg-orange-100 border border-orange-200",
       icon: "⚠️",
-      textSize: "text-sm font-bold"
     };
   }
 
-  // 30-60 minutos - Urgencia media
   if (remainingMinutes <= 60) {
-    const messages = [
-      "¡Última hora disponible! Asegura tu boleto",
-      "Quedan minutos contados, no esperes más",
-      "El cierre está cerca. ¡Participa ahora!"
-    ];
     return {
-      text: messages[Math.floor(now.getMinutes() / 15) % messages.length],
+      text: "¡Última hora disponible! Asegura tu boleto",
       color: "text-orange-600",
       bgColor: "bg-orange-50 border border-orange-200",
       icon: "⚡",
-      textSize: "text-sm font-bold"
     };
   }
 
-  // 1-3 horas - Motivación alta
   if (remainingMinutes <= 180) {
-    const messages = [
-      "Solo horas para ganar. ¡No lo dejes pasar!",
-      "El tiempo vuela. Asegura tu participación",
-      "Pocas horas restantes. ¡Participa ya!"
-    ];
     return {
-      text: messages[Math.floor(now.getHours() / 2) % messages.length],
+      text: "Solo horas para ganar. ¡No lo dejes pasar!",
       color: "text-amber-700",
       bgColor: "bg-amber-100 border border-amber-200",
       icon: "⏳",
-      textSize: "text-sm font-semibold"
     };
   }
 
-  // 3-6 horas - Motivación media
-  if (remainingMinutes <= 360) {
-    const messages = [
-      "El sorteo se acerca. ¡Participa ahora!",
-      "No pierdas tu oportunidad de ganar",
-      "Horas contadas. ¡Inscríbete ya!"
-    ];
-    return {
-      text: messages[Math.floor(now.getHours() / 3) % messages.length],
-      color: "text-amber-600",
-      bgColor: "bg-amber-50 border border-amber-200",
-      icon: "🎯",
-      textSize: "text-sm font-semibold"
-    };
-  }
-
-  // 6-12 horas - Recordatorio
-  if (remainingMinutes <= 720) {
-    const messages = [
-      "Medio día o menos. ¡Asegura tu boleto!",
-      "No esperes al último momento. Participa",
-      "Horas limitadas. ¡Gana increíbles premios!"
-    ];
-    return {
-      text: messages[Math.floor(now.getHours() / 4) % messages.length],
-      color: "text-yellow-700",
-      bgColor: "bg-yellow-50 border border-yellow-200",
-      icon: "💫",
-      textSize: "text-xs font-semibold"
-    };
-  }
-
-  // 12-24 horas - Motivación suave
-  if (remainingMinutes <= 1440) {
-    const messages = [
-      "Menos de un día. ¡Participa y gana!",
-      "Horas restantes. No te quedes fuera",
-      "¡Tu suerte te espera! Participa ahora"
-    ];
-    return {
-      text: messages[Math.floor(now.getHours() / 6) % messages.length],
-      color: "text-yellow-600",
-      bgColor: "bg-yellow-50 border border-yellow-100",
-      icon: "🌟",
-      textSize: "text-xs font-semibold"
-    };
-  }
-
-  // 1-2 días
-  if (remainingMinutes <= 2880) {
-    const messages = [
-      "Pocos días restantes. ¡Asegura tu lugar!",
-      "No dejes para mañana. Participa hoy",
-      "Días contados para ganar. ¡Inscríbete!"
-    ];
-    return {
-      text: messages[Math.floor(now.getDate() / 2) % messages.length],
-      color: "text-blue-700",
-      bgColor: "bg-blue-50 border border-blue-100",
-      icon: "🎁",
-      textSize: "text-xs font-medium"
-    };
-  }
-
-  // 2-7 días
-  if (remainingMinutes <= 10080) {
-    const messages = [
-      "Esta semana cierra. ¡No lo olvides!",
-      "Días limitados. Participa y gana premios",
-      "El sorteo se acerca. ¡Inscríbete ya!"
-    ];
-    return {
-      text: messages[Math.floor(now.getDate() / 3) % messages.length],
-      color: "text-blue-600",
-      bgColor: "bg-blue-50 border border-blue-100",
-      icon: "🎪",
-      textSize: "text-xs font-medium"
-    };
-  }
-
-  // Más de una semana
   return {
     text: "Aún hay tiempo. ¡Participa y gana!",
     color: "text-gray-700",
     bgColor: "bg-gray-50 border border-gray-100",
     icon: "🎲",
-    textSize: "text-xs font-medium"
   };
 };
 
 /* =========================
-   Página principal
+   ✅ PÁGINA PRINCIPAL - CORREGIDA SIN CICLO INFINITO
 ========================= */
 export default function RouletteParticipate() {
   const { id } = useParams();
@@ -889,77 +827,78 @@ export default function RouletteParticipate() {
 
   const [prizeModalOpen, setPrizeModalOpen] = useState(false);
   const [activePrize, setActivePrize] = useState(null);
-  const openPrize = (p) => { setActivePrize(p); setPrizeModalOpen(true); };
-  const closePrize = () => { setPrizeModalOpen(false); setActivePrize(null); };
 
-  // Estado para forzar re-render del mensaje motivacional
-  const [, forceUpdate] = useState(0);
-
+  // ✅ CORRECCIÓN: Un único useEffect que carga datos SOLO cuando cambia 'id'
   useEffect(() => {
-    const interval = setInterval(() => {
-      forceUpdate(prev => prev + 1);
-    }, 1000);
-    
-    return () => clearInterval(interval);
-  }, []);
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        setPageError('');
 
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setPageError('');
+        const [rouletteRes, participantsRes, prizesRes] = await Promise.all([
+          roulettesAPI.getRoulette(id),
+          participantsAPI.getRouletteParticipants(id).catch(() => ({ participants: [] })),
+          roulettesAPI.listPrizes(id).catch(() => ([]))
+        ]);
 
-      const [rouletteRes, participantsRes, prizesRes] = await Promise.all([
-        roulettesAPI.getRoulette(id),
-        participantsAPI.getRouletteParticipants(id).catch(() => ({ participants: [] })),
-        roulettesAPI.listPrizes(id).catch(() => ([]))
-      ]);
+        rouletteRes.image_url = resolveImageUrl(rouletteRes);
+        setRoulette(rouletteRes);
 
-      rouletteRes.image_url = resolveImageUrl(rouletteRes);
-      setRoulette(rouletteRes);
+        const participantsList = Array.isArray(participantsRes?.participants)
+          ? participantsRes.participants
+          : (participantsRes?.results || []);
+        setParticipants(participantsList);
 
-      const participantsList = Array.isArray(participantsRes?.participants)
-        ? participantsRes.participants
-        : (participantsRes?.results || []);
-      setParticipants(participantsList);
+        let prizeList = [];
+        if (Array.isArray(prizesRes?.results)) prizeList = prizesRes.results;
+        else if (Array.isArray(prizesRes)) prizeList = prizesRes;
+        else if (prizesRes?.data && Array.isArray(prizesRes.data)) prizeList = prizesRes.data;
+        else if (prizesRes?.prizes && Array.isArray(prizesRes.prizes)) prizeList = prizesRes.prizes;
 
-      let prizeList = [];
-      if (Array.isArray(prizesRes?.results)) prizeList = prizesRes.results;
-      else if (Array.isArray(prizesRes)) prizeList = prizesRes;
-      else if (prizesRes?.data && Array.isArray(prizesRes.data)) prizeList = prizesRes.data;
-      else if (prizesRes?.prizes && Array.isArray(prizesRes.prizes)) prizeList = prizesRes.prizes;
-
-      const processed = prizeList.map((p, idx) => {
-        const x = { ...p };
-        if (!x.id) x.id = `prize-${idx}-${Date.now()}`;
-        const fields = ['image_url', 'image', 'photo', 'picture', 'banner', 'thumbnail', 'cover'];
-        let img = null;
-        for (const f of fields) { if (x[f]) { img = x[f]; break; } }
-        if (img) {
-          if (/^https?:\/\//i.test(img)) x.image_url = img;
-          else {
-            const base = API_URL ? API_URL.replace(/\/api\/?$/i, '') : '';
-            const path = img.startsWith('/') ? img : `/${img}`;
-            x.image_url = `${base}${path}`;
+        const processed = prizeList.map((p, idx) => {
+          const x = { ...p };
+          if (!x.id) x.id = `prize-${idx}-${Date.now()}`;
+          const fields = ['image_url', 'image', 'photo', 'picture', 'banner', 'thumbnail', 'cover'];
+          let img = null;
+          for (const f of fields) { if (x[f]) { img = x[f]; break; } }
+          if (img) {
+            if (/^https?:\/\//i.test(img)) x.image_url = img;
+            else {
+              const base = API_URL ? API_URL.replace(/\/api\/?$/i, '') : '';
+              const path = img.startsWith('/') ? img : `/${img}`;
+              x.image_url = `${base}${path}`;
+            }
           }
-        }
-        if (!x.name && x.title) x.name = x.title;
-        if (!x.stock && x.quantity) x.stock = x.quantity;
-        if (x.stock != null) x.stock = Number(x.stock);
-        if (x.probability != null) x.probability = Number(x.probability);
-        if (x.position != null) x.position = Number(x.position);
-        return x;
-      });
+          if (!x.name && x.title) x.name = x.title;
+          if (!x.stock && x.quantity) x.stock = x.quantity;
+          if (x.stock != null) x.stock = Number(x.stock);
+          if (x.probability != null) x.probability = Number(x.probability);
+          if (x.position != null) x.position = Number(x.position);
+          return x;
+        });
 
-      setPrizes(processed);
-    } catch (err) {
-      console.error('Error loading data:', err);
-      setPageError(handleAPIError(err, 'No se pudo cargar la información de la ruleta.'));
-    } finally {
-      setLoading(false);
-    }
+        setPrizes(processed);
+      } catch (err) {
+        console.error('Error loading data:', err);
+        setPageError(handleAPIError(err, 'No se pudo cargar la información de la ruleta.'));
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    // ✅ Solo ejecutar cuando cambia 'id'
+    loadData();
   }, [id]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  const openPrize = useCallback((p) => { 
+    setActivePrize(p); 
+    setPrizeModalOpen(true); 
+  }, []);
+
+  const closePrize = useCallback(() => { 
+    setPrizeModalOpen(false); 
+    setActivePrize(null); 
+  }, []);
 
   const created = useMemo(() => normalizeDate(roulette), [roulette]);
   const startDate = useMemo(() => getStartDate(roulette), [roulette]);
@@ -970,21 +909,37 @@ export default function RouletteParticipate() {
   const participantsCount = useMemo(() => participants.length, [participants]);
   const countUpParticipants = useCountUp(participantsCount);
 
-  const handleSubmit = async (file) => {
-    if (!isAuthenticated()) { setPageError('Debes iniciar sesión para participar.'); return; }
+  const handleSubmit = useCallback(async (file) => {
+    if (!isAuthenticated()) { 
+      setPageError('Debes iniciar sesión para participar.'); 
+      return; 
+    }
     try {
       setSubmitting(true);
       setPageError('');
       setSuccessMsg('');
       await participantsAPI.participate(id, file);
       setSuccessMsg('¡Participación registrada con éxito!');
-      await loadData();
+      
+      // ✅ Recargar datos SOLO después de participar exitosamente
+      const [rouletteRes, participantsRes] = await Promise.all([
+        roulettesAPI.getRoulette(id),
+        participantsAPI.getRouletteParticipants(id).catch(() => ({ participants: [] }))
+      ]);
+      
+      rouletteRes.image_url = resolveImageUrl(rouletteRes);
+      setRoulette(rouletteRes);
+      
+      const participantsList = Array.isArray(participantsRes?.participants)
+        ? participantsRes.participants
+        : (participantsRes?.results || []);
+      setParticipants(participantsList);
     } catch (err) {
       setPageError(handleAPIError(err, 'No se pudo registrar tu participación.'));
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [id]);
 
   if (loading) {
     return (
@@ -1021,7 +976,6 @@ export default function RouletteParticipate() {
     );
   }
 
-  // Obtener mensaje motivacional
   const motivationalMsg = getMotivationalMessage(participationEnd);
   const isParticipationActive = participationEnd && new Date(participationEnd) > new Date() &&
                                 (!participationStart || new Date(participationStart) <= new Date());
@@ -1030,7 +984,6 @@ export default function RouletteParticipate() {
     <>
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-7xl mx-auto p-6 space-y-6">
-          {/* Botón Volver */}
           <div className="flex items-center justify-between">
             <button
               onClick={() => navigate(-1)}
@@ -1040,10 +993,8 @@ export default function RouletteParticipate() {
             </button>
           </div>
 
-          {/* Cards de estadísticas */}
           <div className="bg-gradient-to-br from-white to-gray-50 rounded-2xl border border-gray-200 p-4 shadow-sm">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {/* Participantes */}
               <div className="group relative text-center rounded-xl p-4 transition transform-gpu hover:-translate-y-0.5 bg-white border border-gray-200">
                 <div className="absolute -top-2 -left-2 w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center shadow-sm">
                   <Users className="h-5 w-5 text-gray-700" />
@@ -1052,7 +1003,6 @@ export default function RouletteParticipate() {
                 <div className="text-xs text-gray-600 mt-1">Participantes</div>
               </div>
 
-              {/* Inicio */}
               <div className="group relative text-center rounded-xl p-4 transition transform-gpu hover:-translate-y-0.5 bg-white border border-gray-200">
                 <div className="absolute -top-2 -left-2 w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center shadow-sm">
                   <Calendar className="h-5 w-5 text-gray-700" />
@@ -1065,7 +1015,6 @@ export default function RouletteParticipate() {
                 <div className="text-xs text-gray-600 mt-1">Inicio</div>
               </div>
 
-              {/* Fin */}
               <div className="group relative text-center rounded-xl p-4 transition transform-gpu hover:-translate-y-0.5 bg-white border border-gray-200">
                 <div className="absolute -top-2 -left-2 w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center shadow-sm">
                   <Calendar className="h-5 w-5 text-gray-700" />
@@ -1077,13 +1026,11 @@ export default function RouletteParticipate() {
                 <div className="text-xs text-gray-600 mt-1">Fin</div>
               </div>
 
-              {/* Tiempo CON MENSAJE MOTIVACIONAL */}
               <div className="group relative text-center rounded-xl p-4 transition transform-gpu hover:-translate-y-0.5 bg-white border border-gray-200">
                 <div className="absolute -top-2 -left-2 w-10 h-10 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center shadow-sm">
                   <Clock className="h-5 w-5 text-gray-700" />
                 </div>
                 <div className="mt-6 space-y-3">
-                  {/* Participación aún no abierta */}
                   {participationStart && new Date(participationStart) > new Date() && (
                     <div>
                       <CountdownTimer endDate={participationStart} label="Abre" type="participation" />
@@ -1093,7 +1040,6 @@ export default function RouletteParticipate() {
                     </div>
                   )}
 
-                  {/* Participación activa - CON MENSAJES MOTIVACIONALES */}
                   {isParticipationActive && motivationalMsg && (
                     <div>
                       <CountdownTimer endDate={participationEnd} label="Cierra" type="participation" />
@@ -1104,7 +1050,6 @@ export default function RouletteParticipate() {
                     </div>
                   )}
 
-                  {/* Próximo sorteo */}
                   {scheduledDate && new Date(scheduledDate) > new Date() && (
                     <div>
                       <CountdownTimer endDate={scheduledDate} label="Sorteo" type="draw" />
@@ -1121,7 +1066,6 @@ export default function RouletteParticipate() {
             </div>
           </div>
 
-          {/* Grid principal */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <RouletteHeroSection roulette={roulette} />
@@ -1142,7 +1086,6 @@ export default function RouletteParticipate() {
             </div>
           </div>
 
-          {/* Footer */}
           <div className="bg-white border border-gray-200 rounded-xl p-5 text-center">
             <h3 className="text-base font-semibold text-gray-900 mb-1">¡Buena suerte!</h3>
             <p className="text-sm text-gray-600">

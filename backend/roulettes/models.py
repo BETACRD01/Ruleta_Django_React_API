@@ -1,3 +1,6 @@
+# backend/roulettes/models.py
+# ✅ ARCHIVO COMPLETO CON FIX EN save()
+
 from __future__ import annotations
 
 import hashlib
@@ -405,7 +408,15 @@ class Roulette(models.Model):
                 self.mark_completed(by_user=by_user)
                 return
 
+    # ✅ MÉTODO save() CORREGIDO - Solo genera slug, NO auto-cierra
     def save(self, *args, **kwargs):
+        """
+        ✅ CORREGIDO: Solo genera slug, NO auto-cierra ruleta.
+        
+        El cierre automático solo debe ocurrir explícitamente 
+        después de un sorteo via reconcile_completion().
+        """
+        # Generar slug si es nuevo
         if not self.slug:
             base_slug = slugify(self.name)
             slug = base_slug
@@ -415,30 +426,9 @@ class Roulette(models.Model):
                 counter += 1
             self.slug = slug
 
-        if self.pk:
-            try:
-                eligibles = self.participations.filter(is_winner=False).exists()
-            except Exception:
-                eligibles = False
-
-            available = self.available_awards_count()
-
-            must_close = False
-            if not eligibles or available <= 0:
-                must_close = True
-            else:
-                settings_obj = getattr(self, "settings", None)
-                target = int(getattr(settings_obj, "winners_target", 0) or 0)
-                if target > 0 and self.winners_count() >= max(target, 1) and available <= 0:
-                    must_close = True
-
-            if must_close:
-                if not self.is_drawn:
-                    self.is_drawn = True
-                    self.drawn_at = self.drawn_at or timezone.now()
-                if self.status != RouletteStatus.COMPLETED:
-                    self.status = RouletteStatus.COMPLETED
-
+        # ✅ REMOVIDO: Bloque de auto-cierre
+        # Esto evita que se marque completada al actualizar cualquier campo
+        
         super().save(*args, **kwargs)
 
     def get_participants_count(self) -> int:
@@ -538,7 +528,7 @@ class Roulette(models.Model):
 
         winner_participation = random.choice(candidates)
 
-        # Asignación atómica usando helper (SIN DUPLICACIÓN)
+        # Asignación atómica usando helper
         prize = _assign_prize_atomically(self, iteration=0)
 
         winner_participation.is_winner = True
@@ -562,7 +552,7 @@ class Roulette(models.Model):
             random_seed=seed,
         )
 
-        # Notificaciones usando helper centralizado (SIN DUPLICACIÓN)
+        # Notificaciones usando helper centralizado
         _schedule_winner_notifications(
             roulette=self,
             winner_participation=winner_participation,
@@ -570,6 +560,9 @@ class Roulette(models.Model):
             iteration=0,
             is_first_winner=True
         )
+
+        # ✅ AGREGAR: Reconciliar completitud después del sorteo
+        self.reconcile_completion(by_user=drawn_by_user)
 
         logger.info("Ruleta %s: ganador seleccionado", self.name)
         return winner_participation
@@ -604,7 +597,7 @@ class Roulette(models.Model):
             choice = random.choice(pool)
             pool.remove(choice)
 
-            # Asignación atómica usando helper (SIN DUPLICACIÓN)
+            # Asignación atómica usando helper
             prize = _assign_prize_atomically(self, iteration=i)
 
             choice.is_winner = True
@@ -625,7 +618,7 @@ class Roulette(models.Model):
                 random_seed=seed_i,
             )
 
-            # Notificaciones usando helper centralizado (SIN DUPLICACIÓN)
+            # Notificaciones usando helper centralizado
             _schedule_winner_notifications(
                 roulette=self,
                 winner_participation=choice,
@@ -638,6 +631,10 @@ class Roulette(models.Model):
 
         self.drawn_by = drawn_by_user
         self.save()
+
+        # ✅ AGREGAR: Reconciliar completitud después de los sorteos
+        self.reconcile_completion(by_user=drawn_by_user)
+
         logger.info("Ruleta %s: %d ganadores seleccionados", self.name, len(winners))
         return winners
 
@@ -650,6 +647,13 @@ class RouletteSettings(models.Model):
     notify_on_participation = models.BooleanField(default=True)
     notify_on_draw = models.BooleanField(default=True)
     winners_target = models.PositiveIntegerField(default=0, validators=[MinValueValidator(0)])
+    
+    # ✅ NUEVO: Configuración de comprobante
+    require_receipt = models.BooleanField(
+        default=True,
+        verbose_name="Requiere comprobante",
+        help_text="¿Los participantes deben adjuntar comprobante de participación?"
+    )
 
     def __str__(self) -> str:
         return f"Configuración: {self.roulette.name}"

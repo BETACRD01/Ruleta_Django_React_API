@@ -125,13 +125,15 @@ class UserProfile(models.Model):
         verbose_name="Usuario",
     )
     phone = models.CharField(
-        max_length=13,  # +5939XXXXXXXX (13)
-        validators=[phone_validator],
-        unique=True,
-        verbose_name="Teléfono",
-        help_text="Formato válido: +5939XXXXXXXX o 09XXXXXXXX",
-        blank=False,  # Cambiado
-        null=False,   # Cambiado
+    max_length=13,
+    validators=[phone_validator],
+    unique=True,
+    verbose_name="Teléfono",
+    help_text="Formato válido: +5939XXXXXXXX o 09XXXXXXXX",
+    blank=True,   # Permite vacío en forms
+    null=True,    # Permite NULL en DB (esto es clave)
+    default=None  # Default a NULL en lugar de ''
+
 )
     avatar = models.ImageField(
         upload_to="avatars/",
